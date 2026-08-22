@@ -1,28 +1,98 @@
-*.sh
-.idea/
-tcping
-tcping.exe
-netping
-netping.exe
+# Binaries
+*.bin
 *.exe
 *.exe~
-.DS_Store
-.vscode
-.zed
-*.code-workspace
-patches/
-*.db
-.tool-versions
-/target/
-/output/
-tmp/
+*.dll
+*.lib
+*.so
+*.dylib
+/bin/
+/class/
 
-# secrets / credentials
+# Linting
+.ruff_cache
+golangci-lint*
+gosec*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+ehthumbs.db
+Icon?
+Thumbs.db
+*.swp
+*.swo
+
+# Languages
+node_modules/
+vendor/
+__pycache__/
+
+# Secrets and environment
 .env
-.env.*
 *.key
+*.env
+*.crt
 *.pem
+*.p12
+*.jks
+*.gpg
+*.secret
 secrets/
-credentials/
-.aws/
-.ssh/
+key/
+keys/
+
+# Transient
+*.out
+*.tmp
+*.test
+*.log
+coverage*
+temp/
+tmp/
+out/
+log/
+logs/
+go.work
+
+# Data
+*.db
+data/
+db/
+testfiles/
+testsamples/
+
+# Backup files (sequences)
+*.bk??
+
+# Build files
+releases/
+build/
+.editorconfig
+.windsurf
+.antigravity
+.antigravity-cli
+.gemini
+.claude
+AGENTS.md
+RULES.md
+GEMINI.md
+CLAUDE.md
+JULES.md
+SKILLS.md
+walkthrough*.md
+implementation_plan*.md
+code_review_report*.md
+tasks.md
+*.tar.gz
+
+# Code Review tooling
+repomix-output.xml
+repomix-output.md
+repomix-instruction.md
+.repomixignore
+repomix.config.json
+
+
+# --- Vendor / Local Assets ---
+**/mermaid.min.js

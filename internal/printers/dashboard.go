@@ -1,355 +1,1128 @@
 package printers
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/edsilegx/netping/pkg/stats"
 	"golang.org/x/term"
 )
 
-// DashboardPrinter renders a high-performance, real-time terminal UI dashboard.
-type DashboardPrinter struct {
-	mu           sync.Mutex
-	target       string
-	port         uint16
-	protocol     string
-	stats        *stats.Statistics
-	underlying   Printer
-	recentRTTs   []float32
-	recentProbes []string
-	startTime    time.Time
-	maxLogLines  int
-	closed       bool
+// ---------------------------------------------------------------------
+// STYLING & DESIGN SYSTEM (Lip Gloss)
+// ---------------------------------------------------------------------
+
+var (
+	colorBorder   = lipgloss.Color("60")  // Slate blue
+	colorHeader   = lipgloss.Color("255") // Bright white
+	colorDim      = lipgloss.Color("244") // Muted gray
+	colorCyan     = lipgloss.Color("75")  // Bright cyan
+	colorTeal     = lipgloss.Color("73")  // Soft teal
+	colorGreen    = lipgloss.Color("71")  // Muted green
+	colorRed      = lipgloss.Color("167") // Soft coral red
+	colorAmber    = lipgloss.Color("221") // Soft amber
+	colorSubtleBg = lipgloss.Color("236") // Dark card bg
+	colorDivider  = lipgloss.Color("239") // Inner divider line
+
+	styleHeader = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorHeader)
+
+	styleDim = lipgloss.NewStyle().
+			Foreground(colorDim)
+
+	styleValue = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorHeader)
+
+	styleGreen = lipgloss.NewStyle().
+			Foreground(colorGreen)
+
+	styleRed = lipgloss.NewStyle().
+			Foreground(colorRed)
+
+	styleCyan = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorCyan)
+
+	styleTeal = lipgloss.NewStyle().
+			Foreground(colorTeal)
+
+	styleAmber = lipgloss.NewStyle().
+			Foreground(colorAmber)
+)
+
+// ---------------------------------------------------------------------
+// MESSAGES FOR BUBBLE TEA
+// ---------------------------------------------------------------------
+
+type singleProbeMsg struct {
+	stat        stats.Statistics
+	isSuccess   bool
+	failReason  string
+	timestamp   time.Time
+	seq         uint
+	rtt         float32
+	ip          string
+	diagnostics string
 }
 
-// NewDashboardPrinter constructs a new live terminal dashboard.
-func NewDashboardPrinter(target string, port uint16, protocol string, stat *stats.Statistics, underlying ...Printer) *DashboardPrinter {
-	// Enable alternate screen buffer
-	fmt.Print("\033[?1049h\033[H\033[2J\033[?25l")
+type multiProbeMsg struct {
+	target      string
+	protocol    string
+	ip          string
+	rtt         time.Duration
+	diagnostics string
+	err         error
+	seq         uint
+	timestamp   time.Time
+}
 
+type tickMsg time.Time
+
+type modalState int
+
+const (
+	modalNone modalState = iota
+	modalSelectFormat
+	modalInputPath
+)
+
+func renderExportModal(state modalState, selectedFormat int, inputPath string, boxW int) string {
+	modalInnerW := 52
+	if modalInnerW > boxW-4 {
+		modalInnerW = boxW - 4
+	}
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorHeader).PaddingBottom(1)
+	cardStyle := lipgloss.NewStyle().
+		Border(lipgloss.DoubleBorder()).
+		BorderForeground(colorCyan).
+		Padding(1, 2).
+		Width(modalInnerW)
+
+	var content string
+	if state == modalSelectFormat {
+		var sb strings.Builder
+		sb.WriteString(titleStyle.Render("EXPORT DATA - CHOOSE FORMAT") + "\n\n")
+		for i, name := range FormatNames {
+			if i == selectedFormat {
+				sb.WriteString(fmt.Sprintf("%s %s\n", styleCyan.Render("▶"), styleCyan.Bold(true).Render(fmt.Sprintf("[%d] %s", i+1, name))))
+			} else {
+				sb.WriteString(fmt.Sprintf("  %s\n", styleDim.Render(fmt.Sprintf("[%d] %s", i+1, name))))
+			}
+		}
+		sb.WriteString("\n" + styleDim.Render("[↑/↓/1-6] Select  •  [Enter] Next  •  [Esc] Cancel"))
+		content = sb.String()
+	} else if state == modalInputPath {
+		var sb strings.Builder
+		sb.WriteString(titleStyle.Render("EXPORT DATA - DESTINATION FILE") + "\n\n")
+		sb.WriteString(fmt.Sprintf("%s %s\n\n", styleDim.Render("Format:"), styleTeal.Render(FormatNames[selectedFormat])))
+		sb.WriteString(styleDim.Render("Enter Destination File Path:") + "\n")
+		sb.WriteString(styleCyan.Render("> ") + styleHeader.Render(inputPath) + styleCyan.Render("█") + "\n\n")
+		sb.WriteString(styleDim.Render("[Enter] Confirm & Save  •  [Esc] Cancel"))
+		content = sb.String()
+	}
+
+	return cardStyle.Render(content)
+}
+
+// ---------------------------------------------------------------------
+// SINGLE-TARGET DASHBOARD MODEL
+// ---------------------------------------------------------------------
+
+type singleDashboardModel struct {
+	target         string
+	port           uint16
+	protocol       string
+	stats          stats.Statistics
+	recentRTTs     []float64
+	recentProbes   []string
+	probeHistory   []SingleProbeExportRecord
+	startTime      time.Time
+	width          int
+	height         int
+	quitting       bool
+	modalState     modalState
+	selectedFormat int
+	inputPath      string
+	flashMsg       string
+	flashTime      time.Time
+}
+
+func newSingleDashboardModel(target string, port uint16, protocol string, initialStats *stats.Statistics) *singleDashboardModel {
+	st := stats.Statistics{}
+	if initialStats != nil {
+		initialStats.Mu.RLock()
+		st = *initialStats
+		initialStats.Mu.RUnlock()
+	}
+	w, h, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || w <= 0 || h <= 0 {
+		w, h = 80, 24
+	}
+
+	return &singleDashboardModel{
+		target:       target,
+		port:         port,
+		protocol:     protocol,
+		stats:        st,
+		recentRTTs:   make([]float64, 0, 100),
+		recentProbes: make([]string, 0, 100),
+		probeHistory: make([]SingleProbeExportRecord, 0, 200),
+		startTime:    time.Now(),
+		width:        w,
+		height:       h,
+	}
+}
+
+func (m *singleDashboardModel) Init() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+func (m *singleDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case tea.KeyMsg:
+		if m.modalState == modalSelectFormat {
+			switch msg.Type {
+			case tea.KeyEsc, tea.KeyCtrlC:
+				m.modalState = modalNone
+				return m, nil
+			case tea.KeyUp:
+				m.selectedFormat = (m.selectedFormat + len(FormatNames) - 1) % len(FormatNames)
+				return m, nil
+			case tea.KeyDown:
+				m.selectedFormat = (m.selectedFormat + 1) % len(FormatNames)
+				return m, nil
+			case tea.KeyEnter:
+				m.modalState = modalInputPath
+				m.inputPath = GenerateDefaultExportPath(false, ExportFormat(m.selectedFormat))
+				return m, nil
+			default:
+				s := msg.String()
+				switch s {
+				case "k", "K":
+					m.selectedFormat = (m.selectedFormat + len(FormatNames) - 1) % len(FormatNames)
+					return m, nil
+				case "j", "J":
+					m.selectedFormat = (m.selectedFormat + 1) % len(FormatNames)
+					return m, nil
+				case "1", "2", "3", "4", "5", "6":
+					idx := int(s[0] - '1')
+					m.selectedFormat = idx
+					m.modalState = modalInputPath
+					m.inputPath = GenerateDefaultExportPath(false, ExportFormat(m.selectedFormat))
+					return m, nil
+				case "q", "Q", "esc":
+					m.modalState = modalNone
+					return m, nil
+				}
+			}
+			return m, nil
+		}
+
+		if m.modalState == modalInputPath {
+			switch msg.Type {
+			case tea.KeyEsc, tea.KeyCtrlC:
+				m.modalState = modalNone
+				return m, nil
+			case tea.KeyEnter:
+				err := ExportSingleTarget(m.target, m.port, m.protocol, &m.stats, m.probeHistory, ExportFormat(m.selectedFormat), m.inputPath)
+				if err != nil {
+					m.flashMsg = styleRed.Render(fmt.Sprintf("✖ Export failed: %s", err.Error()))
+				} else {
+					m.flashMsg = styleGreen.Render(fmt.Sprintf("✔ Saved to %s", m.inputPath))
+				}
+				m.flashTime = time.Now()
+				m.modalState = modalNone
+				return m, nil
+			case tea.KeyBackspace:
+				if len(m.inputPath) > 0 {
+					m.inputPath = m.inputPath[:len(m.inputPath)-1]
+				}
+				return m, nil
+			default:
+				if len(msg.Runes) > 0 {
+					m.inputPath += string(msg.Runes)
+				}
+				return m, nil
+			}
+		}
+
+		if msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyEsc {
+			m.quitting = true
+			return m, tea.Quit
+		}
+		switch msg.String() {
+		case "ctrl+c", "q", "Q", "esc":
+			m.quitting = true
+			return m, tea.Quit
+		case "s", "S":
+			m.modalState = modalSelectFormat
+			m.selectedFormat = 0
+			m.inputPath = GenerateDefaultExportPath(false, ExportFormat(0))
+			return m, nil
+		}
+
+	case tickMsg:
+		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return tickMsg(t)
+		})
+
+	case singleProbeMsg:
+		m.stats = msg.stat
+		rttVal := float64(msg.rtt)
+		if !msg.isSuccess {
+			rttVal = 0
+		}
+		m.recentRTTs = append(m.recentRTTs, rttVal)
+		if len(m.recentRTTs) > 120 {
+			m.recentRTTs = m.recentRTTs[1:]
+		}
+
+		m.probeHistory = append(m.probeHistory, SingleProbeExportRecord{
+			Timestamp:   msg.timestamp,
+			Seq:         msg.seq,
+			Target:      m.target,
+			Protocol:    m.protocol,
+			IP:          msg.ip,
+			IsSuccess:   msg.isSuccess,
+			RTTMs:       float64(msg.rtt),
+			Diagnostics: msg.diagnostics,
+			Error:       msg.failReason,
+		})
+
+		var line string
+		if msg.isSuccess {
+			line = fmt.Sprintf("%s %s %s %s%s %s%s",
+				styleGreen.Render("●"),
+				styleDim.Render(fmt.Sprintf("[%s]", msg.timestamp.Format("15:04:05"))),
+				styleDim.Render(fmt.Sprintf("Seq=%-4d", msg.seq)),
+				styleDim.Render("RTT="),
+				styleValue.Render(fmt.Sprintf("%6.2f ms", msg.rtt)),
+				styleDim.Render("IP="),
+				styleDim.Render(msg.ip),
+			)
+			if msg.diagnostics != "" && msg.stat.WithDiags {
+				line += fmt.Sprintf(" %s %s", styleDim.Render("│"), styleCyan.Render(msg.diagnostics))
+			}
+		} else {
+			errMsg := msg.failReason
+			if errMsg == "" {
+				errMsg = "Timeout"
+			}
+			line = fmt.Sprintf("%s %s %s %s",
+				styleRed.Render("×"),
+				styleDim.Render(fmt.Sprintf("[%s]", msg.timestamp.Format("15:04:05"))),
+				styleDim.Render(fmt.Sprintf("Seq=%-4d", msg.seq)),
+				styleRed.Render(fmt.Sprintf("Error: %s", errMsg)),
+			)
+		}
+
+		m.recentProbes = append(m.recentProbes, line)
+		if len(m.recentProbes) > 100 {
+			m.recentProbes = m.recentProbes[1:]
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *singleDashboardModel) View() string {
+	if m.quitting {
+		return ""
+	}
+
+	w := m.width
+	h := m.height
+	if w <= 0 {
+		w = 80
+	}
+	if h <= 0 {
+		h = 24
+	}
+
+	if w < 60 || h < 12 {
+		warnStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorRed).
+			Padding(0, 1).
+			Width(min(w-2, 50))
+		content := fmt.Sprintf("%s\n%s",
+			styleRed.Render(fmt.Sprintf("⚠ Window too small (%dx%d)", w, h)),
+			styleDim.Render("Resize terminal to >= 60x12"),
+		)
+		return warnStyle.Render(content)
+	}
+
+	boxW := w - 2
+	innerW := boxW - 2
+	if innerW < 40 {
+		innerW = 40
+	}
+
+	// 1. Header Line
+	elapsed := time.Since(m.startTime).Round(time.Second)
+	targetDisplay := fmt.Sprintf("%s:%d", m.target, m.port)
+	headerLeft := styleHeader.Render("NETPING DASHBOARD")
+	headerMid := fmt.Sprintf("%s %s   %s %s",
+		styleDim.Render("Target:"), styleCyan.Render(targetDisplay),
+		styleDim.Render("Proto:"), styleTeal.Render(m.protocol),
+	)
+	headerRight := fmt.Sprintf("%s %s", styleDim.Render("Elapsed:"), styleDim.Render(elapsed.String()))
+	headerContent := lipgloss.JoinHorizontal(lipgloss.Top,
+		headerLeft,
+		lipgloss.NewStyle().PaddingLeft(2).Render(headerMid),
+		lipgloss.NewStyle().PaddingLeft(3).Render(headerRight),
+	)
+
+	// 2. Metrics Rows
+	total := m.stats.TotalSuccessfulProbes + m.stats.TotalUnsuccessfulProbes
+	succ := m.stats.TotalSuccessfulProbes
+	fail := m.stats.TotalUnsuccessfulProbes
+	lossRatio := float64(0)
+	if total > 0 {
+		lossRatio = float64(fail) / float64(total) * 100.0
+	}
+	res := calcMinAvgMaxRttTime(m.stats.RTT)
+
+	lossStyle := styleGreen
+	if fail > 0 {
+		lossStyle = styleRed
+	}
+
+	colW := (innerW - 8) / 5
+	if colW < 8 {
+		colW = 8
+	}
+
+	cardStyle := lipgloss.NewStyle().Width(colW).Align(lipgloss.Left)
+
+	// Row 1 Cards
+	cProbes := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("Probes:"), styleValue.Render(fmt.Sprintf("%d", total))))
+	cSucc := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("Success:"), styleGreen.Render(fmt.Sprintf("%d", succ))))
+	cFail := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("Failed:"), styleRed.Render(fmt.Sprintf("%d", fail))))
+	cLoss := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("Loss:"), lossStyle.Render(fmt.Sprintf("%.1f%%", lossRatio))))
+	cJit := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("Jit:"), styleValue.Render(fmt.Sprintf("%.2fms", res.Jitter))))
+
+	sep := lipgloss.NewStyle().Foreground(colorDivider).Render("│")
+	row1 := lipgloss.JoinHorizontal(lipgloss.Top, cProbes, " "+sep+" ", cSucc, " "+sep+" ", cFail, " "+sep+" ", cLoss, " "+sep+" ", cJit)
+
+	// Row 2 Cards
+	cMin := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("Min:"), styleValue.Render(fmt.Sprintf("%.2fms", res.Min))))
+	cAvg := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("Avg:"), styleValue.Render(fmt.Sprintf("%.2fms", res.Average))))
+	cMax := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("Max:"), styleValue.Render(fmt.Sprintf("%.2fms", res.Max))))
+	cP95 := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("P95:"), styleAmber.Render(fmt.Sprintf("%.2fms", res.P95))))
+	cP99 := cardStyle.Render(fmt.Sprintf("%s %s", styleDim.Render("P99:"), styleAmber.Render(fmt.Sprintf("%.2fms", res.P99))))
+
+	row2 := lipgloss.JoinHorizontal(lipgloss.Top, cMin, " "+sep+" ", cAvg, " "+sep+" ", cMax, " "+sep+" ", cP95, " "+sep+" ", cP99)
+
+	// 3. Diagnostics row (optional)
+	var diagBlock string
+	if m.stats.WithDiags && m.stats.LatestDiagnostics != "" {
+		diagText := fmt.Sprintf("%s %s", styleDim.Render("DIAGNOSTICS:"), styleCyan.Render(m.stats.LatestDiagnostics))
+		diagBlock = ansi.Truncate(diagText, innerW, "…")
+	}
+
+	// 4. Bar Chart
+	chartW := innerW - 10
+	if chartW < 20 {
+		chartW = 20
+	}
+	chartH := 5
+
+	var graphStr string
+	if len(m.recentRTTs) > 0 {
+		graphStr = renderMultiLineBarChart(m.recentRTTs, chartW, chartH)
+	} else {
+		graphStr = styleDim.Render("  Awaiting probe samples...")
+	}
+	graphTitle := fmt.Sprintf("%s %s", styleHeader.Render("REAL-TIME LATENCY BARS (ms)"), styleDim.Render(fmt.Sprintf("(Last %d probes)", chartW)))
+
+	// 5. Recent Event Log
+	logTitle := styleHeader.Render("RECENT PROBE EVENT LOG")
+
+	dividerLine := lipgloss.NewStyle().Foreground(colorDivider).Render(strings.Repeat("─", innerW))
+
+	// Assemble blocks
+	blocks := []string{
+		ansi.Truncate(headerContent, innerW, ""),
+		dividerLine,
+		row1,
+		row2,
+	}
+
+	if diagBlock != "" {
+		blocks = append(blocks, dividerLine, diagBlock)
+	}
+
+	blocks = append(blocks,
+		dividerLine,
+		graphTitle,
+		graphStr,
+		dividerLine,
+		logTitle,
+	)
+
+	// Calculate remaining lines for event log
+	usedLines := lipgloss.Height(strings.Join(blocks, "\n")) + 4 // +4 for outer border and footer
+	availLogLines := h - usedLines
+	if availLogLines < 3 {
+		availLogLines = 3
+	}
+
+	logSlice := m.recentProbes
+	if len(logSlice) > availLogLines {
+		logSlice = logSlice[len(logSlice)-availLogLines:]
+	}
+
+	if m.modalState != modalNone {
+		blocks = append(blocks, renderExportModal(m.modalState, m.selectedFormat, m.inputPath, boxW))
+	} else {
+		for i := 0; i < availLogLines; i++ {
+			if i < len(logSlice) {
+				blocks = append(blocks, ansi.Truncate(logSlice[i], innerW, "…"))
+			} else {
+				blocks = append(blocks, "")
+			}
+		}
+	}
+
+	innerBody := strings.Join(blocks, "\n")
+
+	outerBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Padding(0, 1).
+		Width(boxW).
+		MaxHeight(h - 2).
+		Render(innerBody)
+
+	footerHelp := fmt.Sprintf("%s  %s  %s", styleDim.Render("Press s to save/export data"), styleDim.Render("│"), styleDim.Render("Press Ctrl+C or q to stop probing and view final report."))
+	if m.flashMsg != "" && time.Since(m.flashTime) < 4*time.Second {
+		footerHelp = fmt.Sprintf("%s   %s", m.flashMsg, footerHelp)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, outerBox, footerHelp)
+}
+
+// ---------------------------------------------------------------------
+// MULTI-TARGET FLEET DASHBOARD MODEL
+// ---------------------------------------------------------------------
+
+type multiDashboardModel struct {
+	targets        []FleetTarget
+	targetRTTs     map[string][]float64
+	recentLogs     []string
+	probeHistory   []SingleProbeExportRecord
+	badgeWidth     int
+	startTime      time.Time
+	width          int
+	height         int
+	quitting       bool
+	modalState     modalState
+	selectedFormat int
+	inputPath      string
+	flashMsg       string
+	flashTime      time.Time
+}
+
+func newMultiDashboardModel(targets []FleetTarget) *multiDashboardModel {
+	w, h, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || w <= 0 || h <= 0 {
+		w, h = 80, 24
+	}
+
+	maxBadgeW := 36
+	for _, t := range targets {
+		proto := strings.ToUpper(t.Protocol)
+		if proto == "" {
+			proto = "TCP"
+		}
+		ipStr := ""
+		if t.Stats != nil && t.Stats.IP.IsValid() {
+			ipStr = t.Stats.IP.String()
+		}
+		raw := fmt.Sprintf("[%s %s, %s]", t.Target, ipStr, proto)
+		if len(raw) > maxBadgeW {
+			maxBadgeW = len(raw)
+		}
+	}
+
+	return &multiDashboardModel{
+		targets:      targets,
+		targetRTTs:   make(map[string][]float64),
+		recentLogs:   make([]string, 0, 100),
+		probeHistory: make([]SingleProbeExportRecord, 0, 500),
+		badgeWidth:   maxBadgeW + 2,
+		startTime:    time.Now(),
+		width:        w,
+		height:       h,
+	}
+}
+
+func (m *multiDashboardModel) Init() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+func (m *multiDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case tea.KeyMsg:
+		if m.modalState == modalSelectFormat {
+			switch msg.Type {
+			case tea.KeyEsc, tea.KeyCtrlC:
+				m.modalState = modalNone
+				return m, nil
+			case tea.KeyUp:
+				m.selectedFormat = (m.selectedFormat + len(FormatNames) - 1) % len(FormatNames)
+				return m, nil
+			case tea.KeyDown:
+				m.selectedFormat = (m.selectedFormat + 1) % len(FormatNames)
+				return m, nil
+			case tea.KeyEnter:
+				m.modalState = modalInputPath
+				m.inputPath = GenerateDefaultExportPath(true, ExportFormat(m.selectedFormat))
+				return m, nil
+			default:
+				s := msg.String()
+				switch s {
+				case "k", "K":
+					m.selectedFormat = (m.selectedFormat + len(FormatNames) - 1) % len(FormatNames)
+					return m, nil
+				case "j", "J":
+					m.selectedFormat = (m.selectedFormat + 1) % len(FormatNames)
+					return m, nil
+				case "1", "2", "3", "4", "5", "6":
+					idx := int(s[0] - '1')
+					m.selectedFormat = idx
+					m.modalState = modalInputPath
+					m.inputPath = GenerateDefaultExportPath(true, ExportFormat(m.selectedFormat))
+					return m, nil
+				case "q", "Q", "esc":
+					m.modalState = modalNone
+					return m, nil
+				}
+			}
+			return m, nil
+		}
+
+		if m.modalState == modalInputPath {
+			switch msg.Type {
+			case tea.KeyEsc, tea.KeyCtrlC:
+				m.modalState = modalNone
+				return m, nil
+			case tea.KeyEnter:
+				err := ExportMultiTarget(m.targets, m.startTime, m.probeHistory, ExportFormat(m.selectedFormat), m.inputPath)
+				if err != nil {
+					m.flashMsg = styleRed.Render(fmt.Sprintf("✖ Export failed: %s", err.Error()))
+				} else {
+					m.flashMsg = styleGreen.Render(fmt.Sprintf("✔ Saved to %s", m.inputPath))
+				}
+				m.flashTime = time.Now()
+				m.modalState = modalNone
+				return m, nil
+			case tea.KeyBackspace:
+				if len(m.inputPath) > 0 {
+					m.inputPath = m.inputPath[:len(m.inputPath)-1]
+				}
+				return m, nil
+			default:
+				if len(msg.Runes) > 0 {
+					m.inputPath += string(msg.Runes)
+				}
+				return m, nil
+			}
+		}
+
+		if msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyEsc {
+			m.quitting = true
+			return m, tea.Quit
+		}
+		switch msg.String() {
+		case "ctrl+c", "q", "Q", "esc":
+			m.quitting = true
+			return m, tea.Quit
+		case "s", "S":
+			m.modalState = modalSelectFormat
+			m.selectedFormat = 0
+			m.inputPath = GenerateDefaultExportPath(true, ExportFormat(0))
+			return m, nil
+		}
+
+	case tickMsg:
+		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return tickMsg(t)
+		})
+
+	case multiProbeMsg:
+		target := msg.target
+		protoDisplay := strings.ToUpper(msg.protocol)
+		if protoDisplay == "" {
+			protoDisplay = "TCP"
+		}
+
+		h, p, err := net.SplitHostPort(target)
+		if err != nil {
+			h = target
+			p = ""
+		}
+		portFormatted := ""
+		if p != "" {
+			portFormatted = ":" + p
+		}
+
+		// 1. Icon
+		var icon string
+		if msg.err == nil {
+			icon = styleGreen.Render("●")
+		} else {
+			icon = styleRed.Render("×")
+		}
+
+		// 2. Timestamp
+		ts := styleDim.Render(fmt.Sprintf("[%s]", msg.timestamp.Format("15:04:05")))
+
+		// 3. Seq
+		seq := styleDim.Render(fmt.Sprintf("Seq=%-4d", msg.seq))
+
+		// 4. Target Host:Port Cell with exact Lip Gloss width
+		maxTargetW := 22
+		for _, t := range m.targets {
+			if len(t.Target) > maxTargetW {
+				maxTargetW = len(t.Target)
+			}
+		}
+		targetText := fmt.Sprintf("%s%s", h, styleCyan.Render(portFormatted))
+		targetCell := lipgloss.NewStyle().Width(maxTargetW + 2).Render(targetText)
+
+		// 5. Dedicated Protocol Cell in teal without parentheses
+		protoCell := lipgloss.NewStyle().Width(7).Render(styleTeal.Render(protoDisplay))
+
+		// 6. Vertical Divider
+		divider := styleDim.Render("│")
+
+		// 7. RTT / Error Cell with compact width 13
+		var valueCell string
+		rttValMs := float64(0)
+		isSucc := msg.err == nil
+		errReason := ""
+		if msg.err == nil {
+			rttValMs = float64(msg.rtt.Seconds() * 1000)
+			m.targetRTTs[target] = append(m.targetRTTs[target], rttValMs)
+			rttContent := fmt.Sprintf("%s%s", styleDim.Render("RTT="), styleValue.Render(fmt.Sprintf("%.2f ms", rttValMs)))
+			valueCell = lipgloss.NewStyle().Width(13).Render(rttContent)
+		} else {
+			m.targetRTTs[target] = append(m.targetRTTs[target], 0)
+			errMsg := msg.err.Error()
+			errReason = errMsg
+			if idx := strings.LastIndex(errMsg, ": "); idx != -1 {
+				errMsg = errMsg[idx+2:]
+			}
+			valueCell = lipgloss.NewStyle().Width(13).Render(styleRed.Render(errMsg))
+		}
+
+		// Record structured probe object for clean export
+		m.probeHistory = append(m.probeHistory, SingleProbeExportRecord{
+			Timestamp:   msg.timestamp,
+			Seq:         msg.seq,
+			Target:      msg.target,
+			Protocol:    protoDisplay,
+			IP:          msg.ip,
+			IsSuccess:   isSucc,
+			RTTMs:       rttValMs,
+			Diagnostics: msg.diagnostics,
+			Error:       errReason,
+		})
+
+		// 8. IP Cell (compact 2 spaces)
+		var ipSection string
+		if msg.ip != "" && msg.ip != "-" {
+			ipSection = fmt.Sprintf("  %s%s", styleDim.Render("IP="), styleDim.Render(msg.ip))
+		}
+
+		// 9. Diagnostics
+		var diagSection string
+		if msg.diagnostics != "" {
+			diagSection = fmt.Sprintf("  %s %s", styleDim.Render("│"), styleCyan.Render(msg.diagnostics))
+		}
+
+		logLine := fmt.Sprintf("%s %s %s %s %s %s  %s%s%s", icon, ts, seq, targetCell, protoCell, divider, valueCell, ipSection, diagSection)
+
+		if len(m.targetRTTs[target]) > 100 {
+			m.targetRTTs[target] = m.targetRTTs[target][1:]
+		}
+
+		m.recentLogs = append(m.recentLogs, logLine)
+		if len(m.recentLogs) > 100 {
+			m.recentLogs = m.recentLogs[1:]
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *multiDashboardModel) View() string {
+	if m.quitting {
+		return ""
+	}
+
+	w := m.width
+	h := m.height
+	if w <= 0 {
+		w = 80
+	}
+	if h <= 0 {
+		h = 24
+	}
+
+	minH := 16
+	if len(m.targets) > 2 {
+		minH = 14 + len(m.targets)*2
+	}
+	if w < 70 || h < minH {
+		warnStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorRed).
+			Padding(0, 1).
+			Width(min(w-2, 60))
+		content := fmt.Sprintf("%s\n%s",
+			styleRed.Render(fmt.Sprintf("⚠ Window too small (%dx%d)", w, h)),
+			styleDim.Render(fmt.Sprintf("Resize terminal to >= 70x%d", minH)),
+		)
+		return warnStyle.Render(content)
+	}
+
+	boxW := w - 2
+	innerW := boxW - 2
+	if innerW < 50 {
+		innerW = 50
+	}
+
+	elapsed := time.Since(m.startTime).Round(time.Second)
+
+	// Header
+	headerLeft := styleHeader.Render("NETPING FLEET DASHBOARD")
+	headerMid := fmt.Sprintf("%s %s", styleDim.Render("Targets:"), styleCyan.Render(fmt.Sprintf("%d", len(m.targets))))
+	headerRight := fmt.Sprintf("%s %s", styleDim.Render("Elapsed:"), styleDim.Render(elapsed.String()))
+	headerContent := lipgloss.JoinHorizontal(lipgloss.Top,
+		headerLeft,
+		lipgloss.NewStyle().PaddingLeft(3).Render(headerMid),
+		lipgloss.NewStyle().PaddingLeft(4).Render(headerRight),
+	)
+
+	dividerLine := lipgloss.NewStyle().Foreground(colorDivider).Render(strings.Repeat("─", innerW))
+
+	// Fleet Table Column Sizing
+	maxTargetLen := 20
+	for _, t := range m.targets {
+		if len(t.Target) > maxTargetLen {
+			maxTargetLen = len(t.Target)
+		}
+	}
+	targetColW := maxTargetLen + 2
+	if targetColW < 22 {
+		targetColW = 22
+	}
+	if targetColW > 36 {
+		targetColW = 36
+	}
+
+	fixedMetricsW := 5 + 8 + 5 + 5 + 1 + 5 + 1 + 6 + 5 + 8 + 1 + 8 + 1 + 8 + 5 // 4 separators with padding + PROTO, SENT, RECV, LOSS, LAST, AVG, MAX
+	sparkColW := innerW - targetColW - fixedMetricsW
+	if sparkColW < 10 {
+		sparkColW = 10
+		targetColW = innerW - fixedMetricsW - sparkColW
+		if targetColW < 18 {
+			targetColW = 18
+		}
+	}
+
+	sep := styleDim.Render("  │  ")
+	tableHdr := fmt.Sprintf("%-*s%s%-8s%s%5s %5s %6s%s%8s %8s %8s%s%-*s",
+		targetColW, "TARGET",
+		sep,
+		"PROTOCOL",
+		sep,
+		"SENT", "RECV", "LOSS%",
+		sep,
+		"LAST ms", "AVG ms", "MAX ms",
+		sep,
+		sparkColW, "SPARKLINE (RECENT)")
+	styledTableHdr := styleHeader.Render(tableHdr)
+
+	var tableRows []string
+	tableRows = append(tableRows, styledTableHdr, dividerLine)
+
+	for _, t := range m.targets {
+		t.Stats.Mu.RLock()
+		total := t.Stats.TotalSuccessfulProbes + t.Stats.TotalUnsuccessfulProbes
+		succ := t.Stats.TotalSuccessfulProbes
+		loss := float64(0)
+		if total > 0 {
+			loss = float64(t.Stats.TotalUnsuccessfulProbes) / float64(total) * 100.0
+		}
+		latest := t.Stats.LatestRTT
+		rttRes := calcMinAvgMaxRttTime(t.Stats.RTT)
+		t.Stats.Mu.RUnlock()
+
+		protoDisplay := strings.ToUpper(t.Protocol)
+		if protoDisplay == "" {
+			protoDisplay = "TCP"
+		}
+
+		lossColor := styleGreen
+		if loss > 0 {
+			lossColor = styleRed
+		}
+
+		targetName := t.Target
+		if len(targetName) > targetColW {
+			targetName = targetName[:targetColW-3] + "..."
+		}
+
+		spark := renderSparklineTrend(m.targetRTTs[t.Target], sparkColW)
+
+		rowStr := fmt.Sprintf("%-*s%s%-8s%s%5d %s %s%s%s %8.2f %8.2f%s%s",
+			targetColW, targetName,
+			sep,
+			styleTeal.Render(fmt.Sprintf("%-8s", protoDisplay)),
+			sep,
+			total,
+			styleGreen.Render(fmt.Sprintf("%5d", succ)),
+			lossColor.Render(fmt.Sprintf("%5.1f%%", loss)),
+			sep,
+			styleValue.Render(fmt.Sprintf("%8.2f", latest)),
+			rttRes.Average,
+			rttRes.Max,
+			sep,
+			spark,
+		)
+		tableRows = append(tableRows, rowStr)
+	}
+
+	blocks := []string{
+		headerContent,
+		dividerLine,
+		strings.Join(tableRows, "\n"),
+	}
+
+	// Waveforms if terminal height allows
+	showWaveform := h >= 24
+	if showWaveform {
+		blocks = append(blocks, dividerLine)
+		chartPlotW := innerW - (targetColW + 12)
+		if chartPlotW < 20 {
+			chartPlotW = 20
+		}
+		blocks = append(blocks, fmt.Sprintf("%s %s", styleHeader.Render("REAL-TIME FLEET LATENCY BARS (ms)"), styleDim.Render(fmt.Sprintf("(Last %d probes)", chartPlotW))))
+		for _, t := range m.targets {
+			rtts := m.targetRTTs[t.Target]
+			spark := renderLatencyBars(rtts, chartPlotW)
+			protoDisplay := strings.ToUpper(t.Protocol)
+			if protoDisplay == "" {
+				protoDisplay = "TCP"
+			}
+			targetName := t.Target
+			if len(targetName) > targetColW {
+				targetName = targetName[:targetColW-3] + "..."
+			}
+			targetLabel := fmt.Sprintf("%s %s", styleCyan.Render(fmt.Sprintf("%-*s", targetColW, targetName)), styleTeal.Render(fmt.Sprintf("%-8s", protoDisplay)))
+			blocks = append(blocks, fmt.Sprintf("%s %s", targetLabel, spark))
+		}
+	}
+
+	blocks = append(blocks, dividerLine, styleHeader.Render("RECENT PROBE EVENT STREAM"))
+
+	usedLines := lipgloss.Height(strings.Join(blocks, "\n")) + 4
+	availLogs := h - usedLines
+	if availLogs < 3 {
+		availLogs = 3
+	}
+
+	logSlice := m.recentLogs
+	if len(logSlice) > availLogs {
+		logSlice = logSlice[len(logSlice)-availLogs:]
+	}
+
+	if m.modalState != modalNone {
+		blocks = append(blocks, renderExportModal(m.modalState, m.selectedFormat, m.inputPath, boxW))
+	} else {
+		for i := 0; i < availLogs; i++ {
+			if i < len(logSlice) {
+				blocks = append(blocks, ansi.Truncate(logSlice[i], innerW, "…"))
+			} else {
+				blocks = append(blocks, "")
+			}
+		}
+	}
+
+	innerBody := strings.Join(blocks, "\n")
+	outerBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Padding(0, 1).
+		Width(boxW).
+		MaxHeight(h - 2).
+		Render(innerBody)
+
+	footerHelp := fmt.Sprintf("%s  %s  %s", styleDim.Render("Press s to save/export data"), styleDim.Render("│"), styleDim.Render("Press Ctrl+C or q to stop probing and view comparative fleet summary."))
+	if m.flashMsg != "" && time.Since(m.flashTime) < 4*time.Second {
+		footerHelp = fmt.Sprintf("%s   %s", m.flashMsg, footerHelp)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, outerBox, footerHelp)
+}
+
+// ---------------------------------------------------------------------
+// PUBLIC EXPORTED DASHBOARD PRINTER WRAPPERS
+// ---------------------------------------------------------------------
+
+// DashboardPrinter renders a high-performance, real-time terminal UI dashboard.
+type DashboardPrinter struct {
+	mu         sync.Mutex
+	target     string
+	port       uint16
+	protocol   string
+	stats      *stats.Statistics
+	underlying Printer
+	prog       *tea.Program
+	cancel     context.CancelFunc
+	closed     bool
+}
+
+// SetCancel configures the cancellation callback triggered when user exits TUI.
+func (d *DashboardPrinter) SetCancel(cancel context.CancelFunc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.cancel = cancel
+}
+
+// NewDashboardPrinter constructs a new live terminal dashboard using Bubble Tea.
+func NewDashboardPrinter(target string, port uint16, protocol string, stat *stats.Statistics, underlying ...Printer) *DashboardPrinter {
 	var und Printer
 	if len(underlying) > 0 {
 		und = underlying[0]
 	}
 
-	return &DashboardPrinter{
-		target:       target,
-		port:         port,
-		protocol:     protocol,
-		stats:        stat,
-		underlying:   und,
-		recentRTTs:   make([]float32, 0, 110),
-		recentProbes: make([]string, 0, 10),
-		startTime:    time.Now(),
-		maxLogLines:  8,
+	model := newSingleDashboardModel(target, port, protocol, stat)
+	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	dp := &DashboardPrinter{
+		target:     target,
+		port:       port,
+		protocol:   protocol,
+		stats:      stat,
+		underlying: und,
+		prog:       p,
 	}
+
+	go func() {
+		if _, err := p.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Dashboard error: %v\n", err)
+		}
+		dp.mu.Lock()
+		c := dp.cancel
+		dp.mu.Unlock()
+		if c != nil {
+			c()
+		}
+	}()
+
+	return dp
 }
 
-// Close restores the normal terminal screen buffer and shows cursor.
+// Close restores the normal terminal screen buffer.
 func (d *DashboardPrinter) Close() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if !d.closed {
 		d.closed = true
-		fmt.Print("\033[?25h\033[?1049l")
+		if d.prog != nil {
+			d.prog.Quit()
+		}
 	}
 }
 
 // PrintStart displays initial startup info if needed.
-func (d *DashboardPrinter) PrintStart(s *stats.Statistics) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.render()
-}
+func (d *DashboardPrinter) PrintStart(s *stats.Statistics) {}
 
-// PrintProbeSuccess records a probe success and redraws the dashboard.
+// PrintProbeSuccess records a probe success and updates the dashboard.
 func (d *DashboardPrinter) PrintProbeSuccess(s *stats.Statistics) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
-	rtt := s.LatestRTT
-	d.recentRTTs = append(d.recentRTTs, rtt)
-	if len(d.recentRTTs) > 105 {
-		d.recentRTTs = d.recentRTTs[1:]
+	if d.closed || d.prog == nil {
+		return
 	}
 
-	ipStr := s.IP.String()
-	logLine := fmt.Sprintf("\033[38;5;71m●\033[0m \033[38;5;244m[%s]\033[0m \033[38;5;248mSeq=%-4d\033[0m \033[38;5;244mRTT=\033[0m\033[1;37m%7.2f ms\033[0m \033[38;5;244mIP=\033[0m\033[38;5;248m%s\033[0m", time.Now().Format("15:04:05"), s.OngoingSuccessfulProbes+s.OngoingUnsuccessfulProbes, rtt, ipStr)
-	if s.WithDiags && s.LatestDiagnostics != "" {
-		logLine = fmt.Sprintf("\033[38;5;71m●\033[0m \033[38;5;244m[%s]\033[0m \033[38;5;248m#%-4d\033[0m \033[1;37m%6.2f ms\033[0m \033[38;5;240m│\033[0m \033[38;5;75m%s\033[0m", time.Now().Format("15:04:05"), s.OngoingSuccessfulProbes+s.OngoingUnsuccessfulProbes, rtt, s.LatestDiagnostics)
+	s.Mu.RLock()
+	statCopy := *s
+	s.Mu.RUnlock()
+
+	diagStr := ""
+	if statCopy.WithDiags {
+		diagStr = statCopy.LatestDiagnostics
 	}
-	d.addLog(logLine)
-	d.render()
+
+	d.prog.Send(singleProbeMsg{
+		stat:        statCopy,
+		isSuccess:   true,
+		timestamp:   time.Now(),
+		seq:         statCopy.OngoingSuccessfulProbes + statCopy.OngoingUnsuccessfulProbes,
+		rtt:         statCopy.LatestRTT,
+		ip:          statCopy.IP.String(),
+		diagnostics: diagStr,
+	})
 }
 
-// PrintProbeFailure records a probe failure and redraws the dashboard.
+// PrintProbeFailure records a probe failure and updates the dashboard.
 func (d *DashboardPrinter) PrintProbeFailure(s *stats.Statistics) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
-	d.recentRTTs = append(d.recentRTTs, 0)
-	if len(d.recentRTTs) > 105 {
-		d.recentRTTs = d.recentRTTs[1:]
+	if d.closed || d.prog == nil {
+		return
 	}
 
-	errMsg := s.LastFailureReason
-	if errMsg == "" {
-		errMsg = "Timeout"
-	}
-	logLine := fmt.Sprintf("\033[38;5;167m✖\033[0m \033[38;5;244m[%s]\033[0m \033[38;5;248mSeq=%-4d\033[0m \033[38;5;167mError: %s\033[0m", time.Now().Format("15:04:05"), s.OngoingSuccessfulProbes+s.OngoingUnsuccessfulProbes, errMsg)
-	d.addLog(logLine)
-	d.render()
-}
+	s.Mu.RLock()
+	statCopy := *s
+	s.Mu.RUnlock()
 
-func (d *DashboardPrinter) addLog(line string) {
-	d.recentProbes = append(d.recentProbes, line)
-	if len(d.recentProbes) > 100 {
-		d.recentProbes = d.recentProbes[1:]
-	}
-}
-
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
-func stripANSI(str string) string {
-	return ansiRegex.ReplaceAllString(str, "")
-}
-
-func visibleLen(str string) int {
-	clean := stripANSI(str)
-	return len([]rune(clean))
-}
-
-func padRightVisible(s string, targetWidth int) string {
-	vlen := visibleLen(s)
-	if vlen < targetWidth {
-		return s + strings.Repeat(" ", targetWidth-vlen)
-	}
-	return s
-}
-
-func getTerminalDimensions() (int, int) {
-	w, h, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil || w <= 0 || h <= 0 {
-		return 80, 24
-	}
-	return w, h
-}
-
-func renderRow(content string, innerW int) string {
-	return fmt.Sprintf("\033[38;5;60m│\033[0m %s \033[38;5;60m│\033[0m\n", padRightVisible(content, innerW))
-}
-
-func renderKPI(items []string, innerW int) string {
-	n := len(items)
-	if n == 0 {
-		return ""
-	}
-	sep := "\033[38;5;239m│\033[0m"
-	sepsLen := (n - 1) * 3 // " │ "
-	avail := innerW - sepsLen
-	colW := avail / n
-	rem := avail % n
-
-	var b strings.Builder
-	for i, it := range items {
-		w := colW
-		if i < rem {
-			w++
-		}
-		b.WriteString(padRightVisible(it, w))
-		if i < n-1 {
-			b.WriteString(" " + sep + " ")
-		}
-	}
-	return b.String()
-}
-
-func renderMultiLineChart(rtts []float32, plotWidth int, height int) []string {
-	var lines []string
-	if height < 3 {
-		height = 5
+	diagStr := ""
+	if statCopy.WithDiags {
+		diagStr = statCopy.LatestDiagnostics
 	}
 
-	maxVal := float32(10.0)
-	for _, v := range rtts {
-		if v > maxVal {
-			maxVal = v
-		}
-	}
-	maxVal = maxVal * 1.15
-
-	dataLen := len(rtts)
-	samples := make([]float32, plotWidth)
-	offset := plotWidth - dataLen
-	for i := 0; i < plotWidth; i++ {
-		srcIdx := i - offset
-		if srcIdx >= 0 && srcIdx < dataLen {
-			samples[i] = rtts[srcIdx]
-		} else {
-			samples[i] = -1 // No data
-		}
-	}
-
-	for row := height - 1; row >= 0; row-- {
-		rowVal := (float32(row+1) / float32(height)) * maxVal
-		var line strings.Builder
-		line.WriteString(fmt.Sprintf("\033[38;5;244m%6.1fms\033[0m \033[38;5;240m┤\033[0m\033[38;5;75m", rowVal))
-
-		for col := 0; col < plotWidth; col++ {
-			val := samples[col]
-			if val < 0 {
-				line.WriteString(" ")
-				continue
-			}
-			if val == 0 {
-				line.WriteString("\033[38;5;167m.\033[38;5;75m") // Failed probe dot
-				continue
-			}
-
-			norm := (val / maxVal) * float32(height)
-			if norm >= float32(row+1) {
-				line.WriteString("█")
-			} else if norm >= float32(row)+0.5 {
-				line.WriteString("▄")
-			} else if norm >= float32(row)+0.15 {
-				line.WriteString(" ")
-			} else {
-				line.WriteString(" ")
-			}
-		}
-		line.WriteString("\033[0m")
-		lines = append(lines, line.String())
-	}
-
-	axisLine := fmt.Sprintf("\033[38;5;244m   0.0ms\033[0m \033[38;5;240m┴\033[38;5;239m%s\033[0m", strings.Repeat("─", plotWidth))
-	lines = append(lines, axisLine)
-	return lines
-}
-
-// render refreshes the full dashboard view.
-func (d *DashboardPrinter) render() {
-	termW, termH := getTerminalDimensions()
-	boxWidth := termW
-	if boxWidth < 70 {
-		boxWidth = 70
-	}
-	innerW := boxWidth - 4
-	plotWidth := innerW - 10
-	if plotWidth < 20 {
-		plotWidth = 20
-	}
-
-	var b strings.Builder
-	b.WriteString("\033[H") // Move cursor to top-left
-
-	elapsed := time.Since(d.startTime).Round(time.Second)
-
-	total := d.stats.TotalSuccessfulProbes + d.stats.TotalUnsuccessfulProbes
-	successful := d.stats.TotalSuccessfulProbes
-	failed := d.stats.TotalUnsuccessfulProbes
-
-	lossRatio := float64(0)
-	if total > 0 {
-		lossRatio = float64(failed) / float64(total) * 100.0
-	}
-
-	res := calcMinAvgMaxRttTime(d.stats.RTT)
-
-	borderHoriz := strings.Repeat("─", boxWidth-2)
-	topBorder := fmt.Sprintf("\033[38;5;60m┌%s┐\033[0m\n", borderHoriz)
-	midDivider := fmt.Sprintf("\033[38;5;60m├%s┤\033[0m\n", borderHoriz)
-	bottomBorder := fmt.Sprintf("\033[38;5;60m└%s┘\033[0m\n", borderHoriz)
-
-	// Top Border
-	b.WriteString(topBorder)
-
-	// Header Row
-	headerStr := fmt.Sprintf("\033[1;37mNETPING DASHBOARD\033[0m   \033[38;5;244mTarget:\033[0m \033[1;38;5;75m%s:%d\033[0m   \033[38;5;244mProto:\033[0m \033[38;5;73m%s\033[0m   \033[38;5;244mElapsed:\033[0m \033[38;5;250m%s\033[0m", d.target, d.port, d.protocol, elapsed)
-	b.WriteString(renderRow(headerStr, innerW))
-
-	// Divider
-	b.WriteString(midDivider)
-
-	// Stats Row 1 (Counters & Jitter)
-	lossColor := "\033[38;5;71m"
-	if failed > 0 {
-		lossColor = "\033[38;5;167m"
-	}
-	r1_1 := fmt.Sprintf("\033[38;5;244mProbes:\033[0m \033[1;37m%d\033[0m", total)
-	r1_2 := fmt.Sprintf("\033[38;5;244mSuccess:\033[0m \033[38;5;71m%d\033[0m", successful)
-	r1_3 := fmt.Sprintf("\033[38;5;244mFailed:\033[0m \033[38;5;167m%d\033[0m", failed)
-	r1_4 := fmt.Sprintf("\033[38;5;244mLoss:\033[0m %s%.1f%%\033[0m", lossColor, lossRatio)
-	r1_5 := fmt.Sprintf("\033[38;5;244mJit:\033[0m \033[1;37m%.2fms\033[0m", res.Jitter)
-	b.WriteString(renderRow(renderKPI([]string{r1_1, r1_2, r1_3, r1_4, r1_5}, innerW), innerW))
-
-	// Stats Row 2 (Latency & SLA Percentiles)
-	r2_1 := fmt.Sprintf("\033[38;5;244mMin:\033[0m \033[1;37m%.2fms\033[0m", res.Min)
-	r2_2 := fmt.Sprintf("\033[38;5;244mAvg:\033[0m \033[1;37m%.2fms\033[0m", res.Average)
-	r2_3 := fmt.Sprintf("\033[38;5;244mMax:\033[0m \033[1;37m%.2fms\033[0m", res.Max)
-	r2_4 := fmt.Sprintf("\033[38;5;244mP95:\033[0m \033[38;5;221m%.2fms\033[0m", res.P95)
-	r2_5 := fmt.Sprintf("\033[38;5;244mP99:\033[0m \033[38;5;221m%.2fms\033[0m", res.P99)
-	b.WriteString(renderRow(renderKPI([]string{r2_1, r2_2, r2_3, r2_4, r2_5}, innerW), innerW))
-
-	if d.stats.WithDiags && d.stats.LatestDiagnostics != "" {
-		b.WriteString(midDivider)
-		diagRow := fmt.Sprintf("\033[38;5;244mDIAGNOSTICS:\033[0m \033[38;5;75m%s\033[0m", d.stats.LatestDiagnostics)
-		b.WriteString(renderRow(diagRow, innerW))
-	}
-
-	// Divider
-	b.WriteString(midDivider)
-
-	// Chart Title Row
-	b.WriteString(renderRow(fmt.Sprintf("\033[1;37mREAL-TIME LATENCY WAVEFORM\033[0m \033[38;5;244m(Last %d probes)\033[0m", plotWidth), innerW))
-
-	// Chart Rows (5-row tall graph + axis = 6 lines)
-	chartLines := renderMultiLineChart(d.recentRTTs, plotWidth, 5)
-	for _, cl := range chartLines {
-		b.WriteString(renderRow(cl, innerW))
-	}
-
-	// Divider
-	b.WriteString(midDivider)
-
-	// Log Title Row
-	b.WriteString(renderRow("\033[1;37mRECENT PROBE EVENT LOG\033[0m", innerW))
-
-	overhead := 18
-	if d.stats.WithDiags && d.stats.LatestDiagnostics != "" {
-		overhead = 20
-	}
-
-	logCount := 5
-	if termH > overhead {
-		logCount = termH - overhead
-	}
-	if logCount < 3 {
-		logCount = 3
-	}
-
-	probesToRender := d.recentProbes
-	if len(probesToRender) > logCount {
-		probesToRender = probesToRender[len(probesToRender)-logCount:]
-	}
-
-	for i := 0; i < logCount; i++ {
-		line := ""
-		if i < len(probesToRender) {
-			line = probesToRender[i]
-		}
-		b.WriteString(renderRow(line, innerW))
-	}
-
-	// Bottom Border
-	b.WriteString(bottomBorder)
-	b.WriteString("\033[38;5;242mPress Ctrl+C to stop probing and view final report.\033[0m\033[K")
-
-	os.Stdout.WriteString(b.String())
+	d.prog.Send(singleProbeMsg{
+		stat:        statCopy,
+		isSuccess:   false,
+		failReason:  statCopy.LastFailureReason,
+		timestamp:   time.Now(),
+		seq:         statCopy.OngoingSuccessfulProbes + statCopy.OngoingUnsuccessfulProbes,
+		rtt:         0,
+		ip:          statCopy.IP.String(),
+		diagnostics: diagStr,
+	})
 }
 
 // PrintRetryingToResolve stub for interface compliance.
@@ -364,9 +1137,10 @@ func (d *DashboardPrinter) PrintStatistics(s *stats.Statistics) {}
 // PrintError stub for interface compliance.
 func (d *DashboardPrinter) PrintError(format string, args ...any) {}
 
-// Shutdown gracefully ends the TUI dashboard session and restores normal screen.
+// Shutdown gracefully ends the TUI dashboard session and prints final statistics.
 func (d *DashboardPrinter) Shutdown(s *stats.Statistics) {
 	d.Close()
+	time.Sleep(50 * time.Millisecond) // Ensure alt screen buffer is restored
 	p := NewColorPrinter()
 	PrintStats(p, s)
 }
@@ -385,46 +1159,101 @@ type FleetTarget struct {
 type MultiDashboardPrinter struct {
 	mu          sync.Mutex
 	targets     []FleetTarget
-	targetRTTs  map[string][]float32
 	underlying  Printer
-	recentLogs  []string
-	maxLogLines int
-	startTime   time.Time
+	prog        *tea.Program
+	cancel      context.CancelFunc
 	closed      bool
 }
 
-// NewMultiDashboardPrinter constructs a new MultiDashboardPrinter for monitoring multiple probe workers.
+// SetCancel configures the cancellation callback triggered when user exits TUI.
+func (d *MultiDashboardPrinter) SetCancel(cancel context.CancelFunc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.cancel = cancel
+}
+
+// NewMultiDashboardPrinter constructs a new MultiDashboardPrinter using Bubble Tea.
 func NewMultiDashboardPrinter(targets []FleetTarget, underlying ...Printer) *MultiDashboardPrinter {
 	var und Printer
 	if len(underlying) > 0 {
 		und = underlying[0]
 	}
-	d := &MultiDashboardPrinter{
-		targets:     targets,
-		targetRTTs:  make(map[string][]float32),
-		underlying:  und,
-		maxLogLines: 8,
-		startTime:   time.Now(),
+
+	model := newMultiDashboardModel(targets)
+	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	mdp := &MultiDashboardPrinter{
+		targets:    targets,
+		underlying: und,
+		prog:       p,
 	}
 
-	fmt.Print("\033[?1049h\033[?25l\033[2J") // Alternate screen buffer, hide cursor, clear
-	return d
+	go func() {
+		if _, err := p.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Multi-Dashboard error: %v\n", err)
+		}
+		mdp.mu.Lock()
+		c := mdp.cancel
+		mdp.mu.Unlock()
+		if c != nil {
+			c()
+		}
+	}()
+
+	return mdp
 }
 
-// Close restores the normal terminal screen buffer and shows cursor.
+// Close restores the normal terminal screen buffer.
 func (d *MultiDashboardPrinter) Close() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if !d.closed {
 		d.closed = true
-		fmt.Print("\033[?25h\033[?1049l")
+		if d.prog != nil {
+			d.prog.Quit()
+		}
 	}
 }
 
-var sparkBlocks = []rune{' ', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+// OnProbe records a live probe event from any concurrent worker and refreshes the fleet dashboard.
+func (d *MultiDashboardPrinter) OnProbe(target string, proto string, rtt time.Duration, diags string, err error, seq uint, ip ...string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed || d.prog == nil {
+		return
+	}
 
-// renderSparkline converts a slice of RTT floats into a compact, colorful Unicode sparkline.
-func renderSparkline(rtts []float32, width int) string {
+	ipStr := ""
+	if len(ip) > 0 && ip[0] != "" {
+		ipStr = ip[0]
+	} else {
+		for _, t := range d.targets {
+			if t.Target == target && t.Stats != nil && t.Stats.IP.IsValid() {
+				ipStr = t.Stats.IP.String()
+				break
+			}
+		}
+	}
+
+	d.prog.Send(multiProbeMsg{
+		target:      target,
+		protocol:    proto,
+		ip:          ipStr,
+		rtt:         rtt,
+		diagnostics: diags,
+		err:         err,
+		seq:         seq,
+		timestamp:   time.Now(),
+	})
+}
+
+// ---------------------------------------------------------------------
+// SPARKLINE & STATISTICAL HELPERS
+// ---------------------------------------------------------------------
+
+var sparkBlocks = []rune{'\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'}
+
+func renderLatencyBars(rtts []float64, width int) string {
 	if width <= 0 {
 		return ""
 	}
@@ -434,14 +1263,11 @@ func renderSparkline(rtts []float32, width int) string {
 		slice = rtts[dataLen-width:]
 	}
 
-	maxVal := float32(10.0)
+	maxVal := float64(10.0)
 	for _, v := range slice {
 		if v > maxVal {
 			maxVal = v
 		}
-	}
-	if maxVal == 0 {
-		maxVal = 1.0
 	}
 
 	var b strings.Builder
@@ -452,222 +1278,169 @@ func renderSparkline(rtts []float32, width int) string {
 
 	for _, v := range slice {
 		if v <= 0 {
-			b.WriteString("\033[38;5;167m.\033[0m") // Failed probe dot
+			b.WriteString(styleRed.Render("."))
 			continue
 		}
-		idx := int((v / maxVal) * float32(len(sparkBlocks)-1))
+		idx := int((v / maxVal) * float64(len(sparkBlocks)-1))
 		if idx >= len(sparkBlocks) {
 			idx = len(sparkBlocks) - 1
 		}
 		if idx < 0 {
 			idx = 0
 		}
-		var color string
-		if v < 50 {
-			color = "\033[38;5;71m" // Soft green
-		} else if v < 150 {
-			color = "\033[38;5;221m" // Soft amber/yellow
-		} else {
-			color = "\033[38;5;203m" // Coral red
+		st := styleCyan
+		if v >= 150 {
+			st = styleRed
+		} else if v >= 50 {
+			st = styleAmber
 		}
-		b.WriteString(color)
-		b.WriteRune(sparkBlocks[idx])
-		b.WriteString("\033[0m")
+		b.WriteString(st.Render(string(sparkBlocks[idx])))
 	}
 
 	return b.String()
 }
 
-// OnProbe records a live probe event from any concurrent worker and refreshes the fleet dashboard.
-func (d *MultiDashboardPrinter) OnProbe(target string, proto string, rtt time.Duration, diags string, err error, seq uint) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	protoDisplay := strings.ToUpper(proto)
-	if protoDisplay == "" {
-		protoDisplay = "TCP"
+func renderSparklineTrend(rtts []float64, width int) string {
+	if width <= 0 {
+		return ""
 	}
-	badge := fmt.Sprintf("[%s (%s)]", target, protoDisplay)
+	dataLen := len(rtts)
+	slice := rtts
+	if dataLen > width {
+		slice = rtts[dataLen-width:]
+	}
 
-	var logLine string
-	if err == nil {
-		rttMs := float32(rtt.Seconds() * 1000)
-		d.targetRTTs[target] = append(d.targetRTTs[target], rttMs)
-		logLine = fmt.Sprintf("\033[38;5;71m●\033[0m \033[38;5;244m[%s]\033[0m \033[38;5;75m%-26s\033[0m \033[1;37m%6.2f ms\033[0m", time.Now().Format("15:04:05"), badge, rttMs)
-		if diags != "" {
-			logLine += fmt.Sprintf(" \033[38;5;240m│\033[0m \033[38;5;248m%s\033[0m", diags)
+	var minVal, maxVal float64
+	hasValid := false
+	for _, v := range slice {
+		if v > 0 {
+			if !hasValid {
+				minVal = v
+				maxVal = v
+				hasValid = true
+			} else {
+				if v < minVal {
+					minVal = v
+				}
+				if v > maxVal {
+					maxVal = v
+				}
+			}
 		}
-	} else {
-		d.targetRTTs[target] = append(d.targetRTTs[target], 0)
-		errMsg := err.Error()
-		if idx := strings.LastIndex(errMsg, ": "); idx != -1 {
-			errMsg = errMsg[idx+2:]
-		}
-		logLine = fmt.Sprintf("\033[38;5;167m✖\033[0m \033[38;5;244m[%s]\033[0m \033[38;5;75m%-26s\033[0m \033[38;5;167m%s\033[0m", time.Now().Format("15:04:05"), badge, errMsg)
 	}
 
-	if len(d.targetRTTs[target]) > 100 {
-		d.targetRTTs[target] = d.targetRTTs[target][1:]
+	rangeVal := maxVal - minVal
+	if rangeVal == 0 {
+		rangeVal = 1.0
 	}
-
-	d.recentLogs = append(d.recentLogs, logLine)
-	if len(d.recentLogs) > 100 {
-		d.recentLogs = d.recentLogs[1:]
-	}
-
-	d.render()
-}
-
-// render refreshes the entire multi-target fleet TUI view.
-func (d *MultiDashboardPrinter) render() {
-	termW, termH := getTerminalDimensions()
-	boxWidth := termW
-	if boxWidth < 80 {
-		boxWidth = 80
-	}
-	innerW := boxWidth - 4
 
 	var b strings.Builder
-	b.WriteString("\033[H") // Cursor to top-left
+	pad := width - len(slice)
+	for i := 0; i < pad; i++ {
+		b.WriteRune(' ')
+	}
 
-	elapsed := time.Since(d.startTime).Round(time.Second)
+	for _, v := range slice {
+		if v <= 0 {
+			b.WriteString(styleRed.Render("."))
+			continue
+		}
+		var idx int
+		if maxVal == minVal {
+			idx = len(sparkBlocks) / 2
+		} else {
+			idx = int(((v - minVal) / rangeVal) * float64(len(sparkBlocks)-1))
+		}
+		if idx >= len(sparkBlocks) {
+			idx = len(sparkBlocks) - 1
+		}
+		if idx < 0 {
+			idx = 0
+		}
+		st := styleCyan
+		if v >= 150 {
+			st = styleRed
+		} else if v >= 50 {
+			st = styleAmber
+		}
+		b.WriteString(st.Render(string(sparkBlocks[idx])))
+	}
 
-	borderHoriz := strings.Repeat("─", boxWidth-2)
-	topBorder := fmt.Sprintf("\033[38;5;60m┌%s┐\033[0m\n", borderHoriz)
-	midDivider := fmt.Sprintf("\033[38;5;60m├%s┤\033[0m\n", borderHoriz)
-	bottomBorder := fmt.Sprintf("\033[38;5;60m└%s┘\033[0m\n", borderHoriz)
+	return b.String()
+}
 
-	b.WriteString(topBorder)
-	headerStr := fmt.Sprintf("\033[1;37mNETPING FLEET DASHBOARD\033[0m   \033[38;5;244mTargets:\033[0m \033[1;38;5;75m%d\033[0m   \033[38;5;244mElapsed:\033[0m \033[38;5;250m%s\033[0m", len(d.targets), elapsed)
-	b.WriteString(renderRow(headerStr, innerW))
-	b.WriteString(midDivider)
+func renderSparklineFromFloat64(rtts []float64, width int) string {
+	return renderLatencyBars(rtts, width)
+}
 
-	// Dynamically compute column widths so table spans 100% of innerW
-	maxTargetLen := 20
-	for _, t := range d.targets {
-		if len(t.Target) > maxTargetLen {
-			maxTargetLen = len(t.Target)
+func renderMultiLineBarChart(rtts []float64, plotWidth int, height int) string {
+	if height < 3 {
+		height = 5
+	}
+
+	maxVal := float64(10.0)
+	for _, v := range rtts {
+		if v > maxVal {
+			maxVal = v
 		}
 	}
-	targetColW := maxTargetLen + 2
-	if targetColW < 22 {
-		targetColW = 22
-	}
-	if targetColW > 38 {
-		targetColW = 38
-	}
+	maxVal = maxVal * 1.15
 
-	fixedMetricsW := 10 + 6 + 6 + 7 + 9 + 9 + 9 + 7 // PROTOCOL, SENT, RECV, LOSS%, LAST, AVG, MAX + gaps = 63
-	sparkColW := innerW - targetColW - fixedMetricsW
-	if sparkColW < 10 {
-		sparkColW = 10
-		targetColW = innerW - fixedMetricsW - sparkColW
-		if targetColW < 18 {
-			targetColW = 18
+	dataLen := len(rtts)
+	samples := make([]float64, plotWidth)
+	offset := plotWidth - dataLen
+	for i := 0; i < plotWidth; i++ {
+		srcIdx := i - offset
+		if srcIdx >= 0 && srcIdx < dataLen {
+			samples[i] = rtts[srcIdx]
+		} else {
+			samples[i] = -1 // No data
 		}
 	}
 
-	fleetHdr := fmt.Sprintf("\033[1;37m%-*s %-10s %-5s %-5s %-6s %-8s %-8s %-8s %-*s\033[0m",
-		targetColW, "TARGET", "PROTOCOL", "SENT", "RECV", "LOSS%", "LAST ms", "AVG ms", "MAX ms", sparkColW, "SPARKLINE (RECENT)")
-	b.WriteString(renderRow(fleetHdr, innerW))
-	b.WriteString(midDivider)
+	var lines []string
+	for row := height - 1; row >= 0; row-- {
+		rowVal := (float64(row+1) / float64(height)) * maxVal
+		var line strings.Builder
+		line.WriteString(styleDim.Render(fmt.Sprintf("%6.1fms ", rowVal)) + lipgloss.NewStyle().Foreground(colorDivider).Render("┤"))
 
-	for _, t := range d.targets {
-		t.Stats.Mu.RLock()
-		total := t.Stats.TotalSuccessfulProbes + t.Stats.TotalUnsuccessfulProbes
-		succ := t.Stats.TotalSuccessfulProbes
-		loss := float64(0)
-		if total > 0 {
-			loss = float64(t.Stats.TotalUnsuccessfulProbes) / float64(total) * 100.0
-		}
-		latest := t.Stats.LatestRTT
-		rttRes := calcMinAvgMaxRttTime(t.Stats.RTT)
-		t.Stats.Mu.RUnlock()
-
-		protoDisplay := strings.ToUpper(t.Protocol)
-		if protoDisplay == "" {
-			protoDisplay = "TCP"
-		}
-
-		lossColor := "\033[38;5;71m"
-		if loss > 0 {
-			lossColor = "\033[38;5;167m"
-		}
-
-		targetName := t.Target
-		if len(targetName) > targetColW {
-			targetName = targetName[:targetColW-3] + "..."
-		}
-
-		spark := renderSparkline(d.targetRTTs[t.Target], sparkColW)
-
-		rowStr := fmt.Sprintf("%-*s \033[38;5;73m%-10s\033[0m %-5d \033[38;5;71m%-5d\033[0m %s%5.1f%%\033[0m \033[1;37m%7.2f\033[0m %7.2f %7.2f %s",
-			targetColW, targetName, protoDisplay, total, succ, lossColor, loss, latest, rttRes.Average, rttRes.Max, spark)
-		b.WriteString(renderRow(rowStr, innerW))
-	}
-
-	showWaveform := false
-	waveformHeight := 0
-	if termH >= 24 {
-		showWaveform = true
-		waveformHeight = 2 + len(d.targets) // divider + title + rows
-	}
-
-	// Fixed UI lines overhead:
-	// topBorder (1) + header (1) + divider (1) + tableHdr (1) + divider (1) + tableRows (len(d.targets))
-	// + [waveformHeight] + divider (1) + eventStreamTitle (1) + bottomBorder (1) + footerMsg (1)
-	fixedOverhead := 9 + len(d.targets) + waveformHeight
-
-	logCount := 4
-	if termH > fixedOverhead {
-		logCount = termH - fixedOverhead
-	}
-	if logCount < 3 {
-		logCount = 3
-	}
-
-	// Fleet Latency Waveform section if terminal height permits
-	if showWaveform {
-		b.WriteString(midDivider)
-		chartPlotW := innerW - (targetColW + 12)
-		if chartPlotW < 20 {
-			chartPlotW = 20
-		}
-		b.WriteString(renderRow(fmt.Sprintf("\033[1;37mREAL-TIME FLEET LATENCY WAVEFORMS\033[0m \033[38;5;244m(Last %d probes)\033[0m", chartPlotW), innerW))
-		for _, t := range d.targets {
-			rtts := d.targetRTTs[t.Target]
-			spark := renderSparkline(rtts, chartPlotW)
-			protoDisplay := strings.ToUpper(t.Protocol)
-			if protoDisplay == "" {
-				protoDisplay = "TCP"
+		for col := 0; col < plotWidth; col++ {
+			val := samples[col]
+			if val < 0 {
+				line.WriteString(" ")
+				continue
 			}
-			targetName := t.Target
-			if len(targetName) > targetColW {
-				targetName = targetName[:targetColW-3] + "..."
+			if val == 0 {
+				if row == 0 {
+					line.WriteString(styleRed.Render("."))
+				} else {
+					line.WriteString(" ")
+				}
+				continue
 			}
-			targetLabel := fmt.Sprintf("\033[1;38;5;75m%-*s\033[0m \033[38;5;73m%-8s\033[0m", targetColW, targetName, protoDisplay)
-			b.WriteString(renderRow(fmt.Sprintf("%s %s", targetLabel, spark), innerW))
+
+			norm := (val / maxVal) * float64(height)
+			colorStyle := styleCyan
+			if val >= 150 {
+				colorStyle = styleRed
+			} else if val >= 50 {
+				colorStyle = styleAmber
+			}
+
+			if norm >= float64(row+1) {
+				line.WriteString(colorStyle.Render("█"))
+			} else if norm >= float64(row)+0.5 {
+				line.WriteString(colorStyle.Render("▄"))
+			} else if norm >= float64(row)+0.15 {
+				line.WriteString(colorStyle.Render(" "))
+			} else {
+				line.WriteString(" ")
+			}
 		}
+		lines = append(lines, line.String())
 	}
 
-	b.WriteString(midDivider)
-	b.WriteString(renderRow("\033[1;37mRECENT PROBE EVENT STREAM\033[0m", innerW))
-
-	logsToRender := d.recentLogs
-	if len(logsToRender) > logCount {
-		logsToRender = logsToRender[len(logsToRender)-logCount:]
-	}
-
-	for i := 0; i < logCount; i++ {
-		line := ""
-		if i < len(logsToRender) {
-			line = logsToRender[i]
-		}
-		b.WriteString(renderRow(line, innerW))
-	}
-
-	b.WriteString(bottomBorder)
-	b.WriteString("\033[38;5;242mPress Ctrl+C to stop probing and view comparative fleet summary.\033[0m\033[K")
-
-	os.Stdout.WriteString(b.String())
+	axisLine := styleDim.Render("   0.0ms ") + lipgloss.NewStyle().Foreground(colorDivider).Render("┴"+strings.Repeat("─", plotWidth))
+	lines = append(lines, axisLine)
+	return strings.Join(lines, "\n")
 }

@@ -13,6 +13,7 @@ import (
 const tcp = "tcp"
 
 type TCPOptions struct {
+	Hostname   string
 	IP         netip.Addr
 	Port       uint16
 	Timeout    time.Duration
@@ -24,6 +25,7 @@ type TCPOptions struct {
 
 type Tcping struct {
 	dialer     *net.Dialer
+	hostname   string
 	ip         netip.Addr
 	port       uint16
 	timeout    time.Duration
@@ -40,6 +42,7 @@ func NewTcping(opts TCPOptions) Tcping {
 
 	return Tcping{
 		dialer:     d,
+		hostname:   opts.Hostname,
 		ip:         opts.IP,
 		port:       opts.Port,
 		timeout:    opts.Timeout,
@@ -50,7 +53,13 @@ func NewTcping(opts TCPOptions) Tcping {
 }
 
 func (t *Tcping) address() string {
-	return net.JoinHostPort(t.ip.String(), strconv.Itoa(int(t.port)))
+	if t.ip.IsValid() {
+		return net.JoinHostPort(t.ip.String(), strconv.Itoa(int(t.port)))
+	}
+	if t.hostname != "" {
+		return net.JoinHostPort(t.hostname, strconv.Itoa(int(t.port)))
+	}
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(int(t.port)))
 }
 
 func (t Tcping) Ping(ctx context.Context) ProbeResult {

@@ -12,6 +12,8 @@ import (
 
 // PrinterConfig holds all configuration options for Printer creation
 type PrinterConfig struct {
+	OutputFormat      string
+	OutputFile        string
 	OutputJSON        bool
 	PrettyJSON        bool
 	NoColor           bool

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -240,14 +241,8 @@ type flagOptions struct {
 	showSourceAddress                 *bool
 	showFailuresOnly                  *bool
 	noColor                           *bool
-	outputJSON                        *bool
-	outputJSONAlias                   *bool
-	outputNDJSON                      *bool
-	outputJSONL                       *bool
-	prettyJSON                        *bool
-	csvPath                           *string
-	tsvPath                           *string
-	dbPath                            *string
+	outputFormat                      *string
+	outputFile                        *string
 	showVer                           *bool
 	checkUpdates                      *bool
 	showHelp                          *bool
@@ -287,41 +282,41 @@ func registerFlags(fs *flag.FlagSet) flagOptions {
 		port: fs.String("port", "", "Target port(s), comma-separated for multi-port."),
 		uri:  fs.String("uri", "", "Target URI(s) in host:port or scheme://host:port format, comma-separated."),
 		concurrency: fs.Uint("concurrency", 0, "Max parallel prober workers (0 = unconstrained)."),
-		useIPv4: fs.Bool("4", false, "Only use IPv4 to initiate probes."),
-		useIPv6: fs.Bool("6", false, "Only use IPv6 to initiate probes."),
+		useIPv4: fs.Bool("ipv4", false, "Only use IPv4 to initiate probes."),
+		useIPv6: fs.Bool("ipv6", false, "Only use IPv6 to initiate probes."),
 		probesBeforeQuit: fs.Uint(
-			"c",
+			"count",
 			0,
 			`Stop after <n> probes, regardless of the result.
 		By default, no limit will be applied.`),
 		intervalBetweenProbes: fs.Float64(
-			"i",
+			"interval",
 			1,
 			`Interval between probes.
 		Real number allowed with dot as a decimal separator.
 		The default value is one second`),
 		timeout: fs.Float64(
-			"t",
+			"timeout",
 			1,
 			`Time to wait for a response in seconds.
 		Real number allowed.
 		0 means infinite timeout.`),
 		showTimestamp: fs.Bool(
-			"D",
+			"timestamp",
 			false,
 			"Show a timestamp for each probe in the output."),
 		retryHostnameResolveAfterNFailures: fs.Uint(
-			"r",
+			"retry-resolve",
 			0,
 			`Retry resolving target's hostname after <n> number of failed probes.
-		e.g. -r 10 to retry after 10 failed probes.`),
+		e.g. --retry-resolve 10 to retry after 10 failed probes.`),
 		customDNSServer: fs.String(
 			"dns-server",
 			"",
 			`Custom DNS server IP to use. Defaults to the system-wide server.
 		IP and port combination is allowed: 1.1.1.1:53`),
 		interfaceName: fs.String(
-			"I",
+			"interface",
 			"",
 			"Use a specific interface name or IP address to initiate the probes."),
 		showSourceAddress: fs.Bool(
@@ -333,44 +328,17 @@ func registerFlags(fs *flag.FlagSet) flagOptions {
 			false,
 			"Show only the failed probes."),
 		noColor: fs.Bool("no-color", false, "Do not colorize output."),
-		outputJSON: fs.Bool(
-			"j",
-			false,
-			"Output in JSON format."),
-		outputJSONAlias: fs.Bool(
-			"json",
-			false,
-			"Output in JSON format (alias for -j)."),
-		outputNDJSON: fs.Bool(
-			"ndjson",
-			false,
-			"Output in Newline Delimited JSON (NDJSON) format."),
-		outputJSONL: fs.Bool(
-			"jsonl",
-			false,
-			"Output in JSON Lines (JSONL) format."),
-		prettyJSON: fs.Bool(
-			"pretty",
-			false,
-			`Prettify the JSON output.
-		No effect without the '-j' or '--json' flag.`),
-		csvPath: fs.String(
-			"csv",
+		outputFormat: fs.String(
+			"output-format",
 			"",
-			`Path and file name to store the output in a CSV file.
-		The stats will be automatically saved with the same name and '_stats' suffix.`),
-		tsvPath: fs.String(
-			"tsv",
+			"Output format: json, pretty_json, csv, tsv, sqlite, txt."),
+		outputFile: fs.String(
+			"output-file",
 			"",
-			`Path and file name to store the output in a TSV (tab-separated) file.
-		The stats will be automatically saved with the same name and '_stats' suffix.`),
-		dbPath: fs.String(
-			"db",
-			"",
-			"Path and file name to store the output in a sqlite3 database."),
-		showVer:             fs.Bool("v", false, "Show version and exit."),
-		checkUpdates:        fs.Bool("u", false, "Check for updates and exit."),
-		showHelp:            fs.Bool("h", false, "Show help message and exit."),
+			"Path to destination output file."),
+		showVer:             fs.Bool("version", false, "Show version and exit."),
+		checkUpdates:        fs.Bool("check-updates", false, "Check for updates and exit."),
+		showHelp:            fs.Bool("help", false, "Show help message and exit."),
 		sendData:            fs.String("send", "", "Send specific payload upon connection."),
 		expectData:          fs.String("expect", "", "Expect specific string in response banner."),
 		fastClose:           fs.Bool("fast-close", false, "Use SO_LINGER=0 to avoid TIME_WAIT socket accumulation."),
@@ -379,7 +347,7 @@ func registerFlags(fs *flag.FlagSet) flagOptions {
 		maxLatency:          fs.Float64("max-latency", 0, "Fail probe if latency exceeds threshold in ms."),
 		metricsAddr:         fs.String("metrics-addr", "", "Enable Prometheus metrics exporter on given address (e.g. :9100)."),
 		protocol:            fs.String("protocol", "tcp", "Probe protocol: tcp, http, https."),
-		quietMode:           fs.Bool("q", false, "Quiet mode: suppress per-probe lines, show only final summary."),
+		quietMode:           fs.Bool("quiet", false, "Quiet mode: suppress per-probe lines, show only final summary."),
 		showSparkline:       fs.Bool("sparkline", false, "Render live terminal latency sparklines."),
 		showDashboard:       fs.Bool("dashboard", false, "Open interactive live TUI dashboard."),
 		tracerouteMode:      fs.Bool("traceroute", false, "Perform hop-by-hop Layer-4 route discovery."),
@@ -423,7 +391,7 @@ func ProcessUserInput() Config {
 	cfg, err := parseConfigFromParsed(flag.CommandLine, opts)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		usage()
+		os.Exit(1)
 	}
 	return *cfg
 }
@@ -474,16 +442,13 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 
 	for _, tDef := range targetPool {
 		var targetIsAlreadyIP bool
-		resolvedIP, err := resolver.ResolveHostname(tDef.Host)
-		if err != nil {
-			return nil, fmt.Errorf("could not resolve %s: %w", tDef.Host, err)
-		}
-		if resolvedIP.String() == tDef.Host {
+		resolvedIP, _ := resolver.ResolveHostname(tDef.Host)
+		if resolvedIP.IsValid() && resolvedIP.String() == tDef.Host {
 			targetIsAlreadyIP = true
 		}
 
 		var shouldRetryResolve bool
-		if *opts.retryHostnameResolveAfterNFailures > 0 && !targetIsAlreadyIP {
+		if (!resolvedIP.IsValid() || *opts.retryHostnameResolveAfterNFailures > 0) && !targetIsAlreadyIP {
 			shouldRetryResolve = true
 		}
 
@@ -519,21 +484,71 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		}
 	}
 
-	isJSON := *opts.outputJSON || *opts.outputJSONAlias || *opts.outputNDJSON || *opts.outputJSONL
-	isPretty := *opts.prettyJSON && !*opts.outputNDJSON && !*opts.outputJSONL
+	format := strings.ToLower(strings.TrimSpace(*opts.outputFormat))
+	filePath := strings.TrimSpace(*opts.outputFile)
+
+	if format == "" && filePath != "" {
+		ext := strings.ToLower(filepath.Ext(filePath))
+		switch ext {
+		case ".json":
+			format = "json"
+		case ".csv":
+			format = "csv"
+		case ".tsv":
+			format = "tsv"
+		case ".db", ".sqlite", ".sqlite3":
+			format = "sqlite"
+		case ".txt":
+			format = "txt"
+		}
+	}
+
+	var isJSON, isPretty bool
+	var csvPath, tsvPath, dbPath string
+
+	switch format {
+	case "json":
+		isJSON = true
+	case "pretty_json", "pretty-json", "prettyjson":
+		isJSON = true
+		isPretty = true
+	case "csv":
+		csvPath = filePath
+		if csvPath == "" {
+			csvPath = printers.GenerateDefaultExportPath(len(targetPool) > 1, printers.FormatCSV)
+		}
+	case "tsv":
+		tsvPath = filePath
+		if tsvPath == "" {
+			tsvPath = printers.GenerateDefaultExportPath(len(targetPool) > 1, printers.FormatTSV)
+		}
+	case "sqlite", "sqlite3", "db":
+		dbPath = filePath
+		if dbPath == "" {
+			dbPath = printers.GenerateDefaultExportPath(len(targetPool) > 1, printers.FormatSQLite3)
+		}
+	case "txt", "text", "plain":
+		// text export format
+	case "":
+		// standard console output
+	default:
+		return nil, fmt.Errorf("unsupported output format %q (supported: json, pretty_json, csv, tsv, sqlite, txt)", format)
+	}
 
 	printerConfig := printers.PrinterConfig{
 		Target:            primaryTarget.Host,
 		Port:              primaryTarget.Port,
+		OutputFormat:      format,
+		OutputFile:        filePath,
 		OutputJSON:        isJSON,
 		PrettyJSON:        isPretty,
 		NoColor:           *opts.noColor,
 		WithTimestamp:     *opts.showTimestamp,
 		WithSourceAddress: *opts.showSourceAddress,
 		WithDiags:         *opts.showDiags || *opts.showDiagnostics,
-		OutputDBPath:      *opts.dbPath,
-		OutputCSVPath:     *opts.csvPath,
-		OutputTSVPath:     *opts.tsvPath,
+		OutputDBPath:      dbPath,
+		OutputCSVPath:     csvPath,
+		OutputTSVPath:     tsvPath,
 	}
 
 	var dnsHosts []string

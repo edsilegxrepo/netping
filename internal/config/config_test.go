@@ -16,12 +16,12 @@ func TestFlagsRequiringValue(t *testing.T) {
 	registerFlags(fs)
 	fv := flagsRequiringValue(fs)
 
-	wantValue := []string{"c", "t", "r", "i", "I", "dns-server", "csv", "db", "send", "expect", "max-consecutive-fails", "max-latency", "metrics-addr", "protocol"}
+	wantValue := []string{"host", "port", "uri", "concurrency", "count", "interval", "timeout", "retry-resolve", "dns-server", "dns-host", "interface", "output-format", "output-file", "send", "expect", "max-consecutive-fails", "max-latency", "metrics-addr", "protocol", "retry", "retry-backoff", "retry-max-backoff", "web-addr", "service", "oracle-service"}
 	for _, name := range wantValue {
 		assert.True(t, fv[name], "expected %q to require a value", name)
 	}
 
-	wantBool := []string{"4", "6", "D", "j", "pretty", "show-source-address", "show-failures-only", "no-color", "v", "u", "h", "fast-close", "resolve-every-probe", "q", "sparkline"}
+	wantBool := []string{"ipv4", "ipv6", "timestamp", "show-source-address", "show-failures-only", "no-color", "version", "check-updates", "help", "fast-close", "resolve-every-probe", "quiet", "sparkline", "dashboard", "traceroute", "retry-jitter", "web", "diags", "diagnostics", "starttls"}
 	for _, name := range wantBool {
 		assert.False(t, fv[name], "expected %q to be a bool flag", name)
 	}
@@ -72,21 +72,22 @@ func TestPermuteArgs(t *testing.T) {
 	registerFlags(flag.CommandLine)
 
 	// Reorder positional args after flags
-	args := []string{"example.com", "443", "-c", "2", "-4"}
+	args := []string{"example.com", "443", "--count", "2", "--ipv4"}
 	permuteArgs(flag.CommandLine, args)
 
-	assert.Equal(t, "-c", args[0])
+	assert.Equal(t, "--count", args[0])
 	assert.Equal(t, "2", args[1])
-	assert.Equal(t, "-4", args[2])
+	assert.Equal(t, "--ipv4", args[2])
 	assert.Equal(t, "example.com", args[3])
 	assert.Equal(t, "443", args[4])
 }
 
 func TestPermuteArgs_OnlyFlags(t *testing.T) {
-	args := []string{"-j", "--no-color"}
+	args := []string{"--output-format", "json", "--no-color"}
 	permuteArgs(flag.CommandLine, args)
-	assert.Equal(t, "-j", args[0])
-	assert.Equal(t, "--no-color", args[1])
+	assert.Equal(t, "--output-format", args[0])
+	assert.Equal(t, "json", args[1])
+	assert.Equal(t, "--no-color", args[2])
 }
 
 func TestPermuteArgs_OnlyPositional(t *testing.T) {
@@ -271,7 +272,7 @@ func TestConfig_AllGetters(t *testing.T) {
 func TestParseConfig_SuccessScenarios(t *testing.T) {
 	// Standard TCP probe with --host and --port
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	cfg, err := ParseConfig(fs, []string{"--host", "127.0.0.1", "--port", "8080", "-c", "5", "-i", "0.5", "-t", "2.0"})
+	cfg, err := ParseConfig(fs, []string{"--host", "127.0.0.1", "--port", "8080", "--count", "5", "--interval", "0.5", "--timeout", "2.0"})
 	assert.NoError(t, err)
 	assert.NotNil(t, cfg)
 	assert.Equal(t, "127.0.0.1", cfg.Hostname)
@@ -279,17 +280,16 @@ func TestParseConfig_SuccessScenarios(t *testing.T) {
 	assert.Equal(t, uint(5), cfg.ProbesBeforeQuit)
 	assert.Equal(t, consts.TCP, cfg.Protocol)
 
-	// HTTPS probe with JSON and Pretty
+	// HTTPS probe with output-format and output-file
 	fs2 := flag.NewFlagSet("test2", flag.ContinueOnError)
-	cfg2, err := ParseConfig(fs2, []string{"--host", "127.0.0.1", "--port", "443", "--protocol", "https", "-j", "--pretty", "--db", "test.db", "--csv", "test.csv", "--tsv", "test.tsv"})
+	cfg2, err := ParseConfig(fs2, []string{"--host", "127.0.0.1", "--port", "443", "--protocol", "https", "--output-format", "pretty_json", "--output-file", "test.json"})
 	assert.NoError(t, err)
 	assert.NotNil(t, cfg2)
 	assert.Equal(t, consts.HTTPS, cfg2.Protocol)
 	assert.True(t, cfg2.PrinterConfig.OutputJSON)
 	assert.True(t, cfg2.PrinterConfig.PrettyJSON)
-	assert.Equal(t, "test.db", cfg2.PrinterConfig.OutputDBPath)
-	assert.Equal(t, "test.csv", cfg2.PrinterConfig.OutputCSVPath)
-	assert.Equal(t, "test.tsv", cfg2.PrinterConfig.OutputTSVPath)
+	assert.Equal(t, "test.json", cfg2.PrinterConfig.OutputFile)
+	assert.Equal(t, "pretty_json", cfg2.PrinterConfig.OutputFormat)
 
 	// Multi-target probe with --uri
 	fs3 := flag.NewFlagSet("test3", flag.ContinueOnError)
@@ -319,7 +319,7 @@ func TestParseConfig_SuccessScenarios(t *testing.T) {
 		"--max-consecutive-fails", "3",
 		"--max-latency", "150.5",
 		"--metrics-addr", ":9090",
-		"-q",
+		"--quiet",
 		"--sparkline",
 		"--dashboard",
 		"--traceroute",
@@ -332,10 +332,10 @@ func TestParseConfig_SuccessScenarios(t *testing.T) {
 		"--diags",
 		"--starttls",
 		"--service", "XE",
-		"-r", "2",
-		"-4",
+		"--retry-resolve", "2",
+		"--ipv4",
 		"--no-color",
-		"-D",
+		"--timestamp",
 		"--show-source-address",
 		"--show-failures-only",
 	})
@@ -371,7 +371,7 @@ func TestParseConfig_SuccessScenarios(t *testing.T) {
 func TestParseConfig_FailureScenarios(t *testing.T) {
 	// IPv4 and IPv6 conflict
 	fs1 := flag.NewFlagSet("err1", flag.ContinueOnError)
-	_, err := ParseConfig(fs1, []string{"-4", "-6", "--host", "127.0.0.1", "--port", "80"})
+	_, err := ParseConfig(fs1, []string{"--ipv4", "--ipv6", "--host", "127.0.0.1", "--port", "80"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "only one IP version")
 
@@ -388,7 +388,7 @@ func TestParseConfig_FailureScenarios(t *testing.T) {
 
 	// Interval < 2ms
 	fs4 := flag.NewFlagSet("err4", flag.ContinueOnError)
-	_, err = ParseConfig(fs4, []string{"--host", "127.0.0.1", "--port", "80", "-i", "0.0001"})
+	_, err = ParseConfig(fs4, []string{"--host", "127.0.0.1", "--port", "80", "--interval", "0.0001"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "more than 2 ms")
 }

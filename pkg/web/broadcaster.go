@@ -34,16 +34,18 @@ type ProbeEvent struct {
 	UptimeDuration string  `json:"uptime_duration"`
 }
 
-// Broadcaster manages real-time Server-Sent Events subscriber channels.
+// Broadcaster manages real-time Server-Sent Events subscriber channels and probe history.
 type Broadcaster struct {
 	mu          sync.RWMutex
 	subscribers map[chan ProbeEvent]struct{}
+	history     []ProbeEvent
 }
 
 // NewBroadcaster constructs a new event broadcaster.
 func NewBroadcaster() *Broadcaster {
 	return &Broadcaster{
 		subscribers: make(map[chan ProbeEvent]struct{}),
+		history:     make([]ProbeEvent, 0, 500),
 	}
 }
 
@@ -68,13 +70,28 @@ func (b *Broadcaster) Unsubscribe(ch chan ProbeEvent) {
 	}
 }
 
-// Broadcast sends a ProbeEvent to all active subscribers without blocking.
-func (b *Broadcaster) Broadcast(event ProbeEvent) {
+// GetHistory returns a copy of all accumulated probe events.
+func (b *Broadcaster) GetHistory() []ProbeEvent {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
+	res := make([]ProbeEvent, len(b.history))
+	copy(res, b.history)
+	return res
+}
+
+// Broadcast sends a ProbeEvent to all active subscribers and stores it in history.
+func (b *Broadcaster) Broadcast(event ProbeEvent) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if event.Timestamp == "" {
 		event.Timestamp = time.Now().Format("15:04:05.000")
+	}
+
+	b.history = append(b.history, event)
+	if len(b.history) > 10000 {
+		b.history = b.history[len(b.history)-10000:]
 	}
 
 	for ch := range b.subscribers {

@@ -7,10 +7,11 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/pouriyajamshidi/tcping/v3/internal/stats"
-	"github.com/pouriyajamshidi/tcping/v3/internal/utils"
+	"github.com/edsilegx/netping/pkg/stats"
+	"github.com/edsilegx/netping/pkg/utils"
 )
 
 const (
@@ -31,26 +32,29 @@ const (
 
 // CSVPrinter is responsible for writing probe results and statistics to CSV files.
 type CSVPrinter struct {
-	ProbeWriter *csv.Writer
-	StatsWriter *csv.Writer
-	ProbeFile   *os.File
-	StatsFile   *os.File
+	mu            sync.Mutex
+	headerWritten bool
+	ProbeWriter   *csv.Writer
+	StatsWriter   *csv.Writer
+	ProbeFile     *os.File
+	StatsFile     *os.File
 }
 
 // NewCSVPrinter initializes a CSVPrinter instance with the given filename and settings.
 func NewCSVPrinter(filePath string) (*CSVPrinter, error) {
-	probeFilename := addCSVExtension(filePath, false)
+	probeFilename := addExtension(filePath, ".csv", false)
 
 	probeFile, err := os.OpenFile(probeFilename, fileFlag, filePermission)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating the probe CSV file %s: %w", probeFilename, err)
+		return nil, fmt.Errorf("error creating the probe CSV file %s: %w", probeFilename, err)
 	}
 
-	statsFilename := addCSVExtension(filePath, true)
+	statsFilename := addExtension(filePath, ".csv", true)
 
 	statsFile, err := os.OpenFile(statsFilename, fileFlag, filePermission)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating the probe CSV file %s: %w", statsFilename, err)
+		probeFile.Close()
+		return nil, fmt.Errorf("error creating the stats CSV file %s: %w", statsFilename, err)
 	}
 
 	p := &CSVPrinter{
@@ -63,27 +67,73 @@ func NewCSVPrinter(filePath string) (*CSVPrinter, error) {
 	return p, nil
 }
 
-func addCSVExtension(filename string, withStatsExt bool) string {
+// NewTSVPrinter initializes a TSV (Tab-Separated Values) printer instance.
+func NewTSVPrinter(filePath string) (*CSVPrinter, error) {
+	probeFilename := addExtension(filePath, ".tsv", false)
+
+	probeFile, err := os.OpenFile(probeFilename, fileFlag, filePermission)
+	if err != nil {
+		return nil, fmt.Errorf("error creating the probe TSV file %s: %w", probeFilename, err)
+	}
+
+	statsFilename := addExtension(filePath, ".tsv", true)
+
+	statsFile, err := os.OpenFile(statsFilename, fileFlag, filePermission)
+	if err != nil {
+		probeFile.Close()
+		return nil, fmt.Errorf("error creating the stats TSV file %s: %w", statsFilename, err)
+	}
+
+	pw := csv.NewWriter(probeFile)
+	pw.Comma = '\t'
+	sw := csv.NewWriter(statsFile)
+	sw.Comma = '\t'
+
+	p := &CSVPrinter{
+		ProbeWriter: pw,
+		StatsWriter: sw,
+		ProbeFile:   probeFile,
+		StatsFile:   statsFile,
+	}
+
+	return p, nil
+}
+
+func addExtension(filename string, ext string, withStatsExt bool) string {
+	base := filename
+	lower := strings.ToLower(base)
+	if strings.HasSuffix(lower, ext) {
+		base = base[:len(base)-len(ext)]
+	} else if strings.HasSuffix(lower, ".csv") || strings.HasSuffix(lower, ".tsv") {
+		idx := strings.LastIndex(lower, ".")
+		if idx != -1 {
+			base = base[:idx]
+		}
+	}
+
 	if withStatsExt {
-		// TODO: account for when there are more than one dots
-		return strings.Split(filename, ".")[0] + "_stats.csv"
+		return base + "_stats" + ext
 	}
 
-	if strings.HasSuffix(filename, ".csv") {
-		return filename
-	}
+	return base + ext
+}
 
-	return filename + ".csv"
+func addCSVExtension(filename string, withStatsExt bool) string {
+	return addExtension(filename, ".csv", withStatsExt)
 }
 
 // Done flushes the buffer of writers and closes the probe and stats file
 func (p *CSVPrinter) Done() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.ProbeWriter != nil {
 		p.ProbeWriter.Flush()
 	}
 
 	if p.ProbeFile != nil {
 		p.ProbeFile.Close()
+		p.ProbeFile = nil
 	}
 
 	if p.StatsWriter != nil {
@@ -92,15 +142,15 @@ func (p *CSVPrinter) Done() {
 
 	if p.StatsFile != nil {
 		p.StatsFile.Close()
+		p.StatsFile = nil
 	}
 }
 
-// Shutdown sets the end time, prints statistics, calls Done() and exits the program.
+// Shutdown sets the end time, prints statistics, and calls Done().
 func (p *CSVPrinter) Shutdown(s *stats.Statistics) {
 	s.EndTime = time.Now()
 	PrintStats(p, s)
 	p.Done()
-	os.Exit(0)
 }
 
 func (p *CSVPrinter) writeProbeHeader(s *stats.Statistics) error {
@@ -119,7 +169,7 @@ func (p *CSVPrinter) writeProbeHeader(s *stats.Statistics) error {
 	headers = append(headers, colConnection, colLatency)
 
 	if err := p.ProbeWriter.Write(headers); err != nil {
-		return fmt.Errorf("Failed to write headers: %w", err)
+		return fmt.Errorf("failed to write headers: %w", err)
 	}
 
 	p.ProbeWriter.Flush()
@@ -133,30 +183,37 @@ func (p *CSVPrinter) writeStatsHeader() error {
 		"Value",
 	}
 
-	if err := p.ProbeWriter.Write(headers); err != nil {
-		return fmt.Errorf("Failed to write statistics headers: %w", err)
+	if err := p.StatsWriter.Write(headers); err != nil {
+		return fmt.Errorf("failed to write statistics headers: %w", err)
 	}
 
-	p.ProbeWriter.Flush()
+	p.StatsWriter.Flush()
 
-	return p.ProbeWriter.Error()
+	return p.StatsWriter.Error()
 }
 
 // PrintStart logs the beginning of a TCPing session.
 func (p *CSVPrinter) PrintStart(s *stats.Statistics) {
-	// TODO: Is this a good place to put these?
-	p.writeProbeHeader(s)
-	p.writeStatsHeader()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	fmt.Printf("TCPinging %s on port %d - saving the results to: %s\n", s.Hostname, s.Port, p.ProbeFile.Name())
+	if !p.headerWritten {
+		p.writeProbeHeader(s)
+		p.writeStatsHeader()
+		p.headerWritten = true
+		fmt.Printf("TCPinging %s on port %d - saving the results to: %s\n", s.Hostname, s.Port, p.ProbeFile.Name())
+	}
 }
 
 // PrintProbeSuccess logs a successful probe to the CSV file.
 func (p *CSVPrinter) PrintProbeSuccess(s *stats.Statistics) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	record := []string{}
 
 	if s.WithTimestamp {
-		record = append(record, s.StartTimeFormatted())
+		record = append(record, time.Now().Format(time.DateTime))
 	}
 
 	record = append(
@@ -168,15 +225,13 @@ func (p *CSVPrinter) PrintProbeSuccess(s *stats.Statistics) {
 	)
 
 	if s.WithSourceAddress {
-		// TODO: Is there a better way than Sprint?
-		record = append(record, s.SourceAddr(), fmt.Sprint(s.OngoingSuccessfulProbes), s.RTTStr())
+		record = append(record, s.SourceAddr())
 	}
 
-	// TODO: Is there a better way than Sprint?
 	record = append(record, fmt.Sprint(s.OngoingSuccessfulProbes), s.RTTStr())
 
 	if err := p.ProbeWriter.Write(record); err != nil {
-		p.PrintError("Failed to write success record: %w", err)
+		p.PrintError("Failed to write success record: %v", err)
 	}
 
 	p.ProbeWriter.Flush()
@@ -184,10 +239,13 @@ func (p *CSVPrinter) PrintProbeSuccess(s *stats.Statistics) {
 
 // PrintProbeFailure logs a failed probe attempt to the CSV file.
 func (p *CSVPrinter) PrintProbeFailure(s *stats.Statistics) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	record := []string{}
 
 	if s.WithTimestamp {
-		record = append(record, s.StartTimeFormatted())
+		record = append(record, time.Now().Format(time.DateTime))
 	}
 
 	record = append(
@@ -196,8 +254,13 @@ func (p *CSVPrinter) PrintProbeFailure(s *stats.Statistics) {
 		s.Hostname,
 		s.IP.String(),
 		fmt.Sprint(s.Port),
-		fmt.Sprint(s.OngoingUnsuccessfulProbes),
 	)
+
+	if s.WithSourceAddress {
+		record = append(record, s.SourceAddr())
+	}
+
+	record = append(record, fmt.Sprint(s.OngoingUnsuccessfulProbes), "0")
 
 	if err := p.ProbeWriter.Write(record); err != nil {
 		p.PrintError("Failed to write failure record: %v", err)
@@ -218,6 +281,9 @@ func (p *CSVPrinter) PrintRetryingToResolve(hostname string) {
 
 // PrintStatistics logs TCPing statistics to a CSV file.
 func (p *CSVPrinter) PrintStatistics(s *stats.Statistics) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	timestamp := time.Now().Format(time.DateTime)
 
 	statistics := [][]string{
@@ -288,19 +354,19 @@ func (p *CSVPrinter) PrintStatistics(s *stats.Statistics) {
 	}
 
 	if len(s.HostnameChanges) > 1 {
-		hostnameChanges := ""
-
+		var changes []string
 		for i := 0; i < len(s.HostnameChanges)-1; i++ {
 			if s.HostnameChanges[i].Addr.String() == "" {
 				continue
 			}
 
-			hostnameChanges += fmt.Sprintf("from %s to %s at %v - ",
+			changes = append(changes, fmt.Sprintf("from %s to %s at %v",
 				s.HostnameChanges[i].Addr.String(),
 				s.HostnameChanges[i+1].Addr.String(),
 				s.HostnameChanges[i+1].When.Format(time.DateTime),
-			)
+			))
 		}
+		statistics = append(statistics, []string{"Hostname Changes", strings.Join(changes, " | ")})
 	} else {
 		statistics = append(statistics, []string{"Hostname Changes", "Never changed"})
 	}

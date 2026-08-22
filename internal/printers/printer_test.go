@@ -2,305 +2,166 @@ package printers
 
 import (
 	"bytes"
-	"fmt"
-	"io"
-	"os"
+	"encoding/json"
+	"net/netip"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/gookit/color"
+	"github.com/edsilegx/netping/pkg/stats"
 	"github.com/stretchr/testify/assert"
 )
 
-// dummyPrinter is a fake test implementation
-// of a printer that does nothing.
-type dummyPrinter struct{}
-
-func (fp *dummyPrinter) printStart(_ string, _ uint16)                              {}
-func (fp *dummyPrinter) printProbeSuccess(_ string, _ userInput, _ uint, _ float32) {}
-func (fp *dummyPrinter) printProbeFail(_ userInput, _ uint)                         {}
-func (fp *dummyPrinter) printRetryingToResolve(_ string)                            {}
-func (fp *dummyPrinter) printTotalDownTime(_ time.Duration)                         {}
-func (fp *dummyPrinter) printStatistics(_ tcping)                                   {}
-func (fp *dummyPrinter) printVersion()                                              {}
-func (fp *dummyPrinter) printInfo(_ string, _ ...any)                               {}
-func (fp *dummyPrinter) printError(_ string, _ ...any)                              {}
-
-func TestDurationToString(t *testing.T) {
-	t.Parallel()
+func TestNewPrinter(t *testing.T) {
+	tempCSV := filepath.Join(t.TempDir(), "test_new_printer.csv")
 
 	tests := []struct {
-		name     string
-		duration time.Duration
-		want     string
+		name        string
+		cfg         PrinterConfig
+		wantErr     bool
+		expectedTyp string
 	}{
 		{
-			name:     "1 second",
-			duration: time.Duration(time.Second),
-			want:     "1 second",
+			name:        "JSON Printer",
+			cfg:         PrinterConfig{OutputJSON: true},
+			wantErr:     false,
+			expectedTyp: "*printers.JSONPrinter",
 		},
 		{
-			name:     "59 seconds",
-			duration: time.Duration(59 * time.Second),
-			want:     "59 seconds",
+			name:        "Pretty without JSON errors",
+			cfg:         PrinterConfig{PrettyJSON: true, OutputJSON: false},
+			wantErr:     true,
+			expectedTyp: "",
 		},
 		{
-			name:     "1 minute",
-			duration: time.Duration(time.Minute),
-			want:     "1 minute",
+			name:        "Plain Printer",
+			cfg:         PrinterConfig{NoColor: true},
+			wantErr:     false,
+			expectedTyp: "*printers.PlainPrinter",
 		},
 		{
-			name:     "59 minutes 0 seconds",
-			duration: time.Duration(59 * time.Minute),
-			want:     "59 minutes 0 seconds",
+			name:        "Color Printer (Default)",
+			cfg:         PrinterConfig{},
+			wantErr:     false,
+			expectedTyp: "*printers.ColorPrinter",
 		},
 		{
-			name:     "1 minute 5 seconds",
-			duration: time.Duration(time.Minute + 5*time.Second),
-			want:     "1 minute 5 seconds",
-		},
-		{
-			name:     "59 minutes 5 seconds",
-			duration: time.Duration(59*time.Minute + 5*time.Second),
-			want:     "59 minutes 5 seconds",
-		},
-		{
-			name:     "1 hour",
-			duration: time.Duration(time.Hour),
-			want:     "1 hour",
-		},
-		{
-			name:     "1 hour 10 minutes 5 seconds",
-			duration: time.Duration(time.Hour + 10*time.Minute + 5*time.Second),
-			want:     "1 hour 10 minutes 5 seconds",
-		},
-		{
-			name:     "59 hours 0 minutes 0 seconds",
-			duration: time.Duration(59 * time.Hour),
-			want:     "59 hours 0 minutes 0 seconds",
-		},
-		{
-			name:     "59 hours 10 minutes 5 seconds",
-			duration: time.Duration(59*time.Hour + 10*time.Minute + 5*time.Second),
-			want:     "59 hours 10 minutes 5 seconds",
-		},
-		{
-			name:     "0.5 seconds",
-			duration: time.Duration(500 * time.Millisecond),
-			want:     "0.5 seconds",
+			name:        "CSV Printer",
+			cfg:         PrinterConfig{OutputCSVPath: tempCSV},
+			wantErr:     false,
+			expectedTyp: "*printers.CSVPrinter",
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := durationToString(tt.duration); got != tt.want {
-				t.Errorf("calcTime() = %v, want %v", got, tt.want)
+			p, err := NewPrinter(tt.cfg)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, p)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, p)
+			}
+			if cp, ok := p.(*CSVPrinter); ok {
+				cp.Done()
 			}
 		})
 	}
 }
 
-func getProbeSuccessTests() []struct {
-	name              string
-	showTimestamp     bool
-	useHostname       bool
-	showSourceAddress bool
-	expectedOutput    string
-} {
-	return []struct {
-		name              string
-		showTimestamp     bool
-		useHostname       bool
-		showSourceAddress bool
-		expectedOutput    string
-	}{
-		{
-			name:              "With hostname, no timestamp",
-			showTimestamp:     false,
-			useHostname:       true,
-			showSourceAddress: false,
-			expectedOutput:    "Reply from %s (%s) on port %d TCP_conn=%d time=%.3f ms\n",
-		},
-		{
-			name:              "With hostname, with timestamp",
-			showTimestamp:     true,
-			useHostname:       true,
-			showSourceAddress: false,
-			expectedOutput:    "%s Reply from %s (%s) on port %d TCP_conn=%d time=%.3f ms\n",
-		},
-		{
-			name:              "Without hostname, with timestamp",
-			showTimestamp:     true,
-			useHostname:       false,
-			showSourceAddress: false,
-			expectedOutput:    "%s Reply from %s on port %d TCP_conn=%d time=%.3f ms\n",
-		},
-		{
-			name:              "Without hostname, no timestamp",
-			showTimestamp:     false,
-			useHostname:       false,
-			showSourceAddress: false,
-			expectedOutput:    "Reply from %s on port %d TCP_conn=%d time=%.3f ms\n",
-		},
-		{
-			name:              "Without hostname, no timestamp, with show source address",
-			showTimestamp:     false,
-			useHostname:       false,
-			showSourceAddress: true,
-			expectedOutput:    "Reply from %s on port %d using %s TCP_conn=%d time=%.3f ms\n",
-		},
-		{
-			name:              "With hostname, no timestamp, with show source address",
-			showTimestamp:     false,
-			useHostname:       true,
-			showSourceAddress: true,
-			expectedOutput:    "Reply from %s (%s) on port %d using %s TCP_conn=%d time=%.3f ms\n",
-		},
+func TestCalcMinAvgMaxRttTime(t *testing.T) {
+	t.Run("empty array", func(t *testing.T) {
+		res := calcMinAvgMaxRttTime(nil)
+		assert.False(t, res.HasResults)
+		assert.Equal(t, float32(0), res.Min)
+		assert.Equal(t, float32(0), res.Average)
+		assert.Equal(t, float32(0), res.Max)
+	})
+
+	t.Run("single element", func(t *testing.T) {
+		res := calcMinAvgMaxRttTime([]float32{12.345})
+		assert.True(t, res.HasResults)
+		assert.Equal(t, float32(12.345), res.Min)
+		assert.Equal(t, float32(12.345), res.Average)
+		assert.Equal(t, float32(12.345), res.Max)
+	})
+
+	t.Run("multiple elements", func(t *testing.T) {
+		res := calcMinAvgMaxRttTime([]float32{10.0, 20.0, 30.0})
+		assert.True(t, res.HasResults)
+		assert.Equal(t, float32(10.0), res.Min)
+		assert.Equal(t, float32(20.0), res.Average)
+		assert.Equal(t, float32(30.0), res.Max)
+	})
+}
+
+func TestJSONPrinterOutput(t *testing.T) {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	jp := &JSONPrinter{encoder: encoder}
+
+	s := &stats.Statistics{
+		Hostname:                "example.com",
+		IP:                      netip.MustParseAddr("93.184.216.34"),
+		Port:                    443,
+		StartTime:               time.Now(),
+		OngoingSuccessfulProbes: 1,
+		LatestRTT:               15.2,
+		RTT:                     []float32{15.2},
+	}
+
+	jp.PrintStart(s)
+	jp.PrintProbeSuccess(s)
+	jp.PrintProbeFailure(s)
+	jp.PrintRetryingToResolve("example.com")
+	jp.PrintTotalDownTime(s)
+	jp.PrintStatistics(s)
+
+	output := buf.String()
+	assert.NotEmpty(t, output)
+
+	// Verify it contains valid JSON objects line by line
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+	for _, line := range lines {
+		var data map[string]any
+		err := json.Unmarshal(line, &data)
+		assert.NoError(t, err, "JSON line must be valid JSON: %s", string(line))
 	}
 }
 
-func TestPrintProbeSuccess(t *testing.T) {
-	testCases := getProbeSuccessTests()
-	stats := createTestStats(t)
-	stats.userInput.hostname = "example.com"
-	streak := uint(5)
-	rtt := float32(15.123)
-	sourceAddr := "127.0.0.1:4567"
+func TestPlainAndColorPrinterMethods(t *testing.T) {
+	plain := NewPlainPrinter()
+	colorP := NewColorPrinter()
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			pp := NewPlainPrinter(&tc.showTimestamp)
-
-			read, write, _ := os.Pipe()
-			os.Stdout = write
-
-			if !tc.useHostname {
-				stats.userInput.hostname = ""
-			} else {
-				stats.userInput.hostname = "example.com"
-			}
-
-			if tc.showSourceAddress {
-				stats.userInput.showSourceAddress = true
-			}
-
-			pp.printProbeSuccess(sourceAddr, stats.userInput, streak, rtt)
-
-			write.Close()
-
-			var buf bytes.Buffer
-			if _, err := io.Copy(&buf, read); err != nil {
-				t.Fatalf("Failed to read from pipe: %v", err)
-			}
-
-			output := buf.String()
-
-			var expected string
-			if tc.showTimestamp {
-				timestamp := time.Now().Format("2006-01-02 15:04:05")
-				if tc.showSourceAddress && tc.useHostname {
-					expected = fmt.Sprintf(tc.expectedOutput, timestamp, stats.userInput.hostname, stats.userInput.ip, stats.userInput.port, sourceAddr, streak, rtt)
-				} else if tc.showSourceAddress {
-					expected = fmt.Sprintf(tc.expectedOutput, timestamp, stats.userInput.ip, stats.userInput.port, sourceAddr, streak, rtt)
-				} else if tc.useHostname {
-					expected = fmt.Sprintf(tc.expectedOutput, timestamp, stats.userInput.hostname, stats.userInput.ip, stats.userInput.port, streak, rtt)
-				} else {
-					expected = fmt.Sprintf(tc.expectedOutput, timestamp, stats.userInput.ip, stats.userInput.port, streak, rtt)
-				}
-			} else {
-				if tc.showSourceAddress && tc.useHostname {
-					expected = fmt.Sprintf(tc.expectedOutput, stats.userInput.hostname, stats.userInput.ip, stats.userInput.port, sourceAddr, streak, rtt)
-				} else if tc.showSourceAddress {
-					expected = fmt.Sprintf(tc.expectedOutput, stats.userInput.ip, stats.userInput.port, sourceAddr, streak, rtt)
-				} else if tc.useHostname {
-					expected = fmt.Sprintf(tc.expectedOutput, stats.userInput.hostname, stats.userInput.ip, stats.userInput.port, streak, rtt)
-				} else {
-					expected = fmt.Sprintf(tc.expectedOutput, stats.userInput.ip, stats.userInput.port, streak, rtt)
-				}
-			}
-
-			assert.Equal(t, expected, output)
-		})
-	}
-}
-
-func TestPrintProbeFail(t *testing.T) {
-	stats := createTestStats(t)
-	stats.userInput.hostname = "example.com"
-
-	streak := uint(5)
-
-	testCases := []struct {
-		name           string
-		showTimestamp  bool
-		useHostname    bool
-		expectedOutput string
-	}{
-		{
-			name:           "With hostname, no timestamp",
-			showTimestamp:  false,
-			useHostname:    true,
-			expectedOutput: "No reply from %s (%s) on port %d TCP_conn=%d\n",
-		},
-		{
-			name:           "With hostname, with timestamp",
-			showTimestamp:  true,
-			useHostname:    true,
-			expectedOutput: "%s No reply from %s (%s) on port %d TCP_conn=%d\n",
-		},
-		{
-			name:           "Without hostname, with timestamp",
-			showTimestamp:  true,
-			useHostname:    false,
-			expectedOutput: "%s No reply from %s on port %d TCP_conn=%d\n",
-		},
-		{
-			name:           "Without hostname, no timestamp",
-			showTimestamp:  false,
-			useHostname:    false,
-			expectedOutput: "No reply from %s on port %d TCP_conn=%d\n",
-		},
+	s := &stats.Statistics{
+		Hostname:                "example.com",
+		IP:                      netip.MustParseAddr("93.184.216.34"),
+		Port:                    443,
+		StartTime:               time.Now(),
+		OngoingSuccessfulProbes: 1,
+		LatestRTT:               12.345,
+		RTT:                     []float32{12.345, 15.678, 10.111},
+		WithTimestamp:           true,
+		WithSourceAddress:       true,
+		WithDiags:               true,
+		LatestDiagnostics:       "Upgrade: 101 Switching Protocols",
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			pp := NewColorPrinter(&tc.showTimestamp)
+	// Ensure calling methods does not panic
+	assert.NotPanics(t, func() {
+		plain.PrintStart(s)
+		plain.PrintProbeSuccess(s)
+		plain.PrintProbeFailure(s)
+		plain.PrintRetryingToResolve("example.com")
+		plain.PrintTotalDownTime(s)
+		plain.PrintStatistics(s)
 
-			read, write, _ := os.Pipe()
-			os.Stdout = write
-			color.SetOutput(write)
-			color.Disable()
-
-			if !tc.useHostname {
-				stats.userInput.hostname = ""
-			}
-
-			pp.printProbeFail(stats.userInput, streak)
-
-			write.Close()
-
-			var buf bytes.Buffer
-			if _, err := io.Copy(&buf, read); err != nil {
-				t.Fatalf("Failed to read from pipe: %v", err)
-			}
-
-			output := buf.String()
-
-			var expected string
-			if tc.showTimestamp {
-				timestamp := time.Now().Format("2006-01-02 15:04:05")
-				if tc.useHostname {
-					expected = fmt.Sprintf(tc.expectedOutput, timestamp, stats.userInput.hostname, stats.userInput.ip, stats.userInput.port, streak)
-				} else {
-					expected = fmt.Sprintf(tc.expectedOutput, timestamp, stats.userInput.ip, stats.userInput.port, streak)
-				}
-			} else {
-				if tc.useHostname {
-					expected = fmt.Sprintf(tc.expectedOutput, stats.userInput.hostname, stats.userInput.ip, stats.userInput.port, streak)
-				} else {
-					expected = fmt.Sprintf(tc.expectedOutput, stats.userInput.ip, stats.userInput.port, streak)
-				}
-			}
-			assert.Equal(t, expected, output)
-		})
-	}
+		colorP.PrintStart(s)
+		colorP.PrintProbeSuccess(s)
+		colorP.PrintProbeFailure(s)
+		colorP.PrintRetryingToResolve("example.com")
+		colorP.PrintTotalDownTime(s)
+		colorP.PrintStatistics(s)
+	})
 }

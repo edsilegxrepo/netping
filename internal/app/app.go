@@ -7,17 +7,7 @@ import (
 	"syscall"
 )
 
-// SetupSignalHandler catches SIGINT and SIGTERM
-func SetupSignalHandler(ctx context.Context) context.Context {
-	ctx, cancel := context.WithCancel(ctx)
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		cancel()
-	}()
-
-	return ctx
+// SetupSignalHandler catches SIGINT and SIGTERM and returns a context that is cancelled on signal.
+func SetupSignalHandler(ctx context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 }

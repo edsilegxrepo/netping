@@ -2,6 +2,10 @@
 .idea/
 tcping
 tcping.exe
+netping
+netping.exe
+*.exe
+*.exe~
 .DS_Store
 .vscode
 .zed

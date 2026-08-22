@@ -1,373 +1,259 @@
-<div align="center" style="width: 100%;">
- <img alt="tcping" src="docs/Artwork/tcping_logo_v3.png" style="width:70%;">
-</div>
+# `netping` — Modern Multi-Protocol Network Prober & Telemetry Diagnostics Suite
 
-# TCPING
+`netping` is an enterprise-grade, multi-protocol network latency prober, active telemetry collector, and diagnostics suite written in Go. Designed as the modern evolution of TCP socket ping utilities, `netping` spans Layer 3 through Layer 7, providing deep protocol negotiation analysis, visual interactive terminal and web dashboards, continuous SLA monitoring, and structured log streaming.
 
-![CodeFactor](https://www.codefactor.io/repository/github/pouriyajamshidi/tcping/badge)
-![Go](https://github.com/pouriyajamshidi/tcping/actions/workflows/.github/workflows/codeql-analysis.yml/badge.svg)
-![Docker container build](https://github.com/pouriyajamshidi/tcping/actions/workflows/container-publish.yml/badge.svg)
-![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/pouriyajamshidi/tcping)
-![Go project version](https://badge.fury.io/go/github.com%2Fpouriyajamshidi%2Ftcping.svg)
-![Download](https://img.shields.io/github/downloads/pouriyajamshidi/tcping/total.svg?label=DOWNLOADS&logo=github)
-![Docker Pulls](https://img.shields.io/docker/pulls/pouriyajamshidi/tcping)
-
-**NOTE: You are viewing a broken and a work in progress branch. head to the [MAIN BRANCH](https://github.com/pouriyajamshidi/tcping/tree/master) for the latest release.**
-**This branch has become the default for now to ensure our contributors are not basing their work on version 2 mistakenly.**
-
-A cross-platform ping program using `TCP` instead of `ICMP`, inspired by Linux's ping utility.
-
-> [!TIP]
-> This document is also available in [中文](README.cn.md).
-
-Here are some of the features of **TCPING**:
-
-- An alternative to `ping` in environments that `ICMP` is blocked.
-- Outputs information in **colored**, **plain**, **JSON**, **CSV** and **sqlite3** formats.
-- Monitor and audit your or your peers network latency, packet loss, and connection quality.
-- Lets you specify the **source interface**, **timeout**, and **interval** between probes.
-- Supports both `IPv4` or `IPv6` and lets you enforce using either.
-- Prints total connection statistics by pressing the `Enter` key, without stopping the program.
-- Reports the longest encountered `downtime` and `uptime` duration and time.
-- Retries hostname resolution after a predetermined number of probe failures by using the `-r` flag . Suitable to test your `DNS` load balancing or Global Server Load Balancer `(GSLB)`.
-- uses different `TCP sequence numbering` for _successful_ and _unsuccessful_ probes to infer the total failed or successful probes at a glance.
-
-Check out the [demos](#demos) to get a look and feel of **tcping**.
+For complete architectural specifications, concurrency mechanics, and dependency models, see [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`MODERNIZATION.md`](MODERNIZATION.md).
 
 ---
 
-## Table of Contents
+## 1. Application Overview & Objectives
 
-- [TCPING](#tcping)
-  - [Table of Contents](#table-of-contents)
-  - [Download and Installation](#download-and-installation)
-    - [Windows](#windows)
-    - [macOS](#macos)
-    - [Linux - Debian and Derivatives](#linux---debian-and-derivatives)
-    - [BSD and Linux - Manual Way](#bsd-and-linux---manual-way)
-    - [Alternative Ways](#alternative-ways)
-  - [Usage](#usage)
-  - [Flags](#flags)
-  - [Demos](#demos)
-    - [Basic usage](#basic-usage)
-    - [Retry hostname lookup (`-r`) flag](#retry-hostname-lookup--r-flag)
-    - [JSON output (`-j --pretty`) flag](#json-output--j---pretty-flag)
-  - [Contributing](#contributing)
-  - [Feature Requests and Issues](#feature-requests-and-issues)
-  - [Help The Project](#help-the-project)
-  - [License](#license)
+Traditional ping utilities are typically restricted to Layer 3 ICMP or simple Layer 4 TCP handshakes. Modern distributed systems, cloud infrastructures, and microservice meshes require granular application-layer latency analysis, TLS certificate verification, database responsiveness checks, and real-time observability.
+
+### Core Objectives
+- **Layer 3 to Layer 7 Unified Probing**: Measure handshake, TTFB, and protocol responsiveness across 15+ network and application protocols.
+- **Deep Protocol Diagnostics (`--diags`)**: Extract TLS cipher suites, certificate expiration, HTTP headers, database banners, message queue metadata, and DNS RCODEs.
+- **Real-Time Visual Telemetry**:
+  - **120-Column Interactive TUI Dashboard (`--dashboard`)** with a 106-point latency waveform chart.
+  - **Zero-Dependency Web Dashboard (`--web`)** with Server-Sent Events (SSE) and Canvas 2D timeline graphs.
+- **Enterprise Resilience & Socket Controls**: Prevent socket exhaustion under high frequencies via `SO_LINGER=0` fast teardown (`--fast-close`), and recover from transient drops with randomized exponential jitter backoff (`--retry`).
+- **Flexible Data Pipelines**: Stream data natively into SIEM and monitoring pipelines using JSON (`--json`), NDJSON (`--ndjson`), JSON Lines (`--jsonl`), CSV (`--csv`), TSV (`--tsv`), SQLite3 (`--db`), or Prometheus metrics (`--metrics-addr`).
 
 ---
 
-## Download and Installation
+## 2. Security Assessment & Hardening Posture
 
-We offer prebuilt binaries for various operating systems ([Windows](#windows), [Linux](#linux---debian-and-derivatives), [macOS](#macos), [Docker](#alternative-ways)) and architectures (_amd64_, _arm64_), which can be found on the [release page](https://github.com/pouriyajamshidi/tcping/releases/latest/).
+`netping` implements a comprehensive security baseline across transport encryption, local persistence, execution privileges, and memory isolation.
 
-There are static and dynamic versions available. In simple terms, static binaries include all needed code inside one file, while dynamic binaries load some code from shared operating system libraries when they run.
+### 2.1. Encryption in Transit
+- **TLS 1.2 / 1.3 Native Verification**: All secure application drivers (`HTTPS`, `TLS`, `DoT`, `DoH`, `Redis-TLS`, `SMTPS`, `IMAPS`, `POP3S`, `LDAPS`, `Kafka-TLS`, `AMQPS`, `O365`) utilize Go's cryptographic stack (`crypto/tls`), enforcing full certificate chain verification and modern cipher suite negotiation.
+- **Certificate Expiration Auditing**: Active inspection alerts on expiring or expired X.509 certificates and computes remaining validity days without decrypting payload traffic.
 
-Once you are done with the download and installation, head to the [usage](#usage) section.
+### 2.2. Secret Management & Authentication Policy
+- **Zero Ingestion of Sensitive Credentials**: `netping` probes endpoint reachability and wire protocol health via standard unauthenticated handshakes (e.g. Postgres `SSLRequest`, MySQL `HandshakeV10`, MongoDB `isMaster`, Kafka `ApiVersions`, RabbitMQ `0-9-1 Connection.Start`).
+- **No Secret Storage**: The tool never accepts, logs, caches, or writes passwords, API tokens, or private keys to disk or terminal streams.
 
-### Windows
+### 2.3. Privilege Separation & Execution Context
+- **Unprivileged Execution Context**: `netping` operates strictly as a standard, unprivileged non-root user.
+- **Unprivileged ICMP Fallback**: Layer 3 ICMP probes utilize unprivileged datagram sockets (`net.ipv4.ping_group_range` on Linux) or unprivileged UDP fallbacks, completely eliminating the need for `CAP_NET_RAW`, `setuid root`, or `sudo`.
+- **Loopback-Only Telemetry Binding**: The embedded Web Dashboard server (`--web`) defaults to `127.0.0.1:3000`, preventing unintended exposure to external network interfaces.
 
-The best way to install **tcping** on Windows is through _Windows Package Manager_ by utilizing [WinGet](https://learn.microsoft.com/en-us/windows/package-manager/winget/?ref=github.com%2Fpouriyajamshidi%2Ftcping), which is available on practically all Windows _10_ and _11_ machines by default since September of 2020:
-
-```powershell
-winget install pj.tcping
-```
-
-> [!TIP]
-> We recommend using [Windows Terminal](https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701) for the best experience and proper colorization.
-
-If you wish to manually install **tcping**, extract the downloaded zip file and copy `tcping.exe` to your system [PATH](https://www.howtogeek.com/118594/how-to-edit-your-system-path-for-easy-command-line-access/) like `C:\Windows\System32`
-
-> [!CAUTION]
-> TCPING might falsely get flagged by Windows Defender or some anti-malware software. This is common among Go programs. Check out the official statement from the Go team [here](https://go.dev/doc/faq#virus).
-
-### macOS
-
-Install using `brew`:
-
-```bash
-brew install pouriyajamshidi/tap/tcping
-```
-
-You can also manually download and install **tcping** following the steps described in [this section](#bsd-and-linux---manual-way).
-
-### Linux - Debian and Derivatives
-
-On **Debian** and its flavors such as **Ubuntu**, download the `.deb` package:
-
-```bash
-wget https://github.com/pouriyajamshidi/tcping/releases/latest/download/tcping-amd64.deb -O /tmp/tcping.deb
-# Or for ARM64 machines
-wget https://github.com/pouriyajamshidi/tcping/releases/latest/download/tcping-arm64.deb -O /tmp/tcping.deb
-```
-
-And install it:
-
-```bash
-sudo apt install -y /tmp/tcping.deb
-```
-
-If you are using different Linux distros, proceed to [this section](#bsd-and-linux---manual-way).
-
-### BSD and Linux - Manual Way
-
-Download the file for your respective OS and architecture:
-
-```bash
-wget https://github.com/pouriyajamshidi/tcping/releases/latest/download/tcping-freebsd-amd64-static.tar.gz
-# Or for Linux ARM64 machines and using cURL
-curl -LO https://github.com/pouriyajamshidi/tcping/releases/latest/download/tcping-linux-arm64-static.tar.gz
-```
-
-Extract the file:
-
-```bash
-tar -xvf tcping-freebsd-amd64-static.tar.gz
-```
-
-Make the file executable:
-
-```bash
-chmod +x tcping
-```
-
-Copy the executable to your system `PATH` like `/usr/local/bin/`:
-
-```bash
-sudo cp tcping /usr/local/bin/
-```
-
-> [!TIP]
-> In case you have `brew` installed, you can install tcping using `brew install pouriyajamshidi/tap/tcping`
-
-### Alternative Ways
-
-These are some additional ways in which **tcping** can be installed:
-
-- `Docker` images:
-
-  ```bash
-  docker pull pouriyajamshidi/tcping:latest
-  # Or
-  docker pull ghcr.io/pouriyajamshidi/tcping:latest
-  ```
-
-- Using `go install`:
-
-  > This requires at least go version `1.24.10`
-
-  ```bash
-  go install github.com/pouriyajamshidi/tcping/v2@latest
-  ```
-
-- [x tcping](https://x-cmd.com/pkg/tcping):
-
-  **Directly without installation** in [x-cmd](https://www.x-cmd.com).
-
-  ```bash
-  x tcping example.com 80
-  ```
-
-  Or install `tcping` locally using x-cmd, without needing root privileges or affecting your global setup.
-
-  ```bash
-  x env use tcping
-  tcping example.com 80
-  ```
-
-- Finally, you can compile the code yourself by running the `make` command:
-
-  ```bash
-  make build
-  ```
-
-  This will place the executables in the `output` folder.
+### 2.4. Library & Dependency Vulnerability Profile
+- **Minimal Third-Party Footprint**: Leaf packages utilize standard Go library primitives. External dependencies are strictly constrained:
+  - `mattn/go-sqlite3`: Embedded SQLite3 driver.
+  - `golang.org/x/net`: Supplementary low-level socket controls.
+- **SQL Injection Prevention**: Database table names generated from target hostnames are validated against an alphanumeric regex allowlist (`^[a-zA-Z0-9_]+$`) prior to executing DDL statements.
 
 ---
 
-## Usage
+## 3. Code Quality & Engineering Best Practices
 
-**tcping** can run in various ways.
+`netping` adheres to strict Go idioms and architectural principles:
 
-1. The simplest form is providing the target and the port number:
-
-```bash
-tcping www.example.com 443
-```
-
-2. You can also use the `host:port` format:
-
-```bash
-tcping www.example.com:443
-# Or with an IP address
-tcping 192.168.1.1:80
-# IPv6 addresses (use quotes to prevent shell interpretation)
-tcping '[2001:db8::1]:443'
-```
-
-3. Specify the interval between probes (2 seconds), the timeout (5 seconds) and source interface:
-
-```bash
-tcping www.example.com 443 -i 2 -t 5 -I eth2
-```
-
-4. Enforce using IPv4 or IPv6 only:
-
-```bash
-  tcping www.example.com 443 -4
-  # Or
-  tcping www.example.com 443 -6
-```
-
-5. Show timestamp of probes:
-
-```bash
-tcping www.example.com 443 -D
-```
-
-6. Retry resolving the hostname after 5 failures:
-
-```bash
-tcping www.example.com 443 -r 5
-
-```
-
-7. Stop after 5 probes:
-
-```bash
-tcping www.example.com 443 -c 5
-```
-
-8. Change the default output from colored to:
-
-```bash
-# Save the output in CSV format:
-tcping www.example.com 443 --csv example.com.csv
-# Save the output in sqlite3 format:
-tcping www.example.com 443 --db example.com.db
-# Show the output in JSON format:
-tcping www.example.com 443 --json
-# Show the output in JSON format - pretty:
-tcping www.example.com 443 --json --pretty
-# Show the output in plain (no ANSI colors):
-tcping www.example.com 443 --no-color
-```
-
-> [!NOTE]
-> Check the **available flags** [here](#flags) for a more advanced usage.
-
-The Docker image can be used with the same set of flags, like:
-
-```bash
-# If downloaded from Docker Hub
-docker run -it pouriyajamshidi/tcping:latest example.com 443
-# Or using host:port format
-docker run -it pouriyajamshidi/tcping:latest example.com:443
-
-# If downloaded from GitHub container registry:
-docker run -it ghcr.io/pouriyajamshidi/tcping:latest example.com 443
-# Or using host:port format
-docker run -it ghcr.io/pouriyajamshidi/tcping:latest example.com:443
-```
-
-> [!TIP]
-> Press the `Enter` key while the program is running to see the summary of all probes without stopping the program, as shown in the [demos](#demos) section.
+- **Strict Directed Acyclic Graph (DAG)**: Zero circular dependencies. Leaf packages contain zero domain-logic coupling.
+- **Thread-Safe Snapshotting**: Statistics accumulators are protected by `sync.RWMutex` and exposed to output formatters via immutable `stats.Snapshot` value copies (copy-on-read).
+- **Graceful Lifecycle Management**: Standard `context.Context` cancellation and signal interception (`os.Interrupt`, `syscall.SIGTERM`) guarantee that all network sockets, CSV/TSV writers, and SQLite transactions are cleanly flushed to disk via `defer printer.Done()`.
+- **Standardized Diagnostic Exit Codes**:
+  - `0`: Success (0% packet loss).
+  - `1`: General runtime error or panic recovery.
+  - `2`: CLI argument or usage syntax error.
+  - `3`: DNS resolution failure.
+  - `4`: Network interface or routing error.
+  - `5`: Target unreachable (100% packet loss).
+  - `6`: Partial packet loss (>0% and <100%).
+  - `7`: Local storage or write failure (CSV/TSV/SQLite).
+  - `130`: Terminated by user via `Ctrl+C` (SIGINT).
 
 ---
 
-## Flags
+## 4. Command-Line Arguments Reference
 
-The following flags are available to control the behavior of **tcping**:
+```
+netping [options] <hostname|IP> <port>
+netping [options] <hostname:port>
+netping [options] <target1:port> <target2:port> ...
+```
 
-| Flag                    | Description                                                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `-h`                    | Show help                                                                                                         |
-| `-4`                    | Only use IPv4 addresses                                                                                           |
-| `-6`                    | Only use IPv6 addresses                                                                                           |
-| `-r`                    | Retry resolving target's hostname after `<n>` number of failed probes. e.g. -r 10 to retry after 10 failed probes |
-| `-c`                    | Stop after `<n>` probes, regardless of the result. By default, no limit will be applied                           |
-| `-t`                    | Time to wait for a response, in seconds. Real number allowed. 0 means infinite timeout                            |
-| `-D`                    | Display date and time in probe output. Similar to Linux's ping utility but human-readable                         |
-| `-i`                    | Interval between sending probes                                                                                   |
-| `-I`                    | Interface name to use for sending probes                                                                          |
-| `--no-color`            | Do not colorize output                                                                                            |
-| `--csv`                 | Path and file name to store tcping output in `CSV` format                                                         |
-| `-j`                    | Output in `JSON` format                                                                                           |
-| `--pretty`              | Prettify the `JSON` output                                                                                        |
-| `--db`                  | Path and file name to store tcping output to sqlite database. e.g. `--db /tmp/tcping.db`                          |
-| `-v`                    | Print version                                                                                                     |
-| `-u`                    | Check for updates                                                                                                 |
-| `--show-failures-only`  | Only show probe failures and omit printing probe success messages                                                 |
-| `--show-source-address` | Show the source IP address and port used for probes                                                               |
-| `--non-interactive`     | Run in background mode. e.g. `nohup` or `disown`                                                                  |
-
-> [!TIP]
-> Without specifying the `-4` and `-6` flags, tcping will randomly select an IP address based on DNS lookups.
-
----
-
-## Demos
-
-### Basic usage
-
-<details>
-    <summary>Basic Usage<summary/>
-        <img src="docs/Images/gifs/tcping.gif"/>
-<!--![tcping](docs/Images/gifs/tcping.gif)-->
-</details>
-
----
-
-### Retry hostname lookup (`-r`) flag
-
-![tcping resolve example](docs/Images/gifs/tcping_resolve.gif)
+| Flag | Short | Type | Default | Description |
+| :--- | :---: | :---: | :---: | :--- |
+| `--protocol` | — | `string` | `tcp` | Target protocol: `tcp`, `http`, `https`, `tls`, `udp`, `icmp`, `ws`, `wss`, `grpc`, `grpcs`, `dns`, `dot`, `doh`, `redis`, `rediss`, `memcached`, `smtp`, `smtps`, `imap`, `imaps`, `pop3`, `pop3s`, `ldap`, `ldaps`, `postgres`, `mysql`, `mssql`, `oracle`, `mongodb`, `cassandra`, `saphana`, `s3`, `blob`, `gcs`, `kafka`, `kafkas`, `rabbitmq`, `amqps`, `o365`. |
+| `--count` | `-c` | `uint` | `0` (infinite) | Total number of probes to transmit before stopping. |
+| `--interval` | `-i` | `duration` | `1s` | Interval between probes (e.g. `1s`, `500ms`, `0.002`). |
+| `--timeout` | `-t` | `duration` | `1s` | Per-probe network timeout threshold. |
+| `--diags`, `--diagnostics` | — | `bool` | `false` | Enable deep protocol negotiation metadata and handshake breakdown. |
+| `--dashboard`, `-ui` | — | `bool` | `false` | Launch full-screen interactive 120-column TUI dashboard with waveform history. |
+| `--web` | — | `bool` | `false` | Launch embedded real-time web dashboard with SSE event streaming. |
+| `--web-addr` | — | `string` | `127.0.0.1:3000` | Listening address and port for the embedded web dashboard. |
+| `--metrics-addr` | — | `string` | `""` | Expose Prometheus/OpenMetrics telemetry server on given address (e.g. `:9100`). |
+| `--json` | `-j` | `bool` | `false` | Output results as JSON documents. |
+| `--pretty` | — | `bool` | `false` | Indent/prettify JSON output (requires `--json`). |
+| `--ndjson` | — | `bool` | `false` | Output real-time Newline-Delimited JSON stream. |
+| `--jsonl` | — | `bool` | `false` | Output real-time JSON Lines stream. |
+| `--csv` | — | `string` | `""` | File path to export probe events and stats summary to CSV. |
+| `--tsv` | — | `string` | `""` | File path to export probe events and stats summary to TSV. |
+| `--db` | — | `string` | `""` | File path to persist probe events and statistics into a SQLite3 database. |
+| `--no-color` | `-n` | `bool` | `false` | Disable ANSI color escapes for plain text output. |
+| `--quiet` | `-q` | `bool` | `false` | Quiet mode: suppress per-probe lines, output only final summary. |
+| `--show-source-address`| `-S` | `bool` | `false` | Display local IP address and dynamic ephemeral port for each connection. |
+| `--timestamp` | `-ts` | `bool` | `false` | Print local timestamp prefix before every probe. |
+| `--show-failures-only` | `-f` | `bool` | `false` | Suppress successful replies, displaying only failed probes. |
+| `--retry` | — | `uint` | `0` | Number of transient retry attempts per probe before recording a failure. |
+| `--retry-backoff` | — | `float` | `0.05` | Initial retry backoff delay in seconds. |
+| `--retry-max-backoff` | — | `float` | `2.0` | Maximum retry backoff delay cap in seconds. |
+| `--retry-jitter` | — | `bool` | `true` | Apply randomized full jitter to exponential retry backoffs. |
+| `--fast-close` | — | `bool` | `false` | Enable `SO_LINGER=0` (TCP RST) to bypass `TIME_WAIT` socket accumulation. |
+| `--resolve-every-probe`| — | `bool` | `false` | Re-resolve target DNS on every probe cycle to detect Anycast/CDN rotations. |
+| `--max-latency` | — | `float` | `0` | Threshold latency in milliseconds; breaches count as SLA failures. |
+| `--max-consecutive-fails`| — | `uint` | `0` | Automatically terminate probing after $N$ consecutive failures. |
+| `--traceroute` | — | `bool` | `false` | Execute hop-by-hop Layer-4 TCP route discovery to target port. |
+| `--interface` | `-I` | `string` | `""` | Bind outbound traffic to a specific network interface. |
+| `--dns-server` | `-d` | `string` | `""` | Use custom DNS server IP or IP:port for hostname resolution. |
+| `--version` | `-v` | `bool` | `false` | Display version and exit. |
+| `--help` | `-h` | `bool` | `false` | Display help and usage instructions. |
 
 ---
 
-### JSON output (`-j --pretty`) flag
+## 5. Usage & Deployment Examples
 
-![tcping json example](docs/Images/gifs/tcping_json_pretty.gif)
+### 5.1. Basic & Protocol Handshake Probing
+
+#### Standard TCP Probing with Source Address
+```bash
+netping -S 1.1.1.1 443
+```
+```text
+Probing 1.1.1.1 on port 443
+● Reply from 1.1.1.1 on port 443 using 192.168.1.100:54321: TCP_conn=1 time=14.230 ms
+● Reply from 1.1.1.1 on port 443 using 192.168.1.100:54322: TCP_conn=2 time=13.890 ms
+```
+
+#### HTTPS Probing with Deep Protocol Diagnostics (`--diags`)
+```bash
+netping --protocol https --diags -c 2 1.1.1.1 443
+```
+```text
+Probing 1.1.1.1 on port 443
+● Reply from 1.1.1.1 on port 443: TCP_conn=1 time=48.210 ms
+  └─ [DIAG] Status: 301 Moved Permanently │ Server: cloudflare │ Proto: HTTP/1.1 │ CertValid: 2026-12-21 (122d left) │ TTFB: 48.21ms [DNS: 0.00ms TCP: 14.10ms TLS: 22.40ms]
+● Reply from 1.1.1.1 on port 443: TCP_conn=2 time=44.150 ms
+  └─ [DIAG] Status: 301 Moved Permanently │ Server: cloudflare │ Proto: HTTP/1.1 │ CertValid: 2026-12-21 (122d left) │ TTFB: 44.15ms [DNS: 0.00ms TCP: 13.80ms TLS: 21.10ms]
+
+--- 1.1.1.1 TCPing statistics ---
+2 probes transmitted on port 443 │ 2 received, 0.00% packet loss
+successful probes:   2
+unsuccessful probes: 0
+total uptime:   1 second
+total downtime: 0 second
+rtt min/avg/max: 44.150/46.180/48.210 ms │ jitter: 2.030 ms │ p95: 48.007 ms
+```
 
 ---
 
-## Contributing
+### 5.2. Visual Dashboards
 
-Pull requests are welcome to solve bugs, add new features and to help with the open issues that can be found [here](https://github.com/pouriyajamshidi/tcping/issues)
+#### 120-Column Interactive Terminal TUI Dashboard
+```bash
+netping --dashboard --protocol https --diags 1.1.1.1 443
+```
+```text
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ NETPING DASHBOARD   Target: 1.1.1.1:443   Proto: HTTPS   Elapsed: 12s                                                │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Probes:  12           │ Success: 12           │ Failed:  0            │ Loss:    0.0%         │ Jit:    1.12 ms      │
+│ Min:   13.89 ms       │ Avg:   14.45 ms       │ Max:   16.12 ms       │ P95:   15.98 ms       │ P99:   16.10 ms      │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ DIAGNOSTICS: Status: 301 Moved Permanently │ Server: cloudflare │ Proto: HTTP/1.1 │ CertValid: 2026-12-21 (122d left) │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ REAL-TIME LATENCY WAVEFORM (Last 106 probes)                                                                         │
+│   20.0ms ┤                                                                                                           │
+│   16.0ms ┤                                                                                                 █         │
+│   12.0ms ┤                                                                                                ███        │
+│    8.0ms ┤                                                                                                ████       │
+│    4.0ms ┤                                                                                                ████       │
+│    0.0ms ┴────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ RECENT PROBE EVENT LOG                                                                                               │
+│ ● [23:45:10] #11    14.21 ms │ Status: 301 Moved Permanently │ Server: cloudflare │ Proto: HTTP/1.1 │ CertValid: 122d   │
+│ ● [23:45:11] #12    13.95 ms │ Status: 301 Moved Permanently │ Server: cloudflare │ Proto: HTTP/1.1 │ CertValid: 122d   │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+Press Ctrl+C to stop probing and view final report.
+```
 
-1. Pick any issue that you feel comfortable with.
-1. Fork the repository.
-1. Create a branch.
-1. Commit your work.
-1. Add tests.
-1. Run the tests `go test` or `make test` and ensure they are successful.
-1. Create a pull request
+#### Zero-Dependency Embedded Web Dashboard
+```bash
+netping --web --web-addr 127.0.0.1:3000 1.1.1.1 443
+```
+- Opens native HTTP server at `http://127.0.0.1:3000`.
+- Connects via Server-Sent Events (SSE) for 0ms telemetry streaming and Canvas 2D latency timelines.
 
-Current number of open issues: ![GitHub issues](https://img.shields.io/github/issues/pouriyajamshidi/tcping.svg).
+---
 
-Please make sure that your pull request **only covers one specific issue/feature** and doesn't handle two or more issues. This makes it simpler for us to review your pull request and helps keeping a clean git history.
+### 5.3. Log Streaming & Data Pipeline Ingestion
 
-## Feature Requests and Issues
+#### NDJSON Stream for Vector / FluentBit / Elasticsearch
+```bash
+netping --ndjson 1.1.1.1 443 | jq -c '.'
+```
+```json
+{"type":"probe","success":true,"message":"Reply from 1.1.1.1 on port 443 TCP_conn=1 time=14.230 ms","ipAddress":"1.1.1.1","port":443,"destinationIsIP":true,"time":"14.230","ongoingSuccessfulProbes":1}
+{"type":"probe","success":true,"message":"Reply from 1.1.1.1 on port 443 TCP_conn=2 time=13.890 ms","ipAddress":"1.1.1.1","port":443,"destinationIsIP":true,"time":"13.890","ongoingSuccessfulProbes":2}
+```
 
-Do you wish that tcping could do more? Or maybe you have faced a bug?
+#### Tab-Separated Values (TSV) Export
+```bash
+netping --tsv results.tsv -c 5 1.1.1.1 443
+```
+Generates `results.tsv` (probe events) and `results_stats.tsv` (SLA summary).
 
-Please feel free to open an issue and if you can, you are welcome to [open a pull request](#contributing) to contribute.
+#### Standing Prometheus Metrics Exporter
+```bash
+netping --metrics-addr :9100 1.1.1.1 443
+```
+Scrape metrics on `http://localhost:9100/metrics`:
+```text
+# HELP tcping_probe_duration_seconds Latency of the latest probe in seconds.
+# TYPE tcping_probe_duration_seconds gauge
+tcping_probe_duration_seconds 0.014230
+# HELP tcping_jitter_seconds Interarrival jitter in seconds.
+# TYPE tcping_jitter_seconds gauge
+tcping_jitter_seconds 0.001120
+# HELP tcping_packet_loss_ratio Ratio of failed probes.
+# TYPE tcping_packet_loss_ratio gauge
+tcping_packet_loss_ratio 0.000000
+```
 
-Although, keep in mind that unless you are fixing a really tiny issue, please ensure to first communicate your intention on an **issue** before starting your work.
+---
 
-## Help The Project
+### 5.4. Enterprise Resilience & High-Speed Controls
 
-If tcping is useful for you, consider sharing it with your network to extend its reach and help other people to also benefit from it.
+#### High-Frequency Probing with Fast-Close (Bypass Socket Exhaustion)
+```bash
+netping -i 0.002 --fast-close 1.1.1.1 443
+```
 
-Furthermore, you can support the project using the links below:
+#### Transient Failure Recovery with Exponential Jitter Backoff
+```bash
+netping --retry 3 --retry-backoff 0.1 --retry-max-backoff 1.0 --retry-jitter 1.1.1.1 443
+```
 
-- Buy me a coffee: ["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/docs/custom_images/orange_img.png)
+#### Multi-Target Concurrent Comparison
+```bash
+netping 1.1.1.1:53 8.8.8.8:53 9.9.9.9:53
+```
+```text
+========================= MULTI-TARGET SUMMARY =========================
+TARGET                       SENT       RECV       LOSS %     AVG (ms)   MAX (ms)  
+------------------------------------------------------------------------
+1.1.1.1:53                   10         10         0.0      % 14.12      15.80     
+8.8.8.8:53                   10         10         0.0      % 18.45      21.10     
+9.9.9.9:53                   10         10         0.0      % 16.20      17.90     
+========================================================================
+```
 
-- GitHub Sponsors: [sponsor](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)
+---
 
-- Total number of sponsors: ![GitHub Sponsor](https://img.shields.io/github/sponsors/pouriyajamshidi?label=Sponsor&logo=GitHub)
+## 6. Architecture & System Design
 
-## License
-
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+For deep architectural reviews, sequence diagrams, concurrency models, dependency DAGs, and security specifications, refer to:
+- **[`ARCHITECTURE.md`](ARCHITECTURE.md)**: System architecture, data flow sequences, concurrency model, and threat matrix.
+- **[`MODERNIZATION.md`](MODERNIZATION.md)**: Master modernization roadmap, protocol capabilities, and feature validation.

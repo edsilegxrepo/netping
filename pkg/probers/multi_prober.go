@@ -28,14 +28,24 @@ type TargetWorker struct {
 
 // MultiProberOptions configures execution options for MultiProber.
 type MultiProberOptions struct {
-	ProbeCount   uint
-	Interval     time.Duration
-	Timeout      time.Duration
-	Concurrency  uint
-	ShowDiags    bool
-	NoColor      bool
-	HideLiveLogs bool
-	OnProbeEvent func(res ProbeResult, w TargetWorker, seq uint)
+	ProbeCount          uint
+	Interval            time.Duration
+	Timeout             time.Duration
+	Concurrency         uint
+	ShowDiags           bool
+	NoColor             bool
+	QuietMode           bool
+	WithTimestamp       bool
+	ShowSourceAddress   bool
+	ShowFailuresOnly    bool
+	MaxLatency          float64
+	MaxConsecutiveFails uint
+	Retries             uint
+	InitialRetryBackoff time.Duration
+	MaxRetryBackoff     time.Duration
+	RetryJitter         bool
+	HideLiveLogs        bool
+	OnProbeEvent        func(res ProbeResult, w TargetWorker, seq uint)
 }
 
 // MultiProber coordinates concurrent probing against multiple targets in parallel.
@@ -171,22 +181,59 @@ func (m *MultiProber) Run(ctx context.Context) {
 				seq++
 				res := worker.Pinger.Ping(ctx)
 
+				rttMs := utils.NanoToMillisecond(res.RTT.Nanoseconds())
+				isFailure := res.Err != nil
+				if !isFailure && m.opts.MaxLatency > 0 && float64(rttMs) > m.opts.MaxLatency {
+					isFailure = true
+					res.Err = fmt.Errorf("latency SLA breached: %.2fms > %.2fms", rttMs, m.opts.MaxLatency)
+				}
+
+				if isFailure && m.opts.Retries > 0 {
+					for attempt := 1; attempt <= int(m.opts.Retries); attempt++ {
+						delay := utils.CalculateBackoff(attempt-1, utils.BackoffConfig{
+							InitialDelay: m.opts.InitialRetryBackoff,
+							MaxDelay:     m.opts.MaxRetryBackoff,
+							Multiplier:   2.0,
+							Jitter:       m.opts.RetryJitter,
+						})
+						if err := utils.SleepWithContext(ctx, delay); err != nil {
+							break
+						}
+						retryRes := worker.Pinger.Ping(ctx)
+						retryRttMs := utils.NanoToMillisecond(retryRes.RTT.Nanoseconds())
+						retryFailure := retryRes.Err != nil
+						if !retryFailure && m.opts.MaxLatency > 0 && float64(retryRttMs) > m.opts.MaxLatency {
+							retryFailure = true
+							retryRes.Err = fmt.Errorf("latency SLA breached: %.2fms > %.2fms", retryRttMs, m.opts.MaxLatency)
+						}
+						if !retryFailure {
+							res = retryRes
+							rttMs = retryRttMs
+							isFailure = false
+							break
+						}
+						res = retryRes
+						rttMs = retryRttMs
+					}
+				}
+
 				if sem != nil {
 					<-sem
 				}
 
 				now := time.Now()
 				worker.Stats.Mu.Lock()
-				if res.Err == nil {
-					rttMs := float32(res.RTT.Seconds() * 1000)
+				if !isFailure {
 					worker.Stats.TotalSuccessfulProbes++
 					worker.Stats.OngoingSuccessfulProbes++
+					worker.Stats.OngoingUnsuccessfulProbes = 0
 					worker.Stats.LatestRTT = rttMs
 					worker.Stats.RTT = append(worker.Stats.RTT, rttMs)
 					worker.Stats.LastSuccessfulProbe = now
 				} else {
 					worker.Stats.TotalUnsuccessfulProbes++
 					worker.Stats.OngoingUnsuccessfulProbes++
+					worker.Stats.OngoingSuccessfulProbes = 0
 					worker.Stats.LastUnsuccessfulProbe = now
 				}
 				worker.Stats.Mu.Unlock()
@@ -197,31 +244,53 @@ func (m *MultiProber) Run(ctx context.Context) {
 					pad = strings.Repeat(" ", padLen)
 				}
 
-				if !m.opts.HideLiveLogs {
-					m.printerMutex.Lock()
-					if res.Err == nil {
-						rttMs := res.RTT.Seconds() * 1000
+				if !m.opts.HideLiveLogs && !m.opts.QuietMode {
+					tsStr := ""
+					if m.opts.WithTimestamp {
 						if m.opts.NoColor {
-							fmt.Printf("● %s%s Reply_seq=%d time=%.2f ms\n", plainBadge, pad, seq, rttMs)
+							tsStr = fmt.Sprintf("[%s] ", now.Format(time.DateTime))
 						} else {
-							fmt.Printf("\033[38;5;71m●\033[0m %s%s Reply_seq=\033[38;5;248m%d\033[0m time=\033[1;37m%.2f ms\033[0m\n", formatTargetBadgeColored(worker), pad, seq, rttMs)
+							tsStr = fmt.Sprintf("\033[38;5;244m[%s]\033[0m ", now.Format(time.DateTime))
 						}
-						if m.opts.ShowDiags && res.Diagnostics != "" {
+					}
+					srcStr := ""
+					if m.opts.ShowSourceAddress && res.LocalAddr != nil {
+						if m.opts.NoColor {
+							srcStr = fmt.Sprintf(" via %s", res.LocalAddr.String())
+						} else {
+							srcStr = fmt.Sprintf(" \033[38;5;244mvia\033[0m %s", res.LocalAddr.String())
+						}
+					}
+
+					m.printerMutex.Lock()
+					if !isFailure {
+						if !m.opts.ShowFailuresOnly {
 							if m.opts.NoColor {
-								fmt.Printf("  └─ [DIAG] %s\n", res.Diagnostics)
+								fmt.Printf("%s● %s%s%s Reply_seq=%d time=%.2f ms\n", tsStr, plainBadge, srcStr, pad, seq, rttMs)
 							} else {
-								fmt.Printf("  \033[38;5;240m└─\033[0m \033[38;5;244m[DIAG]\033[0m \033[38;5;75m%s\033[0m\n", res.Diagnostics)
+								fmt.Printf("%s\033[38;5;71m●\033[0m %s%s%s Reply_seq=\033[38;5;248m%d\033[0m time=\033[1;37m%.2f ms\033[0m\n", tsStr, formatTargetBadgeColored(worker), srcStr, pad, seq, rttMs)
+							}
+							if m.opts.ShowDiags && res.Diagnostics != "" {
+								if m.opts.NoColor {
+									fmt.Printf("  └─ [DIAG] %s\n", res.Diagnostics)
+								} else {
+									fmt.Printf("  \033[38;5;240m└─\033[0m \033[38;5;244m[DIAG]\033[0m \033[38;5;75m%s\033[0m\n", res.Diagnostics)
+								}
 							}
 						}
 					} else {
 						errMsg := utils.ClassifyError(res.Err)
 						if m.opts.NoColor {
-							fmt.Printf("✖ %s%s No reply_seq=%d (%s)\n", plainBadge, pad, seq, errMsg)
+							fmt.Printf("%s× %s%s%s No reply_seq=%d (%s)\n", tsStr, plainBadge, srcStr, pad, seq, errMsg)
 						} else {
-							fmt.Printf("\033[38;5;167m✖\033[0m %s%s \033[31mNo reply_seq=%d\033[0m (\033[38;5;167m%s\033[0m)\n", formatTargetBadgeColored(worker), pad, seq, errMsg)
+							fmt.Printf("%s\033[38;5;203m×\033[0m %s%s%s \033[31mNo reply_seq=%d\033[0m (\033[38;5;203m%s\033[0m)\n", tsStr, formatTargetBadgeColored(worker), srcStr, pad, seq, errMsg)
 						}
 					}
 					m.printerMutex.Unlock()
+				}
+
+				if m.opts.MaxConsecutiveFails > 0 && worker.Stats.OngoingUnsuccessfulProbes >= m.opts.MaxConsecutiveFails {
+					return
 				}
 
 				if m.opts.OnProbeEvent != nil {
@@ -245,7 +314,7 @@ func (m *MultiProber) Run(ctx context.Context) {
 
 	wg.Wait()
 	m.endTime = time.Now()
-	if !m.opts.HideLiveLogs {
+	if !m.opts.HideLiveLogs || m.opts.QuietMode {
 		m.PrintSummaryTable()
 	}
 }

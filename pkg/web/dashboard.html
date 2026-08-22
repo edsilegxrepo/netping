@@ -17,6 +17,7 @@
       --accent-emerald: #10B981;
       --accent-amber: #F59E0B;
       --accent-rose: #EF4444;
+      --accent-purple: #A855F7;
       --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
@@ -44,9 +45,11 @@
       border-radius: 12px;
       backdrop-filter: blur(12px);
       margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
     }
 
-    .brand {
+    .brand-section {
       display: flex;
       align-items: center;
       gap: 0.75rem;
@@ -61,16 +64,16 @@
       -webkit-text-fill-color: transparent;
     }
 
-    .target-badge {
+    .badge-count {
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.35rem;
       background: rgba(56, 189, 248, 0.1);
-      border: 1px solid rgba(56, 189, 248, 0.25);
+      border: 1px solid rgba(56, 189, 248, 0.3);
       color: var(--accent-cyan);
       font-family: var(--font-mono);
-      font-size: 0.875rem;
-      padding: 0.25rem 0.75rem;
+      font-size: 0.8rem;
+      padding: 0.25rem 0.65rem;
       border-radius: 6px;
       font-weight: 600;
     }
@@ -87,11 +90,38 @@
       text-transform: uppercase;
     }
 
+    /* Fleet Aggregate Bar (Multi-Target Mode) */
+    .fleet-aggregate-bar {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      font-size: 0.85rem;
+    }
+
+    .agg-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--text-muted);
+    }
+
+    .agg-val {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
     .status-indicator {
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      font-size: 0.875rem;
+      font-size: 0.8rem;
       font-weight: 600;
       color: var(--accent-emerald);
     }
@@ -110,7 +140,7 @@
       50% { transform: scale(1.3); opacity: 0.6; }
     }
 
-    /* Metric Cards Grid */
+    /* Single-Target Metric Cards Grid */
     .kpi-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -157,6 +187,61 @@
       gap: 0.25rem;
     }
 
+    /* Multi-Target Fleet Summary Table */
+    .fleet-table-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.25rem;
+      backdrop-filter: blur(12px);
+      margin-bottom: 1.5rem;
+      overflow-x: auto;
+    }
+
+    .fleet-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+      text-align: left;
+    }
+
+    .fleet-table th {
+      background: rgba(31, 41, 55, 0.6);
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 0.6rem 0.85rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .fleet-table td {
+      padding: 0.65rem 0.85rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+    }
+
+    .fleet-table tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .target-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .color-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
     /* Chart Section */
     .chart-container {
       background: var(--bg-card);
@@ -173,6 +258,8 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
     }
 
     .chart-title {
@@ -184,12 +271,29 @@
       gap: 0.5rem;
     }
 
-    .chart-controls {
+    .chart-legend {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.85rem;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
       font-size: 0.75rem;
+      font-family: var(--font-mono);
       color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+
+    .legend-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
     }
 
     canvas#rttChart {
@@ -229,14 +333,14 @@
       border-radius: 6px;
     }
 
-    table {
+    table.stream-table {
       width: 100%;
       border-collapse: collapse;
       font-size: 0.8125rem;
       text-align: left;
     }
 
-    th {
+    table.stream-table th {
       background: rgba(31, 41, 55, 0.6);
       color: var(--text-muted);
       font-weight: 600;
@@ -249,13 +353,14 @@
       z-index: 1;
     }
 
-    td {
+    table.stream-table td {
       padding: 0.5rem 0.75rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
       font-family: var(--font-mono);
+      font-size: 0.8125rem;
     }
 
-    tr:hover td {
+    table.stream-table tr:hover {
       background: rgba(255, 255, 255, 0.02);
     }
 
@@ -283,11 +388,14 @@
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.12);
       color: var(--text-main);
-      padding: 0.35rem 0.75rem;
+      padding: 0.4rem 0.85rem;
       border-radius: 6px;
-      font-size: 0.75rem;
+      font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
       transition: all 0.2s;
     }
 
@@ -295,23 +403,259 @@
       background: rgba(255, 255, 255, 0.15);
       border-color: rgba(255, 255, 255, 0.25);
     }
+
+    .btn-primary {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: var(--accent-cyan);
+    }
+
+    .btn-primary:hover {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: var(--accent-cyan);
+    }
+
+    .btn-save {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: var(--accent-emerald);
+    }
+
+    .btn-save:hover {
+      background: rgba(16, 185, 129, 0.25);
+      border-color: var(--accent-emerald);
+    }
+
+    /* Export Modal Styles */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-card {
+      background: #111827;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 14px;
+      width: 90%;
+      max-width: 540px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(56, 189, 248, 0.15);
+      overflow: hidden;
+      animation: modalIn 0.2s ease-out;
+    }
+
+    @keyframes modalIn {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .modal-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      cursor: pointer;
+      padding: 0.25rem;
+    }
+
+    .modal-close:hover {
+      color: var(--text-main);
+    }
+
+    .modal-body {
+      padding: 1.5rem;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.6rem;
+    }
+
+    .format-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .format-option {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 0.75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      transition: all 0.15s;
+    }
+
+    .format-option:hover {
+      background: rgba(255, 255, 255, 0.07);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .format-option.selected {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: var(--accent-cyan);
+    }
+
+    .fmt-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .format-option.selected .fmt-num {
+      background: var(--accent-cyan);
+      color: #0B0F19;
+    }
+
+    .fmt-name {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .fmt-ext {
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    .form-input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-main);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent-cyan);
+    }
+
+    .modal-footer {
+      padding: 1rem 1.5rem;
+      background: rgba(0, 0, 0, 0.25);
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+    }
+
+    /* Toast Banner */
+    .toast-banner {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #1F2937;
+      border: 1px solid var(--accent-emerald);
+      color: var(--text-main);
+      padding: 0.85rem 1.25rem;
+      border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      font-size: 0.875rem;
+      font-weight: 600;
+      z-index: 2000;
+      display: none;
+      animation: toastIn 0.25s ease-out;
+    }
+
+    @keyframes toastIn {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
   </style>
 </head>
 <body>
 
+  <!-- Top Title Bar -->
   <header>
-    <div class="brand">
+    <div class="brand-section">
       <span class="brand-logo">netping</span>
-      <span id="targetBadge" class="target-badge">--</span>
-      <span id="protoBadge" class="protocol-tag">--</span>
+      <div id="singleBrandBadges" style="display: flex; align-items: center; gap: 0.5rem;">
+        <span id="targetBadge" class="badge-count">--</span>
+        <span id="protoBadge" class="protocol-tag">--</span>
+      </div>
+      <div id="fleetBrandBadges" style="display: none; align-items: center; gap: 0.5rem;">
+        <span id="fleetTargetCountBadge" class="badge-count">Targets: 0</span>
+      </div>
     </div>
-    <div class="status-indicator">
-      <div class="status-dot"></div>
-      <span id="statusText">LIVE MONITORING</span>
+
+    <!-- Fleet Aggregate Stats (Auto-enabled when >= 2 targets) -->
+    <div id="fleetAggregateBar" class="fleet-aggregate-bar" style="display: none;">
+      <div class="agg-item">
+        <span>Fleet Loss:</span>
+        <span id="aggFleetLoss" class="agg-val" style="color: var(--accent-emerald);">0.0%</span>
+      </div>
+      <div class="agg-item">
+        <span>Fleet Avg:</span>
+        <span id="aggFleetAvg" class="agg-val">-- ms</span>
+      </div>
+      <div class="agg-item">
+        <span>Total Probes:</span>
+        <span id="aggFleetProbes" class="agg-val">0</span>
+      </div>
+      <div class="agg-item">
+        <span>Uptime:</span>
+        <span id="aggFleetUptime" class="agg-val">00:00:00</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn btn-primary" onclick="openExportModal()" title="Shortcut: Press 'S'">💾 Export Data <span style="opacity: 0.6; font-size: 0.7rem;">[S]</span></button>
+      <div class="status-indicator">
+        <div class="status-dot"></div>
+        <span id="statusText">LIVE MONITORING</span>
+      </div>
     </div>
   </header>
 
-  <div class="kpi-grid">
+  <!-- SINGLE TARGET KPI CARDS (Auto-visible when 1 target) -->
+  <div id="singleKpiGrid" class="kpi-grid">
     <div class="kpi-card">
       <div class="kpi-label">Current Latency</div>
       <div id="kpiCurrentRTT" class="kpi-value" style="color: var(--accent-cyan);">-- ms</div>
@@ -343,30 +687,58 @@
     </div>
   </div>
 
+  <!-- MULTI-TARGET FLEET SUMMARY TABLE (Auto-visible when >= 2 targets) -->
+  <div id="fleetSummaryContainer" class="fleet-table-container" style="display: none;">
+    <table class="fleet-table">
+      <thead>
+        <tr>
+          <th>Target</th>
+          <th>Protocol</th>
+          <th>Resolved IP</th>
+          <th>Sent</th>
+          <th>Recv</th>
+          <th>Loss %</th>
+          <th>Last (ms)</th>
+          <th>Avg (ms)</th>
+          <th>Max (ms)</th>
+          <th>Recent Trend</th>
+        </tr>
+      </thead>
+      <tbody id="fleetTableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Real-Time Waveform Chart with Dynamic Legend -->
   <div class="chart-container">
     <div class="chart-header">
       <div class="chart-title">
         <span>Real-Time Latency Waveform</span>
       </div>
-      <div class="chart-controls">
-        <span>Window: Last 50 Probes</span>
+      <div id="chartLegend" class="chart-legend">
+        <span style="font-size: 0.75rem; color: var(--text-muted);">Window: Last 50 Probes</span>
       </div>
     </div>
     <canvas id="rttChart"></canvas>
   </div>
 
+  <!-- Interleaved Live Probe Event Stream -->
   <div class="table-container">
     <div class="table-header">
-      <div class="table-title">Live Probe Stream</div>
-      <button class="btn" onclick="clearLogs()">Clear Log</button>
+      <div class="table-title">Live Probe Event Stream</div>
+      <div style="display: flex; gap: 0.5rem;">
+        <button class="btn btn-primary" onclick="openExportModal()">💾 Export</button>
+        <button class="btn" onclick="clearLogs()">Clear Log</button>
+      </div>
     </div>
     <div class="log-table-wrapper" id="logScroll">
-      <table>
+      <table class="stream-table">
         <thead>
           <tr>
             <th>Status</th>
             <th>Time</th>
             <th>Seq</th>
+            <th>Target</th>
+            <th>Proto</th>
             <th>RTT (ms)</th>
             <th>Target IP</th>
             <th>Diagnostics / Error</th>
@@ -377,13 +749,98 @@
     </div>
   </div>
 
+  <!-- Interactive Export Modal -->
+  <div id="exportModal" class="modal-backdrop" style="display: none;" onclick="handleBackdropClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 class="modal-title">💾 Export Dashboard Data</h3>
+        <button class="modal-close" onclick="closeExportModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Select Output Format (1-6):</label>
+        <div class="format-grid">
+          <div class="format-option selected" id="fmtOpt1" onclick="selectFormat(1)">
+            <div class="fmt-num">1</div>
+            <div class="fmt-info">
+              <div class="fmt-name">JSON</div>
+              <div class="fmt-ext">.json</div>
+            </div>
+          </div>
+          <div class="format-option" id="fmtOpt2" onclick="selectFormat(2)">
+            <div class="fmt-num">2</div>
+            <div class="fmt-info">
+              <div class="fmt-name">Pretty JSON</div>
+              <div class="fmt-ext">.json</div>
+            </div>
+          </div>
+          <div class="format-option" id="fmtOpt3" onclick="selectFormat(3)">
+            <div class="fmt-num">3</div>
+            <div class="fmt-info">
+              <div class="fmt-name">CSV</div>
+              <div class="fmt-ext">.csv</div>
+            </div>
+          </div>
+          <div class="format-option" id="fmtOpt4" onclick="selectFormat(4)">
+            <div class="fmt-num">4</div>
+            <div class="fmt-info">
+              <div class="fmt-name">TSV</div>
+              <div class="fmt-ext">.tsv</div>
+            </div>
+          </div>
+          <div class="format-option" id="fmtOpt5" onclick="selectFormat(5)">
+            <div class="fmt-num">5</div>
+            <div class="fmt-info">
+              <div class="fmt-name">SQLite3</div>
+              <div class="fmt-ext">.db</div>
+            </div>
+          </div>
+          <div class="format-option" id="fmtOpt6" onclick="selectFormat(6)">
+            <div class="fmt-num">6</div>
+            <div class="fmt-info">
+              <div class="fmt-name">Plain Text</div>
+              <div class="fmt-ext">.txt</div>
+            </div>
+          </div>
+        </div>
+
+        <label class="form-label">Destination File Path / Name:</label>
+        <input type="text" id="exportFilePath" class="form-input" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeExportModal()">Cancel [Esc]</button>
+        <button class="btn btn-save" onclick="saveExportOnHost()">💾 Save on Host</button>
+        <button class="btn btn-primary" onclick="downloadExportClient()">⬇ Download [Enter]</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast-banner"></div>
+
   <script>
     const maxDataPoints = 50;
-    const rttHistory = [];
+    const palette = [
+      '#38BDF8', // Cyan
+      '#10B981', // Emerald
+      '#F59E0B', // Amber
+      '#A855F7', // Purple
+      '#F43F5E', // Rose
+      '#06B6D4', // Teal
+      '#EC4899', // Pink
+      '#84CC16'  // Lime
+    ];
+
+    // State Tracking
+    const targetsMap = new Map(); // key: targetName -> targetState
+    let isFleetMode = false;
+    let currentFormat = 1;
+    const formatExts = { 1: '.json', 2: '.json', 3: '.csv', 4: '.tsv', 5: '.db', 6: '.txt' };
+    const formatKeys = { 1: 'json', 2: 'pretty_json', 3: 'csv', 4: 'tsv', 5: 'sqlite3', 6: 'txt' };
+
     const tableBody = document.getElementById('logTableBody');
-    const logScroll = document.getElementById('logScroll');
+    const fleetTableBody = document.getElementById('fleetTableBody');
     const canvas = document.getElementById('rttChart');
     const ctx = canvas.getContext('2d');
+    const chartLegend = document.getElementById('chartLegend');
 
     let startTime = Date.now();
     setInterval(() => {
@@ -391,7 +848,9 @@
       const hrs = String(Math.floor(elapsedSec / 3600)).padStart(2, '0');
       const mins = String(Math.floor((elapsedSec % 3600) / 60)).padStart(2, '0');
       const secs = String(elapsedSec % 60).padStart(2, '0');
-      document.getElementById('kpiUptime').innerText = `${hrs}:${mins}:${secs}`;
+      const timeStr = `${hrs}:${mins}:${secs}`;
+      document.getElementById('kpiUptime').innerText = timeStr;
+      document.getElementById('aggFleetUptime').innerText = timeStr;
     }, 1000);
 
     function resizeCanvas() {
@@ -402,23 +861,134 @@
     window.addEventListener('resize', resizeCanvas);
     setTimeout(resizeCanvas, 50);
 
+    function getTargetColor(targetName) {
+      if (!targetsMap.has(targetName)) {
+        const colorIdx = targetsMap.size % palette.length;
+        targetsMap.set(targetName, {
+          target: targetName,
+          color: palette[colorIdx],
+          protocol: 'TCP',
+          ip: '-',
+          sent: 0,
+          recv: 0,
+          failed: 0,
+          latestRTT: 0,
+          minRTT: 0,
+          maxRTT: 0,
+          avgRTT: 0,
+          lossPercent: 0,
+          history: [] // rtt data points
+        });
+      }
+      return targetsMap.get(targetName);
+    }
+
+    function checkFleetMode() {
+      if (targetsMap.size > 1 && !isFleetMode) {
+        isFleetMode = true;
+        document.getElementById('singleBrandBadges').style.display = 'none';
+        document.getElementById('fleetBrandBadges').style.display = 'flex';
+        document.getElementById('fleetAggregateBar').style.display = 'flex';
+        document.getElementById('singleKpiGrid').style.display = 'none';
+        document.getElementById('fleetSummaryContainer').style.display = 'block';
+      }
+      if (isFleetMode) {
+        document.getElementById('fleetTargetCountBadge').innerText = `Targets: ${targetsMap.size}`;
+        updateFleetTable();
+        updateFleetAggregateBar();
+      }
+    }
+
+    function updateFleetAggregateBar() {
+      let totalSent = 0;
+      let totalFailed = 0;
+      let totalRTT = 0;
+      let countRTT = 0;
+
+      for (const [_, t] of targetsMap) {
+        totalSent += t.sent;
+        totalFailed += t.failed;
+        if (t.avgRTT > 0) {
+          totalRTT += t.avgRTT;
+          countRTT++;
+        }
+      }
+
+      const loss = totalSent > 0 ? (totalFailed / totalSent) * 100 : 0;
+      const avg = countRTT > 0 ? (totalRTT / countRTT) : 0;
+
+      const lossEl = document.getElementById('aggFleetLoss');
+      lossEl.innerText = `${loss.toFixed(1)}%`;
+      lossEl.style.color = loss > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)';
+      document.getElementById('aggFleetAvg').innerText = `${avg.toFixed(2)} ms`;
+      document.getElementById('aggFleetProbes').innerText = totalSent;
+    }
+
+    function renderSparkline(rtts, color) {
+      if (!rtts || rtts.length === 0) return '';
+      const blocks = [' ', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+      const slice = rtts.slice(-15);
+      const min = Math.min(...slice);
+      const max = Math.max(...slice);
+      const range = max - min;
+
+      return slice.map(v => {
+        if (range === 0) return `<span style="color:${color}">▄</span>`;
+        const idx = Math.min(blocks.length - 1, Math.floor(((v - min) / range) * (blocks.length - 1)));
+        return `<span style="color:${color}">${blocks[idx]}</span>`;
+      }).join('');
+    }
+
+    function updateFleetTable() {
+      fleetTableBody.innerHTML = '';
+      for (const [name, t] of targetsMap) {
+        const tr = document.createElement('tr');
+        const lossColor = t.lossPercent > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)';
+        const spark = renderSparkline(t.history.map(h => h.rtt), t.color);
+
+        tr.innerHTML = `
+          <td>
+            <div class="target-pill">
+              <span class="color-dot" style="background-color: ${t.color}; box-shadow: 0 0 8px ${t.color};"></span>
+              <span>${t.target}</span>
+            </div>
+          </td>
+          <td><span class="protocol-tag">${t.protocol}</span></td>
+          <td style="color: var(--text-muted);">${t.ip}</td>
+          <td>${t.sent}</td>
+          <td style="color: var(--accent-emerald);">${t.recv}</td>
+          <td style="color: ${lossColor}; font-weight: 700;">${t.lossPercent.toFixed(1)}%</td>
+          <td style="color: var(--accent-cyan); font-weight: 700;">${t.latestRTT.toFixed(2)}</td>
+          <td>${t.avgRTT.toFixed(2)}</td>
+          <td>${t.maxRTT.toFixed(2)}</td>
+          <td><div style="font-family: monospace; font-size: 0.9rem; letter-spacing: -1px;">${spark}</div></td>
+        `;
+        fleetTableBody.appendChild(tr);
+      }
+    }
+
     function drawChart() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const w = canvas.width;
       const h = canvas.height;
-      const padLeft = 40;
+      const padLeft = 58;
       const padBottom = 25;
       const chartW = w - padLeft - 10;
       const chartH = h - padBottom - 10;
 
-      if (rttHistory.length === 0) return;
-
-      const validRTTs = rttHistory.filter(d => d.success && d.rtt > 0).map(d => d.rtt);
-      let maxVal = validRTTs.length > 0 ? Math.max(...validRTTs) * 1.25 : 100;
-      if (maxVal < 10) maxVal = 10;
+      // Find max RTT across all targets
+      let globalMaxRTT = 10;
+      for (const [_, t] of targetsMap) {
+        for (const item of t.history) {
+          if (item.success && item.rtt > globalMaxRTT) {
+            globalMaxRTT = item.rtt;
+          }
+        }
+      }
+      globalMaxRTT *= 1.25;
 
       // Draw Grid lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
       ctx.lineWidth = 1;
       for (let i = 0; i <= 4; i++) {
         const y = 10 + (chartH / 4) * i;
@@ -427,58 +997,79 @@
         ctx.lineTo(w - 10, y);
         ctx.stroke();
 
-        ctx.fillStyle = '#6B7280';
-        ctx.font = '10px monospace';
+        ctx.fillStyle = '#9CA3AF';
+        ctx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
         ctx.textAlign = 'right';
-        const labelVal = (maxVal - (maxVal / 4) * i).toFixed(0);
-        ctx.fillText(`${labelVal}ms`, padLeft - 6, y + 3);
+        const labelVal = (globalMaxRTT - (globalMaxRTT / 4) * i).toFixed(0);
+        ctx.fillText(`${labelVal}ms`, padLeft - 8, y + 4);
       }
 
-      // Draw Line
-      ctx.beginPath();
-      const step = chartW / (maxDataPoints - 1);
-      const offset = maxDataPoints - rttHistory.length;
-
-      let first = true;
-      for (let i = 0; i < rttHistory.length; i++) {
-        const item = rttHistory[i];
-        const x = padLeft + (offset + i) * step;
-        const val = item.success ? item.rtt : 0;
-        const y = 10 + chartH - (val / maxVal) * chartH;
-
-        if (first) {
-          ctx.moveTo(x, y);
-          first = false;
-        } else {
-          ctx.lineTo(x, y);
+      // Update Legend
+      if (targetsMap.size > 1) {
+        chartLegend.innerHTML = '';
+        for (const [name, t] of targetsMap) {
+          const item = document.createElement('div');
+          item.className = 'legend-item';
+          item.innerHTML = `
+            <span class="color-dot" style="background-color: ${t.color};"></span>
+            <span>${name}</span>
+            <span style="color:${t.color}; font-weight:700;">(${t.latestRTT.toFixed(1)}ms)</span>
+          `;
+          chartLegend.appendChild(item);
         }
       }
 
-      ctx.strokeStyle = '#38BDF8';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
+      // Draw Series for each target
+      for (const [_, t] of targetsMap) {
+        if (t.history.length === 0) continue;
 
-      // Draw Area Gradient
-      ctx.lineTo(padLeft + (offset + rttHistory.length - 1) * step, 10 + chartH);
-      ctx.lineTo(padLeft + offset * step, 10 + chartH);
-      ctx.closePath();
-      const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
-      grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
-      ctx.fillStyle = grad;
-      ctx.fill();
-
-      // Draw Points
-      for (let i = 0; i < rttHistory.length; i++) {
-        const item = rttHistory[i];
-        const x = padLeft + (offset + i) * step;
-        const val = item.success ? item.rtt : 0;
-        const y = 10 + chartH - (val / maxVal) * chartH;
+        const step = chartW / (maxDataPoints - 1);
+        const offset = maxDataPoints - t.history.length;
 
         ctx.beginPath();
-        ctx.arc(x, y, item.success ? 3 : 4, 0, Math.PI * 2);
-        ctx.fillStyle = item.success ? '#38BDF8' : '#EF4444';
-        ctx.fill();
+        let first = true;
+        for (let i = 0; i < t.history.length; i++) {
+          const item = t.history[i];
+          const x = padLeft + (offset + i) * step;
+          const val = item.success ? item.rtt : 0;
+          const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+
+          if (first) {
+            ctx.moveTo(x, y);
+            first = false;
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+
+        ctx.strokeStyle = t.color;
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+
+        // Area Gradient only in single target mode
+        if (targetsMap.size === 1) {
+          ctx.lineTo(padLeft + (offset + t.history.length - 1) * step, 10 + chartH);
+          ctx.lineTo(padLeft + offset * step, 10 + chartH);
+          ctx.closePath();
+          const grad = ctx.createLinearGradient(0, 0, 0, h);
+          grad.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
+          grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+          ctx.fillStyle = grad;
+          ctx.fill();
+        }
+
+        // Draw points
+        for (let i = 0; i < t.history.length; i++) {
+          const item = t.history[i];
+          const x = padLeft + (offset + i) * step;
+          const val = item.success ? item.rtt : 0;
+          const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+
+          ctx.beginPath();
+          ctx.arc(x, y, item.success ? 3 : 4, 0, Math.PI * 2);
+          ctx.fillStyle = item.success ? t.color : '#EF4444';
+          ctx.fill();
+        }
       }
     }
 
@@ -486,45 +1077,159 @@
       tableBody.innerHTML = '';
     }
 
+    // Modal and Export Functions
+    function getDefaultFilename(fmt) {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const ts = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      const prefix = isFleetMode ? 'netping_fleet_' : 'netping_single_';
+      return `./${prefix}${ts}${formatExts[fmt]}`;
+    }
+
+    function openExportModal() {
+      document.getElementById('exportModal').style.display = 'flex';
+      selectFormat(currentFormat);
+    }
+
+    function closeExportModal() {
+      document.getElementById('exportModal').style.display = 'none';
+    }
+
+    function handleBackdropClick(e) {
+      if (e.target.id === 'exportModal') {
+        closeExportModal();
+      }
+    }
+
+    function selectFormat(fmt) {
+      currentFormat = fmt;
+      for (let i = 1; i <= 6; i++) {
+        const el = document.getElementById(`fmtOpt${i}`);
+        if (i === fmt) {
+          el.classList.add('selected');
+        } else {
+          el.classList.remove('selected');
+        }
+      }
+      document.getElementById('exportFilePath').value = getDefaultFilename(fmt);
+    }
+
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.style.borderColor = isError ? 'var(--accent-rose)' : 'var(--accent-emerald)';
+      toast.style.display = 'block';
+      setTimeout(() => {
+        toast.style.display = 'none';
+      }, 4000);
+    }
+
+    function downloadExportClient() {
+      const fmtKey = formatKeys[currentFormat];
+      window.location.href = `/api/export?format=${fmtKey}`;
+      closeExportModal();
+      showToast(`✔ Initiated download for ${formatKeys[currentFormat].toUpperCase()} export`);
+    }
+
+    async function saveExportOnHost() {
+      const fmtKey = formatKeys[currentFormat];
+      const path = document.getElementById('exportFilePath').value;
+      try {
+        const resp = await fetch('/api/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ format: fmtKey, path: path })
+        });
+        const res = await resp.json();
+        if (res.success) {
+          showToast(`✔ Saved export to ${res.path}`);
+          closeExportModal();
+        } else {
+          showToast(`✖ Export failed: ${res.error}`, true);
+        }
+      } catch (err) {
+        showToast(`✖ Error saving export: ${err.message}`, true);
+      }
+    }
+
+    // Keyboard navigation
+    window.addEventListener('keydown', (e) => {
+      const modal = document.getElementById('exportModal');
+      const isOpen = modal.style.display === 'flex';
+
+      if (e.key === 's' || e.key === 'S') {
+        if (!isOpen && document.activeElement.tagName !== 'INPUT') {
+          e.preventDefault();
+          openExportModal();
+        }
+      } else if (isOpen) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeExportModal();
+        } else if (e.key >= '1' && e.key <= '6' && document.activeElement.tagName !== 'INPUT') {
+          e.preventDefault();
+          selectFormat(parseInt(e.key));
+        } else if (e.key === 'Enter' && document.activeElement.tagName !== 'INPUT') {
+          e.preventDefault();
+          downloadExportClient();
+        }
+      }
+    });
+
     // Connect to Server-Sent Events (SSE) stream
     const evtSource = new EventSource('/api/stream');
 
     evtSource.onmessage = function(e) {
       const data = JSON.parse(e.data);
 
-      if (data.target) {
-        document.getElementById('targetBadge').innerText = data.target;
-      } else if (data.ip && data.port) {
-        document.getElementById('targetBadge').innerText = `${data.ip}:${data.port}`;
-      } else if (data.ip) {
-        document.getElementById('targetBadge').innerText = data.ip;
+      const tgtName = data.target || ((data.ip && data.port) ? `${data.ip}:${data.port}` : (data.ip || 'target'));
+      const tState = getTargetColor(tgtName);
+
+      tState.protocol = data.protocol || tState.protocol;
+      if (data.ip) tState.ip = data.ip;
+      tState.sent = data.total_sent || (tState.sent + 1);
+      tState.recv = data.total_success !== undefined ? data.total_success : (data.success ? tState.recv + 1 : tState.recv);
+      tState.failed = data.total_failed !== undefined ? data.total_failed : (!data.success ? tState.failed + 1 : tState.failed);
+      tState.lossPercent = data.packet_loss !== undefined ? data.packet_loss : (tState.sent > 0 ? (tState.failed / tState.sent) * 100 : 0);
+
+      if (data.success) {
+        tState.latestRTT = data.rtt;
+      }
+      tState.avgRTT = data.avg_rtt || tState.latestRTT;
+      tState.minRTT = data.min_rtt || tState.latestRTT;
+      tState.maxRTT = data.max_rtt || tState.latestRTT;
+
+      tState.history.push(data);
+      if (tState.history.length > maxDataPoints) {
+        tState.history.shift();
       }
 
-      if (data.protocol) {
-        document.getElementById('protoBadge').innerText = data.protocol;
+      checkFleetMode();
+
+      // Update Single-Target View if only 1 target
+      if (!isFleetMode) {
+        document.getElementById('targetBadge').innerText = tgtName;
+        document.getElementById('protoBadge').innerText = tState.protocol;
+
+        document.getElementById('kpiCurrentRTT').innerText = data.success ? `${data.rtt.toFixed(2)} ms` : 'FAILED';
+        document.getElementById('kpiCurrentRTT').style.color = data.success ? 'var(--accent-cyan)' : 'var(--accent-rose)';
+        document.getElementById('kpiJitter').innerText = `Jitter: ${data.jitter ? data.jitter.toFixed(2) : '0.00'} ms`;
+
+        document.getElementById('kpiLoss').innerText = `${tState.lossPercent.toFixed(1)}%`;
+        document.getElementById('kpiLoss').style.color = tState.lossPercent > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)';
+        document.getElementById('kpiLossCounts').innerText = `${tState.failed} lost / ${tState.sent} sent`;
+
+        document.getElementById('kpiAvgRTT').innerText = `${tState.avgRTT.toFixed(2)} ms`;
+        document.getElementById('kpiMinMax').innerText = `Min: ${tState.minRTT.toFixed(2)} | Max: ${tState.maxRTT.toFixed(2)}`;
+
+        document.getElementById('kpiP95').innerText = `${(data.p95_rtt || tState.avgRTT).toFixed(2)} ms`;
+        document.getElementById('kpiP99').innerText = `P99: ${(data.p99_rtt || tState.maxRTT).toFixed(2)} ms`;
+        document.getElementById('kpiTotalProbes').innerText = `Total Probes: ${tState.sent}`;
       }
 
-      document.getElementById('kpiCurrentRTT').innerText = data.success ? `${data.rtt.toFixed(2)} ms` : 'FAILED';
-      document.getElementById('kpiCurrentRTT').style.color = data.success ? 'var(--accent-cyan)' : 'var(--accent-rose)';
-      document.getElementById('kpiJitter').innerText = `Jitter: ${data.jitter.toFixed(2)} ms`;
-
-      document.getElementById('kpiLoss').innerText = `${data.packet_loss.toFixed(1)}%`;
-      document.getElementById('kpiLoss').style.color = data.packet_loss > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)';
-      document.getElementById('kpiLossCounts').innerText = `${data.total_failed} lost / ${data.total_sent} sent`;
-
-      document.getElementById('kpiAvgRTT').innerText = `${data.avg_rtt.toFixed(2)} ms`;
-      document.getElementById('kpiMinMax').innerText = `Min: ${data.min_rtt.toFixed(2)} | Max: ${data.max_rtt.toFixed(2)}`;
-
-      document.getElementById('kpiP95').innerText = `${data.p95_rtt.toFixed(2)} ms`;
-      document.getElementById('kpiP99').innerText = `P99: ${data.p99_rtt.toFixed(2)} ms`;
-      document.getElementById('kpiTotalProbes').innerText = `Total Probes: ${data.total_sent}`;
-
-      // Update Chart
-      rttHistory.push(data);
-      if (rttHistory.length > maxDataPoints) rttHistory.shift();
       drawChart();
 
-      // Add to Log Table
+      // Append to Live Stream Table
       const tr = document.createElement('tr');
       const badge = data.success ? '<span class="badge-success">✔ SUCCESS</span>' : '<span class="badge-fail">✖ FAILED</span>';
       const rttText = data.success ? data.rtt.toFixed(2) : '-';
@@ -535,8 +1240,15 @@
         <td>${badge}</td>
         <td>${data.timestamp}</td>
         <td>#${data.sequence}</td>
-        <td>${rttText}</td>
-        <td>${endpoint}</td>
+        <td>
+          <div style="display:flex; align-items:center; gap:0.4rem;">
+            <span class="color-dot" style="background-color: ${tState.color};"></span>
+            <span style="font-weight:600;">${tgtName}</span>
+          </div>
+        </td>
+        <td><span class="protocol-tag">${tState.protocol}</span></td>
+        <td style="color:${data.success ? 'var(--accent-cyan)' : 'var(--accent-rose)'}; font-weight:700;">${rttText}</td>
+        <td style="color:var(--text-muted);">${endpoint}</td>
         <td>${diag}</td>
       `;
 

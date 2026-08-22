@@ -1,4 +1,4 @@
-// netping.go - Modern, multi-protocol network latency and diagnostics prober.
+// netping.go - Multi-protocol network latency and diagnostics prober.
 package main
 
 import (
@@ -479,6 +479,7 @@ func buildPingerForTarget(tCfg config.TargetConfig, cfg config.Config, dialer *n
 		fallthrough
 	default:
 		return probers.NewTcping(probers.TCPOptions{
+			Hostname:   tCfg.Host,
 			IP:         tCfg.IP,
 			Port:       tCfg.Port,
 			Timeout:    cfg.Timeout,
@@ -611,13 +612,22 @@ func main() {
 					})
 				}
 				multiDash = printers.NewMultiDashboardPrinter(fleetTargets, printer)
+				multiDash.SetCancel(cancel)
 				defer multiDash.Close()
 			}
 		}
 
 		onMultiProbe := func(res probers.ProbeResult, w probers.TargetWorker, seq uint) {
 			if multiDash != nil {
-				multiDash.OnProbe(w.Target, string(w.Protocol), res.RTT, res.Diagnostics, res.Err, seq)
+				diagStr := ""
+				if cfg.ShowDiags {
+					diagStr = res.Diagnostics
+				}
+				ipStr := ""
+				if w.Stats != nil && w.Stats.IP.IsValid() {
+					ipStr = w.Stats.IP.String()
+				}
+				multiDash.OnProbe(w.Target, string(w.Protocol), res.RTT, diagStr, res.Err, seq, ipStr)
 			}
 
 			if cfg.PrinterConfig.OutputCSVPath != "" || cfg.PrinterConfig.OutputTSVPath != "" || cfg.PrinterConfig.OutputDBPath != "" {
@@ -689,14 +699,24 @@ func main() {
 		}
 
 		multiProber := probers.NewMultiProber(workers, probers.MultiProberOptions{
-			ProbeCount:   cfg.ProbesBeforeQuit,
-			Interval:     cfg.IntervalBetweenProbes,
-			Timeout:      cfg.Timeout,
-			Concurrency:  cfg.Concurrency,
-			ShowDiags:    cfg.ShowDiags,
-			NoColor:      cfg.PrinterConfig.NoColor,
-			HideLiveLogs: multiDash != nil,
-			OnProbeEvent: onMultiProbe,
+			ProbeCount:          cfg.ProbesBeforeQuit,
+			Interval:            cfg.IntervalBetweenProbes,
+			Timeout:             cfg.Timeout,
+			Concurrency:         cfg.Concurrency,
+			ShowDiags:           cfg.ShowDiags,
+			NoColor:             cfg.PrinterConfig.NoColor,
+			QuietMode:           cfg.QuietMode,
+			WithTimestamp:       cfg.PrinterConfig.WithTimestamp,
+			ShowSourceAddress:   cfg.PrinterConfig.WithSourceAddress,
+			ShowFailuresOnly:    cfg.ShowFailuresOnly,
+			MaxLatency:          cfg.MaxLatency,
+			MaxConsecutiveFails: cfg.MaxConsecutiveFails,
+			Retries:             cfg.Retries,
+			InitialRetryBackoff: cfg.InitialRetryBackoff,
+			MaxRetryBackoff:     cfg.MaxRetryBackoff,
+			RetryJitter:         cfg.RetryJitter,
+			HideLiveLogs:        multiDash != nil,
+			OnProbeEvent:        onMultiProbe,
 		})
 
 		multiProber.Run(probeCtx)
@@ -744,11 +764,13 @@ func main() {
 		WithDiags:         cfg.PrinterConfig.WithDiags,
 	})
 
+	var dashPrinter *printers.DashboardPrinter
 	if cfg.ShowDashboard {
 		if !printers.EnableVirtualTerminalProcessing() {
 			fmt.Fprintln(os.Stderr, "Warning: Terminal does not support Virtual Terminal processing. Disabling dashboard mode.")
 		} else {
-			dashPrinter := printers.NewDashboardPrinter(cfg.Hostname, cfg.Port, string(cfg.Protocol), stat, printer)
+			dashPrinter = printers.NewDashboardPrinter(cfg.Hostname, cfg.Port, string(cfg.Protocol), stat, printer)
+			dashPrinter.SetCancel(cancel)
 			defer dashPrinter.Close()
 			printer = dashPrinter
 		}
@@ -839,7 +861,7 @@ func main() {
 		metrics.StartMetricsServer(probeCtx, cfg.MetricsAddr, prober.Statistics)
 	}
 
-	if isForegroundTerminal() {
+	if isForegroundTerminal() && !cfg.ShowDashboard {
 		go monitorSummaryRequest(probeCtx, printer, prober.Statistics)
 	}
 
@@ -847,7 +869,11 @@ func main() {
 	if err != nil && !errors.Is(err, context.Canceled) {
 		printer.PrintError("%v", err)
 	}
-	printers.PrintStats(printer, resStats)
+	if dashPrinter != nil {
+		dashPrinter.Shutdown(resStats)
+	} else {
+		printers.PrintStats(printer, resStats)
+	}
 
 	if probeCtx.Err() == context.Canceled {
 		os.Exit(consts.ExitInterrupted)

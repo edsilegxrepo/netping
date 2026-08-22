@@ -88,7 +88,7 @@ func (p *ColorPrinter) PrintProbeFailure(s *stats.Statistics) {
 		connLabel = fmt.Sprintf("seq=\033[38;5;248m%d\033[0m", s.OngoingUnsuccessfulProbes)
 	}
 
-	fmt.Printf("%s\033[38;5;167m✖\033[0m No reply from \033[1;37m%s\033[0m%s: %s%s\n",
+	fmt.Printf("%s\033[38;5;203m×\033[0m No reply from \033[1;37m%s\033[0m%s: %s%s\n",
 		timestamp, hostnameAndIP, portInfo, connLabel, failureSuffix)
 }
 

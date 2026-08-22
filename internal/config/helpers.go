@@ -3,7 +3,6 @@ package config
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -471,24 +470,79 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 	return targets, nil
 }
 
-// usage prints how netping should be run
+// usage prints how netping should be run with clean categorized sections
 func usage() {
-	fmt.Printf("\nnetping version %s\n\n", version)
-	fmt.Println("Try running netping like:")
-	fmt.Println("  netping --host example.com --port 443")
-	fmt.Println("  netping --uri example.com:443")
-	fmt.Println("  netping --host web1,web2 --port 80,443")
-	fmt.Println("  netping --host srv1 --protocol ssh,mysql,postgresql,hana")
-	fmt.Printf("\n[flags]\n")
-
-	flag.VisitAll(func(f *flag.Flag) {
-		flagName := f.Name
-		if len(f.Name) > 1 {
-			flagName = "-" + flagName
-		}
-
-		fmt.Printf("  -%s : %s\n", flagName, f.Usage)
-	})
+	fmt.Printf("\nnetping version %s - Multi-Protocol Latency & Diagnostics Prober\n\n", version)
+	fmt.Println("USAGE:")
+	fmt.Println("  netping <host> <port> [options]")
+	fmt.Println("  netping --host <hosts> --port <ports> [options]")
+	fmt.Println("  netping --uri <uri1,uri2,...> [options]")
+	fmt.Println()
+	fmt.Println("EXAMPLES:")
+	fmt.Println("  netping example.com 443")
+	fmt.Println("  netping --host web1,web2 --port 80,443 --protocol https")
+	fmt.Println("  netping --host db-server --protocol postgresql --diags")
+	fmt.Println("  netping --uri cloudflare.com:443 --dashboard")
+	fmt.Println("  netping --host 1.1.1.1,8.8.8.8 --port 53 --output-format csv --output-file ./dns.csv")
+	fmt.Println()
+	fmt.Println("TARGET CONFIGURATION:")
+	fmt.Println("  --host <hosts>             Target hostname(s) or IP(s), comma-separated for multi-target.")
+	fmt.Println("  --port <ports>             Target port(s), comma-separated for multi-port.")
+	fmt.Println("  --uri <uris>               Target URI(s) in host:port or scheme://host:port format.")
+	fmt.Println("  --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, ...).")
+	fmt.Println("  --service <name>           Service name / SID for Oracle database connections.")
+	fmt.Println("  --oracle-service <name>    Alias for --service.")
+	fmt.Println("  --dns-host <domains>       Domain(s) to resolve in DNS query mode (comma-separated).")
+	fmt.Println()
+	fmt.Println("PROBE EXECUTION & TIMING:")
+	fmt.Println("  --count <n>                Stop after <n> probes (default: unlimited).")
+	fmt.Println("  --interval <sec>           Interval between probes in seconds (default: 1.0).")
+	fmt.Println("  --timeout <sec>            Response timeout in seconds (default: 1.0).")
+	fmt.Println("  --concurrency <n>          Maximum parallel prober workers (0 = unconstrained).")
+	fmt.Println("  --ipv4                     Force IPv4 address resolution.")
+	fmt.Println("  --ipv6                     Force IPv6 address resolution.")
+	fmt.Println("  --interface <iface>        Bind to a specific network interface name or source IP.")
+	fmt.Println("  --dns-server <ip:port>     Custom DNS server to use for resolution.")
+	fmt.Println("  --resolve-every-probe      Re-resolve target DNS on every probe cycle.")
+	fmt.Println("  --retry-resolve <n>        Retry resolving target hostname after <n> consecutive failures.")
+	fmt.Println()
+	fmt.Println("SLA & ERROR HANDLING:")
+	fmt.Println("  --max-latency <ms>         Fail probe if latency exceeds threshold in milliseconds.")
+	fmt.Println("  --max-consecutive-fails <n> Stop probing after <n> consecutive failed probes.")
+	fmt.Println("  --retry <n>                Number of transient retry attempts per probe before failing.")
+	fmt.Println("  --retry-backoff <sec>      Initial retry backoff delay in seconds (default: 0.05).")
+	fmt.Println("  --retry-max-backoff <sec>  Maximum retry backoff delay in seconds (default: 2.0).")
+	fmt.Println("  --retry-jitter             Apply randomized jitter to exponential retry backoff.")
+	fmt.Println()
+	fmt.Println("PROTOCOL & PAYLOAD OPTIONS:")
+	fmt.Println("  --send <data>              Send specific payload string upon connection.")
+	fmt.Println("  --expect <data>            Expect specific response string in banner.")
+	fmt.Println("  --starttls                 Upgrade connection via STARTTLS (SMTP, IMAP, POP3).")
+	fmt.Println("  --fast-close               Use SO_LINGER=0 to avoid TIME_WAIT socket accumulation.")
+	fmt.Println("  --traceroute               Perform hop-by-hop Layer-4 route discovery.")
+	fmt.Println()
+	fmt.Println("DASHBOARD & WEB MONITORING:")
+	fmt.Println("  --dashboard                Open interactive live terminal TUI dashboard.")
+	fmt.Println("  --web                      Start embedded real-time web dashboard (default 127.0.0.1:3000).")
+	fmt.Println("  --web-addr <addr>          Custom listen address for web dashboard (e.g. :3000).")
+	fmt.Println("  --metrics-addr <addr>      Enable Prometheus metrics exporter on given address (e.g. :9100).")
+	fmt.Println("  --sparkline                Render live terminal latency sparklines.")
+	fmt.Println()
+	fmt.Println("OUTPUT & REPORTING:")
+	fmt.Println("  --output-format <format>   Export format: json, pretty_json, csv, tsv, sqlite, txt.")
+	fmt.Println("  --output-file <path>       Destination file path to save output report.")
+	fmt.Println("  --quiet                    Quiet mode: suppress per-probe lines, show only final summary.")
+	fmt.Println("  --show-failures-only       Show only failed probes in live output.")
+	fmt.Println("  --show-source-address      Show source IP and port used for probes.")
+	fmt.Println("  --timestamp                Show timestamp for each probe in output.")
+	fmt.Println("  --diags, --diagnostics     Show detailed protocol negotiation diagnostics.")
+	fmt.Println("  --no-color                 Do not colorize terminal output.")
+	fmt.Println()
+	fmt.Println("GENERAL:")
+	fmt.Println("  --help                     Show this help message and exit.")
+	fmt.Println("  --version                  Show version and exit.")
+	fmt.Println("  --check-updates            Check for newer releases on GitHub and exit.")
+	fmt.Println()
 
 	os.Exit(1)
 }

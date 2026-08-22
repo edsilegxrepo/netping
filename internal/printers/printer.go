@@ -3,10 +3,11 @@ package printers
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
-	"github.com/pouriyajamshidi/tcping/v3/internal/stats"
-	"github.com/pouriyajamshidi/tcping/v3/internal/utils"
+	"github.com/edsilegx/netping/pkg/stats"
+	"github.com/edsilegx/netping/pkg/utils"
 )
 
 // PrinterConfig holds all configuration options for Printer creation
@@ -16,8 +17,10 @@ type PrinterConfig struct {
 	NoColor           bool
 	WithTimestamp     bool
 	WithSourceAddress bool
+	WithDiags         bool
 	OutputDBPath      string
 	OutputCSVPath     string
+	OutputTSVPath     string
 	Target            string
 	Port              uint16
 }
@@ -28,6 +31,10 @@ func (p PrinterConfig) GetWithTimestamp() bool {
 
 func (p PrinterConfig) GetWithSourceAddress() bool {
 	return p.WithSourceAddress
+}
+
+func (p PrinterConfig) GetWithDiags() bool {
+	return p.WithDiags
 }
 
 // Printer defines a set of methods that any printer implementation must provide.
@@ -84,15 +91,21 @@ func NewPrinter(cfg PrinterConfig) (Printer, error) {
 		return NewJSONPrinter(cfg.PrettyJSON), nil
 
 	case cfg.OutputDBPath != "":
-		return NewDatabasePrinter(cfg.Target, string(cfg.Port), cfg.OutputDBPath)
+		return NewDatabasePrinter(cfg.Target, strconv.Itoa(int(cfg.Port)), cfg.OutputDBPath)
 
 	case cfg.OutputCSVPath != "":
 		return NewCSVPrinter(cfg.OutputCSVPath)
+
+	case cfg.OutputTSVPath != "":
+		return NewTSVPrinter(cfg.OutputTSVPath)
 
 	case cfg.NoColor:
 		return NewPlainPrinter(), nil
 
 	default:
+		if !EnableVirtualTerminalProcessing() {
+			return NewPlainPrinter(), nil
+		}
 		return NewColorPrinter(), nil
 	}
 }
@@ -107,13 +120,18 @@ func PrintStats(p Printer, s *stats.Statistics) {
 		utils.SetLongestDuration(s.StartOfUptime, time.Since(s.StartOfUptime), &s.LongestUptime)
 	}
 
-	s.RTTResults = calcMinAvgMaxRttTime(s.RTT)
+	s.RTTResults = CalcMinAvgMaxRttTime(s.RTT)
 
 	p.PrintStatistics(s)
 }
 
-// calcMinAvgMaxRttTime calculates min, avg and max RTT values
+// calcMinAvgMaxRttTime is an internal alias for CalcMinAvgMaxRttTime.
 func calcMinAvgMaxRttTime(timeArr []float32) stats.RTTResult {
+	return CalcMinAvgMaxRttTime(timeArr)
+}
+
+// CalcMinAvgMaxRttTime calculates min, avg, max, jitter, p95, and p99 RTT values
+func CalcMinAvgMaxRttTime(timeArr []float32) stats.RTTResult {
 	var result stats.RTTResult
 
 	arrLen := len(timeArr)
@@ -130,6 +148,9 @@ func calcMinAvgMaxRttTime(timeArr []float32) stats.RTTResult {
 	result.Min = slices.Min(timeArr)
 	result.Max = slices.Max(timeArr)
 	result.Average = sum / float32(arrLen)
+	result.Jitter = utils.CalculateJitter(timeArr)
+	result.P95 = utils.CalculatePercentile(timeArr, 95)
+	result.P99 = utils.CalculatePercentile(timeArr, 99)
 	result.HasResults = true
 
 	return result

@@ -10,7 +10,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/pouriyajamshidi/tcping/v3/internal/stats"
+	"github.com/edsilegx/netping/pkg/stats"
 )
 
 const (
@@ -67,7 +67,6 @@ func getDialAddress(DNSServer string) string {
 // or falls back to what is configured on the device if DNSServer is empty.
 // It helps bypass incorrect OS DNS cache entries.
 // DNSServer can be in 1.2.3.4 or 1.2.3.4:53 format.
-// See https://github.com/pouriyajamshidi/tcping/issues/416 for more info.
 func createDNSResolver(DNSServer string) *net.Resolver {
 	dialAddress := getDialAddress(DNSServer)
 
@@ -143,6 +142,23 @@ func unmapAddresses(ipAddrs []netip.Addr) []netip.Addr {
 	return ipList
 }
 
+// HasGlobalIPv6 checks whether the local system has at least one configured global IPv6 address.
+func HasGlobalIPv6() bool {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return false
+	}
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok {
+			ip := ipNet.IP
+			if ip.To4() == nil && ip.IsGlobalUnicast() && !ip.IsPrivate() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ResolveHostname handles hostname resolution with a timeout value of `DNSTimeout (2 seconds)`
 func (r *Resolver) ResolveHostname(hostname string) (netip.Addr, error) {
 	// Ensure the target isn't already an IP address
@@ -173,7 +189,23 @@ func (r *Resolver) ResolveHostname(hostname string) (netip.Addr, error) {
 			return netip.Addr{}, fmt.Errorf("%w: %s", ErrNoIPv6Address, hostname)
 		}
 	default:
-		filteredIPs = unmapAddresses(ipAddrs)
+		v4s := filterIPv4(ipAddrs)
+		v6s := filterIPv6(ipAddrs)
+
+		if len(v4s) > 0 && len(v6s) > 0 {
+			if !HasGlobalIPv6() {
+				filteredIPs = v4s
+			} else {
+				// Dual-stack: default to IPv4 unless -6 is requested
+				filteredIPs = v4s
+			}
+		} else if len(v4s) > 0 {
+			filteredIPs = v4s
+		} else if len(v6s) > 0 {
+			filteredIPs = v6s
+		} else {
+			filteredIPs = unmapAddresses(ipAddrs)
+		}
 	}
 
 	return selectRandomIP(filteredIPs)

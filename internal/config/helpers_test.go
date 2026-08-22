@@ -2,6 +2,9 @@ package config
 
 import (
 	"testing"
+
+	"github.com/edsilegx/netping/pkg/consts"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseHostPortArgs(t *testing.T) {
@@ -204,3 +207,119 @@ func TestCompareVersions(t *testing.T) {
 		})
 	}
 }
+
+func TestParseHostPort(t *testing.T) {
+	h, p := ParseHostPort("example.com:8080", 80)
+	if h != "example.com" || p != 8080 {
+		t.Errorf("expected example.com:8080, got %s:%d", h, p)
+	}
+
+	h, p = ParseHostPort("example.com", 443)
+	if h != "example.com" || p != 443 {
+		t.Errorf("expected example.com:443, got %s:%d", h, p)
+	}
+
+	h, p = ParseHostPort("example.com:invalid", 80)
+	if h != "example.com" || p != 80 {
+		t.Errorf("expected example.com:80, got %s:%d", h, p)
+	}
+}
+
+func TestConvertAndValidatePort(t *testing.T) {
+	p, err := convertAndValidatePort("8080")
+	if err != nil || p != 8080 {
+		t.Errorf("expected 8080, got %d, err: %v", p, err)
+	}
+
+	_, err = convertAndValidatePort("0")
+	if err == nil {
+		t.Errorf("expected error for port 0")
+	}
+
+	_, err = convertAndValidatePort("70000")
+	if err == nil {
+		t.Errorf("expected error for port 70000")
+	}
+
+	_, err = convertAndValidatePort("invalid")
+	if err == nil {
+		t.Errorf("expected error for invalid port")
+	}
+}
+
+func TestResolveTargetPool(t *testing.T) {
+	// 1. Single target (host + port)
+	t1, err := ResolveTargetPool("1.1.1.1", "443", "", "tcp", "")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(t1))
+	assert.Equal(t, "1.1.1.1", t1[0].Host)
+	assert.Equal(t, uint16(443), t1[0].Port)
+
+	// 2. Single target (URI)
+	t2, err := ResolveTargetPool("", "", "1.1.1.1:8443", "https", "")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(t2))
+	assert.Equal(t, "1.1.1.1", t2[0].Host)
+	assert.Equal(t, uint16(8443), t2[0].Port)
+
+	// 3. Multi-host sweep (single port)
+	t3, err := ResolveTargetPool("web1, web2, web3", "443", "", "https", "")
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(t3))
+	assert.Equal(t, "web1", t3[0].Host)
+	assert.Equal(t, "web2", t3[1].Host)
+	assert.Equal(t, "web3", t3[2].Host)
+	assert.Equal(t, uint16(443), t3[0].Port)
+
+	// 4. Multi-port sweep (single host)
+	t4, err := ResolveTargetPool("db1", "1433, 5432, 3306", "", "tcp", "")
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(t4))
+	assert.Equal(t, uint16(1433), t4[0].Port)
+	assert.Equal(t, uint16(5432), t4[1].Port)
+	assert.Equal(t, uint16(3306), t4[2].Port)
+
+	// 5. Multi-protocol auto-port sweep
+	t5, err := ResolveTargetPool("cs-main-wsl001", "", "", "ssh, mysql, postgresql, hana", "")
+	assert.NoError(t, err)
+	assert.Equal(t, 4, len(t5))
+	assert.Equal(t, consts.SSH, t5[0].Protocol)
+	assert.Equal(t, uint16(22), t5[0].Port)
+	assert.Equal(t, consts.MYSQL, t5[1].Protocol)
+	assert.Equal(t, uint16(3306), t5[1].Port)
+	assert.Equal(t, consts.POSTGRES, t5[2].Protocol)
+	assert.Equal(t, uint16(5432), t5[2].Port)
+	assert.Equal(t, consts.SAPHANA, t5[3].Protocol)
+	assert.Equal(t, uint16(30015), t5[3].Port)
+
+	// 6. Cartesian matrix (2 hosts x 2 ports)
+	t6, err := ResolveTargetPool("srv1, srv2", "80, 443", "", "http", "")
+	assert.NoError(t, err)
+	assert.Equal(t, 4, len(t6))
+	assert.Equal(t, "srv1", t6[0].Host)
+	assert.Equal(t, uint16(80), t6[0].Port)
+	assert.Equal(t, "srv1", t6[1].Host)
+	assert.Equal(t, uint16(443), t6[1].Port)
+	assert.Equal(t, "srv2", t6[2].Host)
+	assert.Equal(t, uint16(80), t6[2].Port)
+	assert.Equal(t, "srv2", t6[3].Host)
+	assert.Equal(t, uint16(443), t6[3].Port)
+
+	// 7. Heterogeneous URIs with schemes
+	t7, err := ResolveTargetPool("", "", "ssh://srv1:22, mysql://srv1:3306, https://srv2:8443", "", "")
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(t7))
+	assert.Equal(t, consts.SSH, t7[0].Protocol)
+	assert.Equal(t, uint16(22), t7[0].Port)
+	assert.Equal(t, consts.MYSQL, t7[1].Protocol)
+	assert.Equal(t, uint16(3306), t7[1].Port)
+	assert.Equal(t, consts.HTTPS, t7[2].Protocol)
+	assert.Equal(t, uint16(8443), t7[2].Port)
+
+	// 8. Error when no targets are supplied
+	_, err = ResolveTargetPool("", "", "", "", "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--host, --port, or --uri")
+}
+
+

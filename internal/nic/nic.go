@@ -49,16 +49,24 @@ func NewNetworkInterface(
 	} else { // we are probably given an interface name
 		iface, err := net.InterfaceByName(sourceAddress)
 		if err != nil {
-			return NetworkInterface{}, fmt.Errorf("Interface %s was not found\n", sourceAddress)
+			return NetworkInterface{}, fmt.Errorf("interface %s was not found", sourceAddress)
 		}
 
 		netAddrs, err := iface.Addrs()
 		if err != nil {
-			return NetworkInterface{}, fmt.Errorf("Unable to get IP addresses of %s", iface.Name)
+			return NetworkInterface{}, fmt.Errorf("unable to get IP addresses of %s", iface.Name)
 		}
 
 		for _, netAddr := range netAddrs {
-			if ip := netAddr.(*net.IPNet).IP; ip != nil {
+			var ip net.IP
+			switch v := netAddr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+
+			if ip != nil {
 				netIPAddr, err := netip.ParseAddr(ip.String())
 				if err != nil {
 					continue
@@ -80,7 +88,7 @@ func NewNetworkInterface(
 		}
 
 		if interfaceAddress == nil {
-			return NetworkInterface{}, fmt.Errorf("Unable to find an IP address associated with %s", iface.Name)
+			return NetworkInterface{}, fmt.Errorf("unable to find an IP address associated with %s", iface.Name)
 		}
 	}
 

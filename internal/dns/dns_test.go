@@ -7,8 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pouriyajamshidi/tcping/v3/internal/config"
-	"github.com/pouriyajamshidi/tcping/v3/internal/probers"
+	"github.com/edsilegx/netping/pkg/stats"
 )
 
 func TestDNSDialAddress(t *testing.T) {
@@ -116,80 +115,105 @@ func TestCreateDNSResolver_NoOverride(t *testing.T) {
 	}
 }
 
-// dummyPrinter is a fake test implementation
-// of a printer that does nothing.
-type dummyPrinter struct{}
+func TestFilterIPv4(t *testing.T) {
+	ip4 := netip.MustParseAddr("8.8.8.8")
+	ip6 := netip.MustParseAddr("2001:4860:4860::8888")
 
-func (fp *dummyPrinter) PrintStart(_ string, _ uint16) {}
-func (fp *dummyPrinter) PrintProbeSuccess(_ time.Time, _ string, _ config.Config, _ uint, _ string) {
-}
-func (fp *dummyPrinter) PrintProbeFailure(_ time.Time, _ config.Config, _ uint) {}
-func (fp *dummyPrinter) PrintRetryingToResolve(_ string)                        {}
-func (fp *dummyPrinter) PrintTotalDownTime(_ time.Duration)                     {}
-func (fp *dummyPrinter) PrintStatistics(_ probers.Tcping)                       {}
-func (fp *dummyPrinter) PrintError(_ string, _ ...any)                          {}
-
-// createTestStats should be used to create new stats structs.
-// it uses "127.0.0.1:12345" as default values, because
-// [testServerListen] use the same values.
-// It'll call t.Errorf if netip.ParseAddr has failed.
-func createTestStats(t *testing.T) *probers.Tcping {
-	_, err := netip.ParseAddr("127.0.0.1")
-	s := probers.Tcping{
-		Ticker: time.NewTicker(time.Second),
+	filtered := filterIPv4([]netip.Addr{ip4, ip6})
+	if len(filtered) != 1 || filtered[0] != ip4 {
+		t.Errorf("filterIPv4() = %v, want [%v]", filtered, ip4)
 	}
+}
+
+func TestFilterIPv6(t *testing.T) {
+	ip4 := netip.MustParseAddr("8.8.8.8")
+	ip6 := netip.MustParseAddr("2001:4860:4860::8888")
+
+	filtered := filterIPv6([]netip.Addr{ip4, ip6})
+	if len(filtered) != 1 || filtered[0] != ip6 {
+		t.Errorf("filterIPv6() = %v, want [%v]", filtered, ip6)
+	}
+}
+
+func TestSelectRandomIP(t *testing.T) {
+	t.Run("empty list", func(t *testing.T) {
+		_, err := selectRandomIP(nil)
+		if err != ErrNoIPAddresses {
+			t.Errorf("expected ErrNoIPAddresses, got %v", err)
+		}
+	})
+
+	t.Run("valid list", func(t *testing.T) {
+		ip1 := netip.MustParseAddr("1.1.1.1")
+		ip2 := netip.MustParseAddr("8.8.8.8")
+		selected, err := selectRandomIP([]netip.Addr{ip1, ip2})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if selected != ip1 && selected != ip2 {
+			t.Errorf("unexpected selected IP: %v", selected)
+		}
+	})
+}
+
+func TestResolveHostname_DirectIP(t *testing.T) {
+	r := NewResolver("", time.Second, false, false)
+	ip, err := r.ResolveHostname("192.168.1.50")
 	if err != nil {
-		t.Errorf("ip parse: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-
-	return &s
+	if ip.String() != "192.168.1.50" {
+		t.Errorf("expected 192.168.1.50, got %v", ip)
+	}
 }
 
-func TestSelectResolvedIPv4(t *testing.T) {
-	userInputV4 := config.Config{
-		UseIPv4: true,
+func TestResolveHostname_Localhost(t *testing.T) {
+	r := NewResolver("", time.Second, true, false)
+	ip, err := r.ResolveHostname("localhost")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ip.IsLoopback() {
+		t.Errorf("expected loopback IP for localhost, got %v", ip)
 	}
 
-	stats := createTestStats(t)
-	stats.Options = userInputV4
+	// Test default dual-stack resolution
+	rDual := NewResolver("", time.Second, false, false)
+	_, _ = rDual.ResolveHostname("localhost")
 
-	var (
-		ip1 = netip.MustParseAddr("172.20.10.238")
-		ip2 = netip.MustParseAddr("8.8.8.8")
-	)
+	// Test IPv6 resolution
+	r6 := NewResolver("", time.Second, false, true)
+	_, _ = r6.ResolveHostname("localhost")
+}
 
-	t.Run("IPv4 Selection", func(t *testing.T) {
-		actual, _ := randomlySelectResolvedIP([]netip.Addr{ip1, ip2}, true, false)
-
-		if !actual.IsValid() {
-			t.Errorf("Expected an IP but got invalid address")
-		}
-		if actual != ip1 && actual != ip2 {
-			t.Errorf("Expected an IP but got invalid address")
-		}
+func TestRetryResolveHostname(t *testing.T) {
+	r := NewResolver("", time.Second, false, false)
+	s := stats.NewStatistics(stats.Options{
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     80,
 	})
-}
 
-func TestSelectResolvedIPv6(t *testing.T) {
-	userInputV6 := config.Config{
-		UseIPv6: true,
+	err := r.RetryResolveHostname(s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-
-	stats := createTestStats(t)
-	stats.Options = userInputV6
-
-	var (
-		ip1 = netip.MustParseAddr("2001:0db8:85a3:0000:0000:8a2e:0370:7334")
-		ip2 = netip.MustParseAddr("2001:4860:4860::8888")
-	)
-
-	t.Run("IPv6 Selection", func(t *testing.T) {
-		actual, _ := randomlySelectResolvedIP([]netip.Addr{ip1, ip2}, false, true)
-		if !actual.IsValid() {
-			t.Errorf("Expected an IP but got invalid address")
-		}
-		if actual != ip1 && actual != ip2 {
-			t.Errorf("Expected an IP but got invalid address")
-		}
-	})
+	if s.IP.String() != "127.0.0.1" {
+		t.Errorf("expected 127.0.0.1, got %v", s.IP)
+	}
 }
+
+func TestHasGlobalIPv6(t *testing.T) {
+	// Must run cleanly on both IPv4-only and IPv6-enabled systems
+	_ = HasGlobalIPv6()
+}
+
+func TestUnmapAddresses(t *testing.T) {
+	ip4 := netip.MustParseAddr("192.168.1.1")
+	mapped := netip.MustParseAddr("::ffff:192.168.1.1")
+	unmapped := unmapAddresses([]netip.Addr{mapped})
+	if len(unmapped) != 1 || unmapped[0] != ip4 {
+		t.Errorf("expected %v, got %v", ip4, unmapped)
+	}
+}
+

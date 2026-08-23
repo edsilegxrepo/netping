@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -1251,7 +1252,46 @@ func (d *MultiDashboardPrinter) OnProbe(target string, proto string, rtt time.Du
 // SPARKLINE & STATISTICAL HELPERS
 // ---------------------------------------------------------------------
 
-var sparkBlocks = []rune{'\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'}
+var (
+	modernSparkBlocks = []rune{'\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'}
+	legacySparkBlocks = []rune{'_', '\u2584', '\u2588'}
+)
+
+// isLegacyWindowsConsole returns true if running on Windows inside legacy conhost (e.g. cmd.exe)
+// without native DirectWrite / Cascadia font fractional block character support.
+func isLegacyWindowsConsole() bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	if os.Getenv("NETPING_COMPAT_GLYPHS") == "1" || os.Getenv("NETPING_LEGACY_CONSOLE") == "1" {
+		return true
+	}
+	if os.Getenv("NETPING_COMPAT_GLYPHS") == "0" || os.Getenv("NETPING_LEGACY_CONSOLE") == "0" {
+		return false
+	}
+	if os.Getenv("WT_SESSION") != "" ||
+		os.Getenv("WT_PROFILE_ID") != "" ||
+		os.Getenv("TERM_PROGRAM") != "" ||
+		os.Getenv("TERMINAL_EMULATOR") != "" ||
+		os.Getenv("ConEmuPID") != "" ||
+		os.Getenv("WEZTERM_PANE") != "" ||
+		os.Getenv("ALACRITTY_LOG") != "" ||
+		os.Getenv("MSYSTEM") != "" {
+		return false
+	}
+	term := os.Getenv("TERM")
+	if term != "" && (strings.Contains(term, "xterm") || strings.Contains(term, "256color") || strings.Contains(term, "alacritty")) {
+		return false
+	}
+	return true
+}
+
+func getSparkBlocks() []rune {
+	if isLegacyWindowsConsole() {
+		return legacySparkBlocks
+	}
+	return modernSparkBlocks
+}
 
 func renderLatencyBars(rtts []float64, width int) string {
 	if width <= 0 {
@@ -1270,6 +1310,7 @@ func renderLatencyBars(rtts []float64, width int) string {
 		}
 	}
 
+	blocks := getSparkBlocks()
 	var b strings.Builder
 	pad := width - len(slice)
 	for i := 0; i < pad; i++ {
@@ -1281,9 +1322,9 @@ func renderLatencyBars(rtts []float64, width int) string {
 			b.WriteString(styleRed.Render("."))
 			continue
 		}
-		idx := int((v / maxVal) * float64(len(sparkBlocks)-1))
-		if idx >= len(sparkBlocks) {
-			idx = len(sparkBlocks) - 1
+		idx := int((v / maxVal) * float64(len(blocks)-1))
+		if idx >= len(blocks) {
+			idx = len(blocks) - 1
 		}
 		if idx < 0 {
 			idx = 0
@@ -1294,7 +1335,7 @@ func renderLatencyBars(rtts []float64, width int) string {
 		} else if v >= 50 {
 			st = styleAmber
 		}
-		b.WriteString(st.Render(string(sparkBlocks[idx])))
+		b.WriteString(st.Render(string(blocks[idx])))
 	}
 
 	return b.String()
@@ -1334,6 +1375,7 @@ func renderSparklineTrend(rtts []float64, width int) string {
 		rangeVal = 1.0
 	}
 
+	blocks := getSparkBlocks()
 	var b strings.Builder
 	pad := width - len(slice)
 	for i := 0; i < pad; i++ {
@@ -1347,12 +1389,12 @@ func renderSparklineTrend(rtts []float64, width int) string {
 		}
 		var idx int
 		if maxVal == minVal {
-			idx = len(sparkBlocks) / 2
+			idx = len(blocks) / 2
 		} else {
-			idx = int(((v - minVal) / rangeVal) * float64(len(sparkBlocks)-1))
+			idx = int(((v - minVal) / rangeVal) * float64(len(blocks)-1))
 		}
-		if idx >= len(sparkBlocks) {
-			idx = len(sparkBlocks) - 1
+		if idx >= len(blocks) {
+			idx = len(blocks) - 1
 		}
 		if idx < 0 {
 			idx = 0
@@ -1363,7 +1405,7 @@ func renderSparklineTrend(rtts []float64, width int) string {
 		} else if v >= 50 {
 			st = styleAmber
 		}
-		b.WriteString(st.Render(string(sparkBlocks[idx])))
+		b.WriteString(st.Render(string(blocks[idx])))
 	}
 
 	return b.String()
@@ -1396,6 +1438,12 @@ func renderMultiLineBarChart(rtts []float64, plotWidth int, height int) string {
 		} else {
 			samples[i] = -1 // No data
 		}
+	}
+
+	isLegacy := isLegacyWindowsConsole()
+	lowChar := "\u2581"
+	if isLegacy {
+		lowChar = "_"
 	}
 
 	var lines []string
@@ -1432,7 +1480,7 @@ func renderMultiLineBarChart(rtts []float64, plotWidth int, height int) string {
 			} else if norm >= float64(row)+0.5 {
 				line.WriteString(colorStyle.Render("▄"))
 			} else if norm >= float64(row)+0.15 {
-				line.WriteString(colorStyle.Render(" "))
+				line.WriteString(colorStyle.Render(lowChar))
 			} else {
 				line.WriteString(" ")
 			}

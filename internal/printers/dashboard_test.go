@@ -131,3 +131,29 @@ func TestMultiDashboardPrinterLifecycle(t *testing.T) {
 
 	mdp.Close()
 }
+
+func TestSparklineRenderingModes(t *testing.T) {
+	t.Setenv("NETPING_COMPAT_GLYPHS", "1")
+	assert.True(t, isLegacyWindowsConsole())
+	blocksLegacy := getSparkBlocks()
+	assert.Equal(t, legacySparkBlocks, blocksLegacy)
+
+	rtts := []float64{5.0, 15.0, 50.0, 120.0, 200.0}
+	barsLegacy := renderLatencyBars(rtts, 10)
+	assert.NotEmpty(t, barsLegacy)
+
+	sparkLegacy := renderSparklineTrend(rtts, 10)
+	assert.NotEmpty(t, sparkLegacy)
+
+	chartLegacy := renderMultiLineBarChart(rtts, 20, 5)
+	assert.NotEmpty(t, chartLegacy)
+
+	t.Setenv("NETPING_COMPAT_GLYPHS", "0")
+	assert.False(t, isLegacyWindowsConsole())
+	blocksModern := getSparkBlocks()
+	assert.Equal(t, modernSparkBlocks, blocksModern)
+
+	barsModern := renderLatencyBars(rtts, 10)
+	assert.NotEmpty(t, barsModern)
+}
+

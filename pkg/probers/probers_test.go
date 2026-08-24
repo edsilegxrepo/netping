@@ -1,3 +1,9 @@
+// Test Strategy (pkg/probers - Protocol Diagnostics):
+//  1. Protocol Handshake Simulation: Spin up mock TCP, TLS, HTTP, DNS, DB, Mail, Queue, and Storage servers.
+//  2. Wire-Level Frame Inspection: Validate binary framing, BER/ASN.1 structures, BSON serialization, and TNS negotiation.
+//  3. Timing & TTFB Metrics: Verify RTT, DNS time, TCP connect time, TLS handshake time, and TTFB calculations.
+//  4. Diagnostic Header Parsing: Validate TLS ciphers, certificate expiration, HTTP headers, and DB banner extraction.
+//  5. Error Taxonomy & Resilience: Test connection timeouts, malformed server responses, and fast connection resets.
 package probers
 
 import (
@@ -391,7 +397,7 @@ func TestDBing_MSSQL(t *testing.T) {
 				body := []byte{
 					0x00, 0x00, 0x0b, 0x00, 0x06, // Option 0: VERSION offset 11, len 6
 					0x01, 0x00, 0x11, 0x00, 0x01, // Option 1: ENCRYPTION offset 17, len 1
-					0xff,                         // Terminator
+					0xff,                               // Terminator
 					0x10, 0x00, 0x10, 0x13, 0x00, 0x01, // Version payload: 16.0.4115.1 (SQL Server 2022)
 					0x01, // Encryption: ENCRYPT_ON (1)
 				}
@@ -1043,7 +1049,7 @@ func TestSMBing(t *testing.T) {
 		// Context at offset 136 (SMB2_ENCRYPTION_CAPABILITIES = 0x0002)
 		ctxOffset := 136
 		binary.LittleEndian.PutUint16(respBody[ctxOffset:ctxOffset+2], 0x0002) // Type
-		binary.LittleEndian.PutUint16(respBody[ctxOffset+2:ctxOffset+4], 4)     // Length
+		binary.LittleEndian.PutUint16(respBody[ctxOffset+2:ctxOffset+4], 4)    // Length
 		binary.LittleEndian.PutUint16(respBody[ctxOffset+8:ctxOffset+10], 1)   // CipherCount
 		binary.LittleEndian.PutUint16(respBody[ctxOffset+10:ctxOffset+12], 2)  // AES-128-GCM
 
@@ -1094,8 +1100,8 @@ func TestSSHing_KEXINIT(t *testing.T) {
 
 		// Build a mock SSH_MSG_KEXINIT packet
 		var payload bytes.Buffer
-		payload.WriteByte(20)              // msg type = SSH_MSG_KEXINIT
-		payload.Write(make([]byte, 16))    // cookie (16 bytes)
+		payload.WriteByte(20)           // msg type = SSH_MSG_KEXINIT
+		payload.Write(make([]byte, 16)) // cookie (16 bytes)
 
 		// helper to write SSH name-list
 		writeNameList := func(list string) {
@@ -1438,9 +1444,9 @@ func TestSMBing_MockServer(t *testing.T) {
 		resp[0] = 0x00
 		resp[1] = 0x00
 		resp[2] = 0x00
-		resp[3] = 0x40 // NetBIOS length 64
-		copy(resp[4:8], []byte{0xfe, 'S', 'M', 'B'}) // SMB2 magic
-		binary.LittleEndian.PutUint16(resp[8:10], 64) // StructureSize 64
+		resp[3] = 0x40                                         // NetBIOS length 64
+		copy(resp[4:8], []byte{0xfe, 'S', 'M', 'B'})           // SMB2 magic
+		binary.LittleEndian.PutUint16(resp[8:10], 64)          // StructureSize 64
 		binary.LittleEndian.PutUint16(resp[70-4:72-4], 0x0311) // Dialect 3.1.1
 		conn.Write(resp)
 	}()
@@ -1524,8 +1530,8 @@ func TestMemcacheding_MockServer(t *testing.T) {
 
 type dummyPrinter struct{}
 
-func (d *dummyPrinter) PrintProbeSuccess(s *stats.Statistics) {}
-func (d *dummyPrinter) PrintProbeFailure(s *stats.Statistics) {}
+func (d *dummyPrinter) PrintProbeSuccess(s *stats.Statistics)  {}
+func (d *dummyPrinter) PrintProbeFailure(s *stats.Statistics)  {}
 func (d *dummyPrinter) PrintTotalDownTime(s *stats.Statistics) {}
 func (d *dummyPrinter) PrintRetryingToResolve(hostname string) {}
 func (d *dummyPrinter) PrintError(format string, args ...any)  {}
@@ -1582,13 +1588,13 @@ func TestDBing_MockMySQL(t *testing.T) {
 		versionStr := "8.0.36-MySQL"
 		payload := []byte{0x0a} // protocol 10
 		payload = append(payload, []byte(versionStr)...)
-		payload = append(payload, 0x00) // null terminator
+		payload = append(payload, 0x00)                   // null terminator
 		payload = append(payload, 0x01, 0x00, 0x00, 0x00) // connection ID
-		payload = append(payload, make([]byte, 8)...)      // auth plugin data part 1
-		payload = append(payload, 0x00)                    // filter
-		payload = append(payload, 0xff, 0xf7)              // capability flags
-		payload = append(payload, 0x21)                    // character set utf8mb4
-		payload = append(payload, 0x02, 0x00)              // status flags
+		payload = append(payload, make([]byte, 8)...)     // auth plugin data part 1
+		payload = append(payload, 0x00)                   // filter
+		payload = append(payload, 0xff, 0xf7)             // capability flags
+		payload = append(payload, 0x21)                   // character set utf8mb4
+		payload = append(payload, 0x02, 0x00)             // status flags
 
 		pkt := make([]byte, 4+len(payload))
 		pkt[0] = byte(len(payload) & 0xff)
@@ -1808,9 +1814,9 @@ func TestDBing_MockMSSQL(t *testing.T) {
 		body := []byte{
 			0x00, 0x00, 0x0b, 0x00, 0x06, // Option 0: VERSION offset 11, len 6
 			0x01, 0x00, 0x11, 0x00, 0x01, // Option 1: ENCRYPTION offset 17, len 1
-			0xff,                         // Terminator
+			0xff,                               // Terminator
 			0x10, 0x00, 0x03, 0xe8, 0x00, 0x00, // Version: 16.0.1000 (SQL Server 2022)
-			0x00,                         // ENCRYPT_OFF
+			0x00, // ENCRYPT_OFF
 		}
 		header := []byte{0x04, 0x01, 0x00, byte(8 + len(body)), 0x00, 0x00, 0x00, 0x00}
 		conn.Write(append(header, body...))
@@ -1896,9 +1902,9 @@ func TestDBing_MockMongoDB(t *testing.T) {
 		var bsonDoc bytes.Buffer
 		bsonDoc.WriteByte(0x02) // string
 		bsonDoc.WriteString("version\x00\x06\x00\x00\x007.0.5\x00")
-		bsonDoc.WriteByte(0x10) // int32
+		bsonDoc.WriteByte(0x10)                                   // int32
 		bsonDoc.WriteString("maxWireVersion\x00\x15\x00\x00\x00") // 21
-		bsonDoc.WriteByte(0x00) // end doc
+		bsonDoc.WriteByte(0x00)                                   // end doc
 
 		docBytes := bsonDoc.Bytes()
 		totalDocLen := uint32(len(docBytes) + 4)
@@ -1915,10 +1921,10 @@ func TestDBing_MockMongoDB(t *testing.T) {
 		totalMsgLen := uint32(16 + 4 + len(section0))
 		msgHeader := make([]byte, 20)
 		binary.LittleEndian.PutUint32(msgHeader[0:4], totalMsgLen)
-		binary.LittleEndian.PutUint32(msgHeader[4:8], 2) // Response ID 2
-		binary.LittleEndian.PutUint32(msgHeader[8:12], 1) // ResponseTo 1
+		binary.LittleEndian.PutUint32(msgHeader[4:8], 2)      // Response ID 2
+		binary.LittleEndian.PutUint32(msgHeader[8:12], 1)     // ResponseTo 1
 		binary.LittleEndian.PutUint32(msgHeader[12:16], 2013) // OP_MSG (2013)
-		binary.LittleEndian.PutUint32(msgHeader[16:20], 0) // FlagBits 0
+		binary.LittleEndian.PutUint32(msgHeader[16:20], 0)    // FlagBits 0
 
 		conn.Write(append(msgHeader, section0...))
 	}()
@@ -2359,6 +2365,76 @@ func TestHTTPing_MockHTTPSServer(t *testing.T) {
 	assert.Contains(t, res.Diagnostics, "Caddy")
 }
 
+func TestHTTPing_SendDataAndExpectData(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, _ := io.ReadAll(r.Body)
+			if string(body) == `{"health":"ping"}` {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"status":"healthy","uptime":3600}`))
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("bad payload"))
+			return
+		}
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("pong-response-body-ready"))
+			return
+		}
+		// Default HEAD
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	parts := strings.Split(strings.TrimPrefix(ts.URL, "http://"), ":")
+	portNum, _ := strconv.Atoi(parts[1])
+
+	// 1. Test POST with SendData and ExpectData matching
+	postProber := NewHTTPing(HTTPOptions{
+		Hostname:   parts[0],
+		IP:         netip.MustParseAddr(parts[0]),
+		Port:       uint16(portNum),
+		Protocol:   consts.HTTP,
+		Timeout:    2 * time.Second,
+		SendData:   `{"health":"ping"}`,
+		ExpectData: `"status":"healthy"`,
+	})
+	postRes := postProber.Ping(context.Background())
+	assert.NoError(t, postRes.Err)
+	assert.Equal(t, 200, postRes.HTTPStatus)
+	assert.Contains(t, postRes.Diagnostics, `Sent: 17B`)
+	assert.Contains(t, postRes.Diagnostics, `Matched: "\"status\":\"healthy\""`)
+
+	// 2. Test GET with ExpectData success
+	getProber := NewHTTPing(HTTPOptions{
+		Hostname:   parts[0],
+		IP:         netip.MustParseAddr(parts[0]),
+		Port:       uint16(portNum),
+		Protocol:   consts.HTTP,
+		Timeout:    2 * time.Second,
+		ExpectData: "pong-response",
+	})
+	getRes := getProber.Ping(context.Background())
+	assert.NoError(t, getRes.Err)
+	assert.Equal(t, 200, getRes.HTTPStatus)
+	assert.Contains(t, getRes.Diagnostics, `Matched: "pong-response"`)
+
+	// 3. Test GET with ExpectData mismatch
+	mismatchProber := NewHTTPing(HTTPOptions{
+		Hostname:   parts[0],
+		IP:         netip.MustParseAddr(parts[0]),
+		Port:       uint16(portNum),
+		Protocol:   consts.HTTP,
+		Timeout:    2 * time.Second,
+		ExpectData: "missing-token",
+	})
+	mismatchRes := mismatchProber.Ping(context.Background())
+	assert.Error(t, mismatchRes.Err)
+	assert.Contains(t, mismatchRes.Err.Error(), `expected "missing-token" in response`)
+}
+
 func TestFormatBytesSize(t *testing.T) {
 	assert.Equal(t, "1.5GB", formatBytesSize("1610612736"))
 	assert.Equal(t, "50MB", formatBytesSize("52428800"))
@@ -2444,7 +2520,7 @@ func TestMemcached_FormatBytes(t *testing.T) {
 }
 
 func TestSMB_BuildMultiProtocolNegotiatePacket(t *testing.T) {
-	pkt := buildMultiProtocolNegotiatePacket()
+	pkt := BuildMultiProtocolNegotiatePacket()
 	assert.NotEmpty(t, pkt)
 	assert.True(t, len(pkt) > 30)
 }
@@ -3184,6 +3260,7 @@ func TestCassandra_MockPing(t *testing.T) {
 		// Send READY response (9 bytes header: version 0x84, stream 1, opcode 0x02 READY)
 		resp := []byte{0x84, 0x00, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00}
 		_, _ = conn.Write(resp)
+		time.Sleep(50 * time.Millisecond)
 	}()
 
 	tcpAddr := ln.Addr().(*net.TCPAddr)
@@ -3577,8 +3654,8 @@ func TestOracle_MockPing(t *testing.T) {
 		// Send TNS ACCEPT packet (length 16, type 2)
 		tnsAccept := []byte{
 			0x00, 0x10, 0x00, 0x00, // Length 16
-			0x02,                   // Type 2: ACCEPT
-			0x00, 0x00, 0x00,       // Reserved
+			0x02,             // Type 2: ACCEPT
+			0x00, 0x00, 0x00, // Reserved
 			0x01, 0x3c, 0x01, 0x2c, // Version 316, Compatible 300
 			0x00, 0x00, 0x00, 0x00, // Options
 		}
@@ -3780,11 +3857,3 @@ func TestOracle_Refuse_Redirect(t *testing.T) {
 	assert.NoError(t, res2.Err)
 	assert.Contains(t, res2.Diagnostics, "REDIRECT")
 }
-
-
-
-
-
-
-
-

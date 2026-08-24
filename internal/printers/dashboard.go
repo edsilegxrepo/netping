@@ -23,16 +23,15 @@ import (
 // ---------------------------------------------------------------------
 
 var (
-	colorBorder   = lipgloss.Color("60")  // Slate blue
-	colorHeader   = lipgloss.Color("255") // Bright white
-	colorDim      = lipgloss.Color("244") // Muted gray
-	colorCyan     = lipgloss.Color("75")  // Bright cyan
-	colorTeal     = lipgloss.Color("73")  // Soft teal
-	colorGreen    = lipgloss.Color("71")  // Muted green
-	colorRed      = lipgloss.Color("167") // Soft coral red
-	colorAmber    = lipgloss.Color("221") // Soft amber
-	colorSubtleBg = lipgloss.Color("236") // Dark card bg
-	colorDivider  = lipgloss.Color("239") // Inner divider line
+	colorBorder  = lipgloss.Color("60")  // Slate blue
+	colorHeader  = lipgloss.Color("255") // Bright white
+	colorDim     = lipgloss.Color("244") // Muted gray
+	colorCyan    = lipgloss.Color("75")  // Bright cyan
+	colorTeal    = lipgloss.Color("73")  // Soft teal
+	colorGreen   = lipgloss.Color("71")  // Muted green
+	colorRed     = lipgloss.Color("167") // Soft coral red
+	colorAmber   = lipgloss.Color("221") // Soft amber
+	colorDivider = lipgloss.Color("239") // Inner divider line
 
 	styleHeader = lipgloss.NewStyle().
 			Bold(true).
@@ -67,7 +66,7 @@ var (
 // ---------------------------------------------------------------------
 
 type singleProbeMsg struct {
-	stat        stats.Statistics
+	stat        *stats.Statistics
 	isSuccess   bool
 	failReason  string
 	timestamp   time.Time
@@ -109,30 +108,34 @@ func renderExportModal(state modalState, selectedFormat int, inputPath string, b
 		modalInnerW = boxW - 4
 	}
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorHeader).PaddingBottom(1)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorHeader)
 	cardStyle := lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorCyan).
 		Padding(1, 2).
-		Width(modalInnerW)
+		Width(modalInnerW).
+		Align(lipgloss.Left)
 
 	var content string
-	if state == modalSelectFormat {
+	switch state {
+	case modalSelectFormat:
 		var sb strings.Builder
-		sb.WriteString(titleStyle.Render("EXPORT DATA - CHOOSE FORMAT") + "\n\n")
+		sb.WriteString(titleStyle.Render("EXPORT TELEMETRY DATA") + "\n\n")
+		sb.WriteString(styleDim.Render("Select export format:") + "\n")
 		for i, name := range FormatNames {
+			ext := FormatExtensions[i]
 			if i == selectedFormat {
-				sb.WriteString(fmt.Sprintf("%s %s\n", styleCyan.Render("▶"), styleCyan.Bold(true).Render(fmt.Sprintf("[%d] %s", i+1, name))))
+				fmt.Fprintf(&sb, "  %s %s %s\n", styleCyan.Render("▶"), styleCyan.Bold(true).Render(name), styleDim.Render(ext))
 			} else {
-				sb.WriteString(fmt.Sprintf("  %s\n", styleDim.Render(fmt.Sprintf("[%d] %s", i+1, name))))
+				fmt.Fprintf(&sb, "    %s %s\n", styleDim.Render(name), styleDim.Render(ext))
 			}
 		}
 		sb.WriteString("\n" + styleDim.Render("[↑/↓/1-6] Select  •  [Enter] Next  •  [Esc] Cancel"))
 		content = sb.String()
-	} else if state == modalInputPath {
+	case modalInputPath:
 		var sb strings.Builder
 		sb.WriteString(titleStyle.Render("EXPORT DATA - DESTINATION FILE") + "\n\n")
-		sb.WriteString(fmt.Sprintf("%s %s\n\n", styleDim.Render("Format:"), styleTeal.Render(FormatNames[selectedFormat])))
+		fmt.Fprintf(&sb, "%s %s\n\n", styleDim.Render("Format:"), styleTeal.Render(FormatNames[selectedFormat]))
 		sb.WriteString(styleDim.Render("Enter Destination File Path:") + "\n")
 		sb.WriteString(styleCyan.Render("> ") + styleHeader.Render(inputPath) + styleCyan.Render("█") + "\n\n")
 		sb.WriteString(styleDim.Render("[Enter] Confirm & Save  •  [Esc] Cancel"))
@@ -150,7 +153,7 @@ type singleDashboardModel struct {
 	target         string
 	port           uint16
 	protocol       string
-	stats          stats.Statistics
+	stats          *stats.Statistics
 	rawStats       *stats.Statistics
 	recentRTTs     []float64
 	recentProbes   []string
@@ -166,13 +169,43 @@ type singleDashboardModel struct {
 	flashTime      time.Time
 }
 
-func newSingleDashboardModel(target string, port uint16, protocol string, initialStats *stats.Statistics) *singleDashboardModel {
-	st := stats.Statistics{}
-	if initialStats != nil {
-		initialStats.Mu.RLock()
-		st = *initialStats
-		initialStats.Mu.RUnlock()
+// cloneStats creates a safe deep copy of stats.Statistics without copying the internal mutex.
+func cloneStats(s *stats.Statistics) *stats.Statistics {
+	if s == nil {
+		return &stats.Statistics{}
 	}
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+	return &stats.Statistics{
+		Hostname:                  s.Hostname,
+		Port:                      s.Port,
+		IP:                        s.IP,
+		Protocol:                  s.Protocol,
+		TotalSuccessfulProbes:     s.TotalSuccessfulProbes,
+		TotalUnsuccessfulProbes:   s.TotalUnsuccessfulProbes,
+		OngoingSuccessfulProbes:   s.OngoingSuccessfulProbes,
+		OngoingUnsuccessfulProbes: s.OngoingUnsuccessfulProbes,
+		LastSuccessfulProbe:       s.LastSuccessfulProbe,
+		LastUnsuccessfulProbe:     s.LastUnsuccessfulProbe,
+		StartTime:                 s.StartTime,
+		EndTime:                   s.EndTime,
+		RTT:                       slices.Clone(s.RTT),
+		LatestRTT:                 s.LatestRTT,
+		MinRTT:                    s.MinRTT,
+		MaxRTT:                    s.MaxRTT,
+		SumRTT:                    s.SumRTT,
+		CountRTT:                  s.CountRTT,
+		Jitter:                    s.Jitter,
+		LatestDiagnostics:         s.LatestDiagnostics,
+		LastFailureReason:         s.LastFailureReason,
+		WithDiags:                 s.WithDiags,
+		RTTResults:                s.RTTResults,
+		HasResults:                s.HasResults,
+	}
+}
+
+func newSingleDashboardModel(target string, port uint16, protocol string, initialStats *stats.Statistics) *singleDashboardModel {
+	st := cloneStats(initialStats)
 	w, h, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil || w <= 0 || h <= 0 {
 		w, h = 80, 24
@@ -254,7 +287,7 @@ func (m *singleDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				target := m.target
 				port := m.port
 				proto := m.protocol
-				statCopy := m.stats
+				statCopy := cloneStats(m.stats)
 				historyCopy := slices.Clone(m.probeHistory)
 				fmtIdx := ExportFormat(m.selectedFormat)
 				destPath := m.inputPath
@@ -262,7 +295,7 @@ func (m *singleDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.flashMsg = styleDim.Render("Saving export...")
 				m.flashTime = time.Now()
 				return m, func() tea.Msg {
-					err := ExportSingleTarget(target, port, proto, &statCopy, historyCopy, fmtIdx, destPath)
+					err := ExportSingleTarget(target, port, proto, statCopy, historyCopy, fmtIdx, destPath)
 					return exportResultMsg{err: err, path: destPath}
 				}
 			case tea.KeyBackspace:
@@ -308,7 +341,7 @@ func (m *singleDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 
 	case singleProbeMsg:
-		m.stats = msg.stat
+		m.stats = cloneStats(msg.stat)
 		rttVal := float64(msg.rtt)
 		if !msg.isSuccess {
 			rttVal = 0
@@ -1112,9 +1145,7 @@ func (d *DashboardPrinter) PrintProbeSuccess(s *stats.Statistics) {
 		return
 	}
 
-	s.Mu.RLock()
-	statCopy := *s
-	s.Mu.RUnlock()
+	statCopy := cloneStats(s)
 
 	diagStr := ""
 	if statCopy.WithDiags {
@@ -1140,9 +1171,7 @@ func (d *DashboardPrinter) PrintProbeFailure(s *stats.Statistics) {
 		return
 	}
 
-	s.Mu.RLock()
-	statCopy := *s
-	s.Mu.RUnlock()
+	statCopy := cloneStats(s)
 
 	diagStr := ""
 	if statCopy.WithDiags {
@@ -1193,12 +1222,12 @@ type FleetTarget struct {
 
 // MultiDashboardPrinter implements a live, multi-target concurrent TUI matrix dashboard.
 type MultiDashboardPrinter struct {
-	mu          sync.Mutex
-	targets     []FleetTarget
-	underlying  Printer
-	prog        *tea.Program
-	cancel      context.CancelFunc
-	closed      bool
+	mu         sync.Mutex
+	targets    []FleetTarget
+	underlying Printer
+	prog       *tea.Program
+	cancel     context.CancelFunc
+	closed     bool
 }
 
 // SetCancel configures the cancellation callback triggered when user exits TUI.
@@ -1252,7 +1281,7 @@ func (d *MultiDashboardPrinter) Close() {
 }
 
 // OnProbe records a live probe event from any concurrent worker and refreshes the fleet dashboard.
-func (d *MultiDashboardPrinter) OnProbe(target string, proto string, rtt time.Duration, diags string, err error, seq uint, ip ...string) {
+func (d *MultiDashboardPrinter) OnProbe(target, proto string, rtt time.Duration, diags string, err error, seq uint, ip ...string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.closed || d.prog == nil {
@@ -1446,11 +1475,7 @@ func renderSparklineTrend(rtts []float64, width int) string {
 	return b.String()
 }
 
-func renderSparklineFromFloat64(rtts []float64, width int) string {
-	return renderLatencyBars(rtts, width)
-}
-
-func renderMultiLineBarChart(rtts []float64, plotWidth int, height int) string {
+func renderMultiLineBarChart(rtts []float64, plotWidth, height int) string {
 	if height < 3 {
 		height = 5
 	}

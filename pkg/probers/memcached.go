@@ -83,7 +83,8 @@ func (m *Memcacheding) Ping(ctx context.Context) ProbeResult {
 	var tlsDetails string
 	if m.useTLS {
 		tlsConfig := &tls.Config{
-			ServerName:         targetHost,
+			ServerName: targetHost,
+			// #nosec G402 -- diagnostic Memcached TLS prober measuring latency
 			InsecureSkipVerify: true,
 		}
 		tlsDialer := &tls.Dialer{NetDialer: m.dialer, Config: tlsConfig}

@@ -1,3 +1,16 @@
+// Package utils provides mathematical helpers, network error taxonomy classifiers,
+// percentile rank interpolators, duration formatters, and terminal sparkline generators.
+//
+// Objectives:
+//   - Classify low-level socket and OS errors into actionable network diagnostic categories.
+//   - Compute percentile ranks (p50, p75, p90, p95, p99) via nearest-rank interpolation.
+//   - Generate UTF-8 sparklines for compact terminal telemetry visualization.
+//
+// Core Components:
+//   - FormatDuration / DurationPrecision: Human-friendly duration string formatting.
+//   - CalculatePercentile: Computes exact latency percentiles across historical probe samples.
+//   - ClassifyError: Identifies DNS, timeout, connection refused, reset, and network unreachable errors.
+//   - GenerateSparkline: Renders Unicode sparkline characters ( ▂▃▄▅▆▇█) from numeric slices.
 package utils
 
 import (

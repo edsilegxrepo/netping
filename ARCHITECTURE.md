@@ -229,6 +229,8 @@ graph TD
     cmd --> stats[pkg/stats]
     cmd --> metrics[pkg/metrics]
     cmd --> web[pkg/web]
+    cmd --> auth[pkg/auth]
+    cmd --> engine[pkg/engine]
 
     probers --> stats
     probers --> utils[pkg/utils]
@@ -241,6 +243,12 @@ graph TD
     web --> stats
     web --> utils
 
+    engine --> probers
+    engine --> stats
+    engine --> web
+    engine --> consts
+
+    auth --> consts
     dns --> consts
     nic --> consts
     stats --> consts
@@ -249,7 +257,7 @@ graph TD
     classDef core fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff;
     classDef leaf fill:#0f172a,stroke:#334155,stroke-width:1px,color:#cbd5e1;
     class cmd,app core;
-    class config,probers,printers,dns,nic,stats,utils,consts,metrics,web leaf;
+    class config,probers,printers,dns,nic,stats,utils,consts,metrics,web,auth,engine leaf;
 ```
 
 ### Dependency Breakdown
@@ -257,15 +265,17 @@ graph TD
 | Package | Purpose | Dependencies |
 | :--- | :--- | :--- |
 | **`cmd/`** | Main entrypoint and composition orchestrator. | `internal/*`, `pkg/*` |
-| **`internal/config`** | Pure CLI argument parser and flag validator. | Standard Library only |
+| **`internal/config`** | Pure CLI argument parser and flag validator. | `pkg/consts` |
 | **`internal/app`** | OS signal interception (`SIGINT`/`SIGTERM`) and graceful context shutdown. | Standard Library only |
 | **`internal/dns`** | Custom upstream DNS client and resolver caching bypass. | `pkg/consts` |
 | **`internal/nic`** | Network interface selector and local IP binding dialer. | `pkg/consts` |
-| **`internal/printers`** | Terminal formatting (Color, Plain, JSON, NDJSON, CSV, TSV, SQLite3, Dashboard). | `pkg/stats`, `pkg/utils`, `pkg/consts`, `mattn/go-sqlite3` |
+| **`internal/printers`** | Terminal formatting (Color, Plain, JSON, NDJSON, CSV, TSV, SQLite3, Dashboard). | `pkg/stats`, `pkg/utils`, `pkg/consts`, `modernc.org/sqlite`, `zombiezen.com/go/sqlite` |
 | **`pkg/probers`** | Layer 3 to Layer 7 prober drivers, traceroute, and multi-target orchestrator. | `pkg/stats`, `pkg/utils`, `pkg/consts`, `golang.org/x/net` |
 | **`pkg/stats`** | Thread-safe metric accumulators, SLA calculations, and snapshot generator. | `pkg/consts` |
 | **`pkg/metrics`** | Zero-dependency Prometheus/OpenMetrics HTTP exporter. | Standard Library only |
-| **`pkg/web`** | Zero-dependency embedded web server, SSE broadcaster, and Canvas 2D UI. | `pkg/stats`, `pkg/utils` |
+| **`pkg/web`** | Zero-dependency embedded web server, SSE broadcaster, and Canvas 2D UI. | `pkg/stats`, `pkg/utils`, `internal/printers` |
+| **`pkg/auth`** | Argon2id token generation, keystore persistence, and fast-path verification cache. | `golang.org/x/crypto/argon2`, `pkg/consts` |
+| **`pkg/engine`** | Dynamic on-demand trigger orchestration, concurrency limiting, and fleet registry. | `pkg/probers`, `pkg/stats`, `pkg/web`, `pkg/consts` |
 | **`pkg/utils`** | Mathematical jitter, percentiles, sparklines, and backoff helpers. | `pkg/consts` |
 | **`pkg/consts`** | Immutable protocol constants, ANSI escape definitions, and exit codes. | Standard Library only |
 

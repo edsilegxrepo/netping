@@ -1,14 +1,12 @@
 package config
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -50,8 +48,8 @@ func ParseHostPort(target string, defaultPort uint16) (string, uint16) {
 	return target, defaultPort
 }
 
-// parseHostPortArgs handles both "host port" and "host:port" formats
-func parseHostPortArgs(args []string) (host string, port string) {
+// ParseHostPortArgs handles both "host port" and "host:port" formats
+func ParseHostPortArgs(args []string) (host, port string) {
 	if len(args) == 0 {
 		return "", ""
 	}
@@ -69,252 +67,33 @@ func parseHostPortArgs(args []string) (host string, port string) {
 	return args[0], ""
 }
 
-// ResolveProtocolAndPort resolves the target protocol and its standard default port.
-func ResolveProtocolAndPort(protocolStr string, port string, target string) (consts.Protocol, string, string) {
-	proto := consts.TCP
-	switch strings.ToLower(protocolStr) {
-	case "http":
-		proto = consts.HTTP
-		if port == "" {
-			port = "80"
-		}
-	case "https":
-		proto = consts.HTTPS
-		if port == "" {
-			port = "443"
-		}
-	case "grpc":
-		proto = consts.GRPC
-		if port == "" {
-			port = "50051"
-		}
-	case "icmp", "ping":
-		proto = consts.ICMP
-		if port == "" {
-			port = "0"
-		}
-	case "tls", "tcps", "ssl":
-		proto = consts.TLS
-		if port == "" {
-			port = "443"
-		}
-	case "grpcs":
-		proto = consts.GRPCS
-		if port == "" {
-			port = "443"
-		}
-	case "ws":
-		proto = consts.WS
-		if port == "" {
-			port = "80"
-		}
-	case "wss":
-		proto = consts.WSS
-		if port == "" {
-			port = "443"
-		}
-	case "dns":
-		proto = consts.DNS
-		if port == "" {
-			port = "53"
-		}
-	case "dot":
-		proto = consts.DOT
-		if port == "" {
-			port = "853"
-		}
-	case "doh":
-		proto = consts.DOH
-		if port == "" {
-			port = "443"
-		}
-	case "redis":
-		proto = consts.REDIS
-		if port == "" {
-			port = "6379"
-		}
-	case "rediss":
-		proto = consts.REDISS
-		if port == "" {
-			port = "6380"
-		}
-	case "ssh", "sftp":
-		proto = consts.SSH
-		if port == "" {
-			port = "22"
-		}
-	case "postgres", "postgresql":
-		proto = consts.POSTGRES
-		if port == "" {
-			port = "5432"
-		}
-	case "mysql", "mariadb":
-		proto = consts.MYSQL
-		if port == "" {
-			port = "3306"
-		}
-	case "mssql", "sqlserver":
-		proto = consts.MSSQL
-		if port == "" {
-			port = "1433"
-		}
-	case "oracle", "tns":
-		proto = consts.ORACLE
-		if port == "" {
-			port = "1521"
-		}
-	case "mongodb", "mongo":
-		proto = consts.MONGODB
-		if port == "" {
-			port = "27017"
-		}
-	case "mongodbs", "mongodb+ssl", "mongo+ssl":
-		proto = consts.MONGODBS
-		if port == "" {
-			port = "27017"
-		}
-	case "cassandra", "scylla", "cql":
-		proto = consts.CASSANDRA
-		if port == "" {
-			port = "9042"
-		}
-	case "cassandras", "cqls":
-		proto = consts.CASSANDRAS
-		if port == "" {
-			port = "9042"
-		}
-	case "saphana", "hana":
-		proto = consts.SAPHANA
-		if port == "" {
-			port = "30015"
-		}
-	case "memcached", "memcache":
-		proto = consts.MEMCACHED
-		if port == "" {
-			port = "11211"
-		}
-	case "memcacheds", "memcaches":
-		proto = consts.MEMCACHEDS
-		if port == "" {
-			port = "11211"
-		}
-	case "smtp":
-		proto = consts.SMTP
-		if port == "" {
-			port = "25"
-		}
-	case "smtps":
-		proto = consts.SMTPS
-		if port == "" {
-			port = "465"
-		}
-	case "imap":
-		proto = consts.IMAP
-		if port == "" {
-			port = "143"
-		}
-	case "imaps":
-		proto = consts.IMAPS
-		if port == "" {
-			port = "993"
-		}
-	case "pop3":
-		proto = consts.POP3
-		if port == "" {
-			port = "110"
-		}
-	case "pop3s":
-		proto = consts.POP3S
-		if port == "" {
-			port = "995"
-		}
-	case "ldap":
-		proto = consts.LDAP
-		if port == "" {
-			port = "389"
-		}
-	case "ldaps":
-		proto = consts.LDAPS
-		if port == "" {
-			port = "636"
-		}
-	case "o365", "o365mbx", "graph":
-		proto = consts.O365
-		if port == "" {
-			port = "443"
-		}
-		if target == "" {
-			target = "outlook.office365.com"
-		}
-	case "s3", "awss3":
-		proto = consts.S3
-		if port == "" {
-			port = "443"
-		}
-		if target == "" {
-			target = "s3.amazonaws.com"
-		}
-	case "blob", "azureblob", "adls":
-		proto = consts.AZUREBLOB
-		if port == "" {
-			port = "443"
-		}
-		if target == "" {
-			target = "blob.core.windows.net"
-		}
-	case "gcs", "gcpbucket", "gcpstorage":
-		proto = consts.GCS
-		if port == "" {
-			port = "443"
-		}
-		if target == "" {
-			target = "storage.googleapis.com"
-		}
-	case "kafka":
-		proto = consts.KAFKA
-		if port == "" {
-			port = "9092"
-		}
-	case "kafkas":
-		proto = consts.KAFKAS
-		if port == "" {
-			port = "9093"
-		}
-	case "rabbitmq", "amqp":
-		proto = consts.RABBITMQ
-		if port == "" {
-			port = "5672"
-		}
-	case "amqps":
-		proto = consts.AMQPS
-		if port == "" {
-			port = "5671"
-		}
-	case "smb", "cifs":
-		proto = consts.SMB
-		if port == "" {
-			port = "445"
-		}
-	case "rsync":
-		proto = consts.RSYNC
-		if port == "" {
-			port = "873"
-		}
-	case "ftp":
-		proto = consts.FTP
-		if port == "" {
-			port = "21"
-		}
-	case "ftps":
-		proto = consts.FTPS
-		if port == "" {
-			port = "990"
-		}
-	case "udp":
-		proto = consts.UDP
-	default:
+// ResolveProtocolAndPort parses protocol strings and provides default ports and cloud target hostnames.
+func ResolveProtocolAndPort(protocolStr, port, target string) (consts.Protocol, string, string) {
+	proto, defaultPort, ok := consts.NormalizeProtocol(protocolStr)
+	if !ok {
 		proto = consts.TCP
 	}
+
+	if port == "" && strings.ToLower(strings.TrimSpace(protocolStr)) != "udp" {
+		if ok {
+			port = strconv.Itoa(int(defaultPort))
+		}
+	}
+
+	// Default target endpoints for specialized cloud protocols if none provided
+	if target == "" {
+		switch proto {
+		case consts.O365:
+			target = "outlook.office365.com"
+		case consts.S3:
+			target = "s3.amazonaws.com"
+		case consts.AZUREBLOB:
+			target = "blob.core.windows.net"
+		case consts.GCS:
+			target = "storage.googleapis.com"
+		}
+	}
+
 	return proto, port, target
 }
 
@@ -326,19 +105,25 @@ type TargetDef struct {
 	ServiceName string
 }
 
+// splitAndTrimComma splits a comma-delimited string, trimming whitespace and filtering empty elements.
+func splitAndTrimComma(s string) []string {
+	var res []string
+	for _, item := range strings.Split(s, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			res = append(res, trimmed)
+		}
+	}
+	return res
+}
+
 // ResolveTargetPool parses --host, --port, --uri, and --protocol inputs into a slice of TargetDefs.
 func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) ([]TargetDef, error) {
 	var targets []TargetDef
 
 	// 1. If --uri is provided, split by comma and parse each URI
 	if strings.TrimSpace(uriStr) != "" {
-		rawURIs := strings.Split(uriStr, ",")
-		for _, raw := range rawURIs {
-			raw = strings.TrimSpace(raw)
-			if raw == "" {
-				continue
-			}
-			var proto consts.Protocol = consts.TCP
+		for _, raw := range splitAndTrimComma(uriStr) {
+			proto := consts.TCP
 			targetPart := raw
 			if idx := strings.Index(raw, "://"); idx != -1 {
 				scheme := raw[:idx]
@@ -351,7 +136,7 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 			h, p := ParseHostPort(targetPart, 0)
 			if p == 0 {
 				_, defPortStr, _ := ResolveProtocolAndPort(string(proto), "", "")
-				if parsedPort, err := strconv.Atoi(defPortStr); err == nil && parsedPort > 0 {
+				if parsedPort, err := strconv.Atoi(defPortStr); err == nil && parsedPort > 0 && parsedPort <= 65535 {
 					p = uint16(parsedPort)
 				} else {
 					p = 443
@@ -382,41 +167,27 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 		return nil, fmt.Errorf("target host, port, or URI must be specified using --host, --port, or --uri")
 	}
 
-	var hosts []string
-	if hostStr != "" {
-		for _, h := range strings.Split(hostStr, ",") {
-			if trimmed := strings.TrimSpace(h); trimmed != "" {
-				hosts = append(hosts, trimmed)
-			}
-		}
-	} else {
+	hosts := splitAndTrimComma(hostStr)
+	if len(hosts) == 0 {
 		hosts = []string{"127.0.0.1"}
 	}
 
 	var protocols []consts.Protocol
-	if protoStr != "" {
-		for _, pr := range strings.Split(protoStr, ",") {
-			if trimmed := strings.TrimSpace(pr); trimmed != "" {
-				p, _, _ := ResolveProtocolAndPort(trimmed, "", "")
-				protocols = append(protocols, p)
-			}
-		}
+	for _, pr := range splitAndTrimComma(protoStr) {
+		p, _, _ := ResolveProtocolAndPort(pr, "", "")
+		protocols = append(protocols, p)
 	}
 	if len(protocols) == 0 {
 		protocols = []consts.Protocol{consts.TCP}
 	}
 
 	var ports []uint16
-	if portStr != "" {
-		for _, ps := range strings.Split(portStr, ",") {
-			if trimmed := strings.TrimSpace(ps); trimmed != "" {
-				val, err := convertAndValidatePort(trimmed)
-				if err != nil {
-					return nil, err
-				}
-				ports = append(ports, val)
-			}
+	for _, ps := range splitAndTrimComma(portStr) {
+		val, err := convertAndValidatePort(ps)
+		if err != nil {
+			return nil, err
 		}
+		ports = append(ports, val)
 	}
 
 	// Combinatorial Expansion
@@ -549,7 +320,7 @@ func PrintUsage(w io.Writer) {
 
 func usage() {
 	PrintUsage(os.Stdout)
-	os.Exit(1)
+	os.Exit(consts.ExitUsageError)
 }
 
 // PrintVersion displays the version to the given writer
@@ -560,7 +331,7 @@ func PrintVersion(w io.Writer) {
 // showVersion displays the version and exits
 func showVersion() {
 	PrintVersion(os.Stdout)
-	os.Exit(0)
+	os.Exit(consts.ExitSuccess)
 }
 
 // compareVersions is used to compare tcping versions
@@ -569,76 +340,61 @@ func compareVersions(v1, v2 string) int {
 	parts2 := strings.Split(v2, ".")
 
 	for i := 0; i < len(parts1) && i < len(parts2); i++ {
-		n1, _ := strconv.Atoi(parts1[i])
-		n2, _ := strconv.Atoi(parts2[i])
+		p1, err1 := strconv.Atoi(parts1[i])
+		p2, err2 := strconv.Atoi(parts2[i])
 
-		if n1 < n2 {
-			return -1
+		if err1 != nil || err2 != nil {
+			return 0
 		}
 
-		if n1 > n2 {
+		if p1 < p2 {
+			return -1
+		} else if p1 > p2 {
 			return 1
 		}
 	}
 
-	// for cases in which version numbers differ in length
 	if len(parts1) < len(parts2) {
 		return -1
-	}
-
-	if len(parts1) > len(parts2) {
+	} else if len(parts1) > len(parts2) {
 		return 1
 	}
 
 	return 0
 }
 
-// CheckForUpdatesURL checks for newer versions of netping against the given release endpoint
+// CheckForUpdatesURL checks for newer versions of netping against a custom URL (for testing)
 func CheckForUpdatesURL(url string, client *http.Client, w io.Writer) error {
 	if client == nil {
-		client = &http.Client{Timeout: 5 * time.Second}
+		client = &http.Client{Timeout: 10 * time.Second}
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	resp, err := client.Get(url)
 	if err != nil {
-		fmt.Fprintf(w, "Could not create request: %s\n", err)
-		return err
-	}
-	req.Header.Set("User-Agent", "edsilegx-netping-update-check")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Fprintf(w, "Failed to check for updates: %s\n", err)
+		fmt.Fprintf(w, "Check for updates failed: %s\n", err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(w, "Failed to check for updates: HTTP %d\n", resp.StatusCode)
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	release := struct {
-		TagName string `json:"tag_name"`
-	}{}
-
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		fmt.Fprintf(w, "Failed to parse release info: %s\n", err)
+		err := fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		fmt.Fprintf(w, "Check for updates failed: %s\n", err)
 		return err
 	}
 
-	reg := `^v?(\d+\.\d+\.\d+)$`
-	latestTagName := release.TagName
-	re := regexp.MustCompile(reg)
-	m := re.FindStringSubmatch(latestTagName)
-	if len(m) == 0 {
-		fmt.Fprintf(w, "Failed to check for updates. The version name does not match the rule: %s\n", latestTagName)
-		return fmt.Errorf("invalid version tag %q", latestTagName)
+	var data struct {
+		TagName string `json:"tag_name"`
 	}
 
-	latestVer := m[1]
-	comparison := compareVersions(version, latestVer)
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		fmt.Fprintf(w, "Failed to decode update response: %s\n", err)
+		return err
+	}
 
+	latestTagName := data.TagName
+	latestVer := strings.TrimPrefix(latestTagName, "v")
+
+	comparison := compareVersions(version, latestVer)
 	if comparison < 0 {
 		fmt.Fprintf(w, "Found newer version: %s\n", latestVer)
 		fmt.Fprintf(w, "Please update netping from the URL below:\n")
@@ -656,7 +412,7 @@ func checkForUpdates() {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
 	err := CheckForUpdatesURL(url, nil, os.Stdout)
 	if err != nil {
-		os.Exit(1)
+		os.Exit(consts.ExitGeneralError)
 	}
-	os.Exit(0)
+	os.Exit(consts.ExitSuccess)
 }

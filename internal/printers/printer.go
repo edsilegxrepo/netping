@@ -1,3 +1,23 @@
+// Package printers provides terminal formatters, interactive Bubble Tea TUIs,
+// structured serialization (JSON, NDJSON, JSONL, CSV, TSV), and SQLite3 persistence for netping.
+//
+// Objectives:
+//   - Render colorized terminal output with ANSI/VT escape sequences and UTF-8 box characters.
+//   - Provide an interactive 120-column TUI dashboard with real-time waveform charts.
+//   - Stream structured JSON, CSV, and TSV records to stdout or files.
+//   - Persist historical probe records and summary statistics into SQLite databases.
+//
+// Core Components:
+//   - Printer: Core interface defining Print(msg), PrintTotalStats(), and Done().
+//   - PlainPrinter: Streamlined human-readable plain text output.
+//   - JSONPrinter: JSON, Pretty-printed JSON, and NDJSON/JSONL serialization.
+//   - CSVPrinter: RFC 4180 compliant CSV and TSV streaming printer.
+//   - DatabasePrinter: CGo-free SQLite persistence using sqlitex prepared statement caching.
+//   - DashboardModel: Bubble Tea TUI rendering real-time KPI cards and waveform graphs.
+//
+// Data Flow:
+//
+//	Prober Event -> Printer.Print() -> Formatter (Plain/JSON/CSV/DB) -> Output Destination (stdout/Disk).
 package printers
 
 import (

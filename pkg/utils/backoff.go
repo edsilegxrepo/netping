@@ -2,8 +2,9 @@ package utils
 
 import (
 	"context"
+	crand "crypto/rand"
 	"math"
-	"math/rand"
+	"math/big"
 	"time"
 )
 
@@ -44,7 +45,11 @@ func CalculateBackoff(attempt int, cfg BackoffConfig) time.Duration {
 
 	if cfg.Jitter && delay > 0 {
 		// Full jitter: randomized between 50% and 100% of the computed backoff
-		factor := 0.5 + (0.5 * rand.Float64())
+		randFraction := 0.5
+		if n, err := crand.Int(crand.Reader, big.NewInt(10000)); err == nil {
+			randFraction = float64(n.Int64()) / 10000.0
+		}
+		factor := 0.5 + (0.5 * randFraction)
 		delay = delay * factor
 	}
 

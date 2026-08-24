@@ -49,7 +49,7 @@ func sanitizeExportField(str string) string {
 		return ""
 	}
 	// Fast-path bypass for clean strings (avoids regex and replacer allocations)
-	if !strings.ContainsAny(str, "\x1b\x9b│─┌┐└┘├┤┬┴┼●×▶…\t\r\n") {
+	if !strings.ContainsAny(str, "\x1b\u009b│─┌┐└┘├┤┬┴┼●×▶…\t\r\n") {
 		return str
 	}
 	cleaned := ansi.Strip(str)
@@ -153,16 +153,18 @@ func GenerateDefaultExportPath(isFleet bool, format ExportFormat) string {
 
 // SaveFileAsync saves data to disk asynchronously in an isolated background process on Windows.
 func SaveFileAsync(filePath string, data []byte) error {
+	cleanPath := filepath.Clean(filePath)
 	exe, err := os.Executable()
 	if err != nil || strings.HasSuffix(exe, ".test") || strings.HasSuffix(exe, ".test.exe") {
-		dir := filepath.Dir(filePath)
+		dir := filepath.Dir(cleanPath)
 		if dir != "" && dir != "." {
-			_ = os.MkdirAll(dir, 0755)
+			_ = os.MkdirAll(dir, 0o750)
 		}
-		return os.WriteFile(filePath, data, 0644)
+		return os.WriteFile(cleanPath, data, 0o600)
 	}
 
-	cmd := exec.Command(exe, "--internal-async-save", filePath)
+	// #nosec G204 -- invokes self-executable for isolated background disk write
+	cmd := exec.Command(exe, "--internal-async-save", cleanPath)
 	cmd.Stdin = bytes.NewReader(data)
 	setDetachedProcess(cmd)
 	return cmd.Start()
@@ -359,23 +361,23 @@ func ExportSingleTargetToWriter(w io.Writer, target string, port uint16, protoco
 		bw.WriteString("================================================================================\n")
 		bw.WriteString("                           NETPING PROBE REPORT                                 \n")
 		bw.WriteString("================================================================================\n\n")
-		bw.WriteString(fmt.Sprintf("Target:         %s:%d\n", cleanTarget, port))
-		bw.WriteString(fmt.Sprintf("Protocol:       %s\n", cleanProtocol))
-		bw.WriteString(fmt.Sprintf("IP:             %s\n", ipStr))
-		bw.WriteString(fmt.Sprintf("Exported At:    %s\n", time.Now().Format(time.RFC1123)))
-		bw.WriteString(fmt.Sprintf("Total Duration: %s\n\n", duration))
+		fmt.Fprintf(bw, "Target:         %s:%d\n", cleanTarget, port)
+		fmt.Fprintf(bw, "Protocol:       %s\n", cleanProtocol)
+		fmt.Fprintf(bw, "IP:             %s\n", ipStr)
+		fmt.Fprintf(bw, "Exported At:    %s\n", time.Now().Format(time.RFC1123))
+		fmt.Fprintf(bw, "Total Duration: %s\n\n", duration)
 
 		bw.WriteString("SUMMARY STATISTICS:\n")
-		bw.WriteString(fmt.Sprintf("  Probes Sent:     %d\n", total))
-		bw.WriteString(fmt.Sprintf("  Probes Recv:     %d\n", succ))
-		bw.WriteString(fmt.Sprintf("  Probes Failed:   %d\n", fail))
-		bw.WriteString(fmt.Sprintf("  Packet Loss:     %.1f%%\n", loss))
-		bw.WriteString(fmt.Sprintf("  Min Latency:     %.2f ms\n", rttRes.Min))
-		bw.WriteString(fmt.Sprintf("  Avg Latency:     %.2f ms\n", rttRes.Average))
-		bw.WriteString(fmt.Sprintf("  Max Latency:     %.2f ms\n\n", rttRes.Max))
+		fmt.Fprintf(bw, "  Probes Sent:     %d\n", total)
+		fmt.Fprintf(bw, "  Probes Recv:     %d\n", succ)
+		fmt.Fprintf(bw, "  Probes Failed:   %d\n", fail)
+		fmt.Fprintf(bw, "  Packet Loss:     %.1f%%\n", loss)
+		fmt.Fprintf(bw, "  Min Latency:     %.2f ms\n", rttRes.Min)
+		fmt.Fprintf(bw, "  Avg Latency:     %.2f ms\n", rttRes.Average)
+		fmt.Fprintf(bw, "  Max Latency:     %.2f ms\n\n", rttRes.Max)
 
 		bw.WriteString("PROBE EVENT HISTORY:\n")
-		bw.WriteString(fmt.Sprintf("%-20s %-6s %-10s %-12s %-16s %s\n", "TIMESTAMP", "SEQ", "STATUS", "RTT (ms)", "IP", "DETAILS"))
+		fmt.Fprintf(bw, "%-20s %-6s %-10s %-12s %-16s %s\n", "TIMESTAMP", "SEQ", "STATUS", "RTT (ms)", "IP", "DETAILS")
 		bw.WriteString(strings.Repeat("-", 80) + "\n")
 		for _, p := range history {
 			status := "SUCCESS"
@@ -386,14 +388,14 @@ func ExportSingleTargetToWriter(w io.Writer, target string, port uint16, protoco
 			if p.Error != "" {
 				details = "Error: " + p.Error
 			}
-			bw.WriteString(fmt.Sprintf("%-20s %-6d %-10s %-12.2f %-16s %s\n",
+			fmt.Fprintf(bw, "%-20s %-6d %-10s %-12.2f %-16s %s\n",
 				p.Timestamp.Format("2006-01-02 15:04:05"),
 				p.Seq,
 				status,
 				p.RTTMs,
 				p.IP,
 				details,
-			))
+			)
 		}
 		return bw.Flush()
 	}
@@ -639,23 +641,23 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 		bw.WriteString("================================================================================\n")
 		bw.WriteString("                        NETPING FLEET PROBE REPORT                              \n")
 		bw.WriteString("================================================================================\n\n")
-		bw.WriteString(fmt.Sprintf("Exported At:    %s\n", time.Now().Format(time.RFC1123)))
-		bw.WriteString(fmt.Sprintf("Total Duration: %s\n", elapsed))
-		bw.WriteString(fmt.Sprintf("Total Targets:  %d\n\n", len(targets)))
+		fmt.Fprintf(bw, "Exported At:    %s\n", time.Now().Format(time.RFC1123))
+		fmt.Fprintf(bw, "Total Duration: %s\n", elapsed)
+		fmt.Fprintf(bw, "Total Targets:  %d\n\n", len(targets))
 
 		bw.WriteString("FLEET TARGET SUMMARY:\n")
-		bw.WriteString(fmt.Sprintf("%-28s %-10s %-16s %-6s %-6s %-8s %-10s %-10s %-10s\n",
-			"TARGET", "PROTOCOL", "IP", "SENT", "RECV", "LOSS%", "LAST(ms)", "AVG(ms)", "MAX(ms)"))
+		fmt.Fprintf(bw, "%-28s %-10s %-16s %-6s %-6s %-8s %-10s %-10s %-10s\n",
+			"TARGET", "PROTOCOL", "IP", "SENT", "RECV", "LOSS%", "LAST(ms)", "AVG(ms)", "MAX(ms)")
 		bw.WriteString(strings.Repeat("-", 110) + "\n")
 		for _, s := range summaries {
-			bw.WriteString(fmt.Sprintf("%-28s %-10s %-16s %-6d %-6d %-8s %-10.2f %-10.2f %-10.2f\n",
-				s.Target, s.Protocol, s.IP, s.Sent, s.Recv, fmt.Sprintf("%.1f%%", s.LossPercent), s.LastRTTMs, s.AvgRTTMs, s.MaxRTTMs))
+			fmt.Fprintf(bw, "%-28s %-10s %-16s %-6d %-6d %-8s %-10.2f %-10.2f %-10.2f\n",
+				s.Target, s.Protocol, s.IP, s.Sent, s.Recv, fmt.Sprintf("%.1f%%", s.LossPercent), s.LastRTTMs, s.AvgRTTMs, s.MaxRTTMs)
 		}
 
 		if len(history) > 0 {
 			bw.WriteString("\nPROBE EVENT HISTORY:\n")
-			bw.WriteString(fmt.Sprintf("%-20s %-6s %-24s %-8s %-16s %-10s %-10s %s\n",
-				"TIMESTAMP", "SEQ", "TARGET", "PROTO", "IP", "STATUS", "RTT(ms)", "DETAILS"))
+			fmt.Fprintf(bw, "%-20s %-6s %-24s %-8s %-16s %-10s %-10s %s\n",
+				"TIMESTAMP", "SEQ", "TARGET", "PROTO", "IP", "STATUS", "RTT(ms)", "DETAILS")
 			bw.WriteString(strings.Repeat("-", 110) + "\n")
 			for _, p := range history {
 				status := "SUCCESS"
@@ -666,7 +668,7 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 				if p.Error != "" {
 					details = "Error: " + p.Error
 				}
-				bw.WriteString(fmt.Sprintf("%-20s %-6d %-24s %-8s %-16s %-10s %-10.2f %s\n",
+				fmt.Fprintf(bw, "%-20s %-6d %-24s %-8s %-16s %-10s %-10.2f %s\n",
 					p.Timestamp.Format("2006-01-02 15:04:05"),
 					p.Seq,
 					p.Target,
@@ -675,7 +677,7 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 					status,
 					p.RTTMs,
 					details,
-				))
+				)
 			}
 		}
 		return bw.Flush()

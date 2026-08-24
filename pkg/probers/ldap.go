@@ -162,6 +162,7 @@ func (l *LDAPing) Ping(ctx context.Context) ProbeResult {
 		var attrBuf bytes.Buffer
 		for _, a := range attrs {
 			attrBuf.WriteByte(0x04) // OCTET STRING
+			// #nosec G115 -- static LDAP attribute name length
 			attrBuf.WriteByte(byte(len(a)))
 			attrBuf.WriteString(a)
 		}
@@ -177,17 +178,20 @@ func (l *LDAPing) Ping(ctx context.Context) ProbeResult {
 		searchReqBody.Write([]byte{0x01, 0x01, 0x00}) // TypesOnly: false
 		searchReqBody.Write(filter)                   // Filter: (objectClass=*)
 		searchReqBody.WriteByte(0x30)                 // SEQUENCE of attributes
+		// #nosec G115 -- bounded attribute buffer length
 		searchReqBody.WriteByte(byte(attrBuf.Len()))
 		searchReqBody.Write(attrBuf.Bytes())
 
 		var searchMsg bytes.Buffer
 		searchMsg.Write([]byte{0x02, 0x01, 0x02}) // MessageID: 2
 		searchMsg.WriteByte(0x63)                 // [APPLICATION 3] SearchRequest
+		// #nosec G115 -- bounded search request length
 		searchMsg.WriteByte(byte(searchReqBody.Len()))
 		searchMsg.Write(searchReqBody.Bytes())
 
 		var rootDSEReq bytes.Buffer
 		rootDSEReq.WriteByte(0x30) // SEQUENCE
+		// #nosec G115 -- bounded root DSE message length
 		rootDSEReq.WriteByte(byte(searchMsg.Len()))
 		rootDSEReq.Write(searchMsg.Bytes())
 

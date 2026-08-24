@@ -1,3 +1,7 @@
+// Test Strategy (internal/config - Helpers & Resolution):
+//  1. Host & Port Extraction: Validate positional arguments, colon notation (host:port), and bracketed IPv6 literals.
+//  2. URI Schema Parsing: Validate scheme://host:port, path stripping, and protocol-specific default ports.
+//  3. Version Comparator: Test semantic version comparisons (older, newer, identical) and release update checks.
 package config
 
 import (
@@ -99,9 +103,9 @@ func TestParseHostPortArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotHost, gotPort := parseHostPortArgs(tt.args)
+			gotHost, gotPort := ParseHostPortArgs(tt.args)
 			if gotHost != tt.wantHost || gotPort != tt.wantPort {
-				t.Errorf("parseHostPortArgs(%v) = (%q, %q), want (%q, %q)",
+				t.Errorf("ParseHostPortArgs(%v) = (%q, %q), want (%q, %q)",
 					tt.args, gotHost, gotPort, tt.wantHost, tt.wantPort)
 			}
 		})
@@ -437,5 +441,3 @@ func TestCheckForUpdatesURL(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, buf3.String(), "You have the latest version")
 }
-
-

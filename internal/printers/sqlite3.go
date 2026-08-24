@@ -145,7 +145,9 @@ func (d *probeData) toArgs() []interface{} {
 		d.sourceAddress,
 		d.destIsIP,
 		d.time,
+		// #nosec G115 -- probe counts safely converted for SQLite int64 column
 		int64(d.ongoingSuccessfulProbes),
+		// #nosec G115 -- probe counts safely converted for SQLite int64 column
 		int64(d.ongoingUnsuccessfulProbes),
 	}
 }
@@ -190,12 +192,16 @@ func (d *statsData) toArgs() []interface{} {
 		d.totalDuration,
 		d.totalUptime,
 		d.totalDowntime,
+		// #nosec G115 -- probe counts safely converted for SQLite int64 column
 		int64(d.totalPackets),
+		// #nosec G115 -- probe counts safely converted for SQLite int64 column
 		int64(d.totalSuccessfulPackets),
+		// #nosec G115 -- probe counts safely converted for SQLite int64 column
 		int64(d.totalUnsuccessfulPackets),
 		d.totalPacketLossPercent,
 		d.longestUptime,
 		d.longestDowntime,
+		// #nosec G115 -- retry count safely converted for SQLite int64 column
 		int64(d.hostnameResolveRetries),
 		d.hostnameChanges,
 		d.lastSuccessfulProbe,
@@ -235,13 +241,13 @@ func NewDatabasePrinter(target, port, filePath string) (*DatabasePrinter, error)
 
 	tableSchema := fmt.Sprintf(dataTableSchema, probeTableName)
 	if err = sqlitex.Execute(conn, tableSchema, &sqlitex.ExecOptions{}); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("error creating the data table: %w", err)
 	}
 
 	statsTableSchema := fmt.Sprintf(statsTableSchema, statsTableName)
 	if err = sqlitex.Execute(conn, statsTableSchema, &sqlitex.ExecOptions{}); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("error creating the statistics table: %w", err)
 	}
 
@@ -303,7 +309,7 @@ func (p *DatabasePrinter) Done() {
 	defer p.mu.Unlock()
 
 	if p.Conn != nil {
-		p.Conn.Close()
+		_ = p.Conn.Close()
 		p.Conn = nil
 	}
 }

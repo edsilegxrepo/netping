@@ -1,3 +1,7 @@
+// Test Strategy (pkg/metrics):
+//  1. Exposition Format: Verify valid OpenMetrics / Prometheus line format (# HELP, # TYPE, gauge values).
+//  2. Target Metric Extraction: Validate accuracy of netping_up, netping_rtt_seconds, and loss percentage values.
+//  3. HTTP Lifecycle: Verify graceful listener startup, scraping response code (200 OK), and clean shutdown.
 package metrics
 
 import (

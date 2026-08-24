@@ -106,7 +106,7 @@ func (r *Rsyncing) Ping(ctx context.Context) ProbeResult {
 	// Parse server greeting banner & capabilities
 	greetingBody := strings.TrimSpace(strings.TrimPrefix(cleanGreeting, "@RSYNCD:"))
 	var parts []string
-	var protoVer string = "31.0"
+	protoVer := "31.0"
 	var digests string
 
 	fields := strings.Fields(greetingBody)

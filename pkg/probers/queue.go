@@ -94,7 +94,8 @@ func (q *Queueing) Ping(ctx context.Context) ProbeResult {
 
 	if q.useTLS {
 		tlsConfig := &tls.Config{
-			ServerName:         targetHost,
+			ServerName: targetHost,
+			// #nosec G402 -- user-configurable TLS verification flag for message queue probing
 			InsecureSkipVerify: q.skipVerify,
 		}
 		tlsDialer := &tls.Dialer{

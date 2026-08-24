@@ -1,3 +1,8 @@
+// Test Strategy (pkg/stats):
+//  1. Metric Accumulation & Math: Validate min, max, average, and loss percentage after successive probe records.
+//  2. RFC 3550 Interarrival Jitter: Verify jitter calculation formula across varying latency sequences.
+//  3. Streak Tracking: Validate consecutive uptime and downtime durations and transition timestamps.
+//  4. Concurrency & Race Safety: Execute parallel RecordProbe and Snapshot calls under high goroutine load.
 package stats
 
 import (

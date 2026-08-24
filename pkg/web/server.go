@@ -1,3 +1,21 @@
+// Package web provides the embedded real-time HTTP server, Server-Sent Events (SSE) broadcaster,
+// HTML5 Canvas 2D dashboard, REST telemetry APIs, OpenAPI 3.0 specifications, and trigger endpoints for netping.
+//
+// Objectives:
+//   - Serve zero-dependency interactive HTML5/Canvas visualization dashboard.
+//   - Stream live probe events to connected browser clients via Server-Sent Events (SSE).
+//   - Provide REST APIs for target metrics, telemetry history, report exports, and dynamic probe triggering.
+//   - Enforce Argon2id authentication and request body bounds on protected endpoints.
+//
+// Core Components:
+//   - Server: Embedded HTTP server multiplexing web dashboard, REST endpoints, and SSE streams.
+//   - Broadcaster: High-throughput non-blocking SSE event distributor with ring-buffer retention.
+//   - Trigger API: Authenticated POST /api/v1/trigger endpoint executing dynamic on-demand probes.
+//
+// Data Flow:
+//
+//	Prober Event -> Broadcaster.Broadcast() -> Active SSE Channels -> Browser EventSource / Canvas Stream
+//	REST Client -> POST /api/v1/trigger -> Auth Validation -> Engine Execution -> Broadcaster -> JSON Response.
 package web
 
 import (
@@ -95,8 +113,9 @@ func NewServer(addr string, st *stats.Statistics, broadcaster *Broadcaster) *Ser
 	mux.HandleFunc("/api/export", s.handleExport)
 
 	s.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	return s
@@ -139,6 +158,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	fmt.Printf("\n\033[1;32m●\033[0m \033[1mWeb Dashboard & REST API live at:\033[0m \033[1;36mhttp://%s\033[0m\n\n", s.addr)
 
+	// #nosec G118 -- background shutdown listener watching application lifecycle context
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -479,6 +499,7 @@ func (s *Server) handleTrigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB payload limit
 	var req TriggerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
@@ -521,6 +542,7 @@ func (s *Server) handleTriggerStatus(w http.ResponseWriter, r *http.Request) {
 		"mode":            "trigger",
 		"auth_enabled":    s.validator != nil,
 		"uptime":          time.Since(s.startTime).Round(time.Second).String(),
+		"start_time_utc":  s.startTime.Format(time.RFC3339),
 		"active_targets":  targetCount,
 		"history_events":  historyCount,
 		"history_limit":   historyLimit,
@@ -568,6 +590,7 @@ func (s *Server) handleHistoryConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		r.Body = http.MaxBytesReader(w, r.Body, 64<<10) // 64KB limit
 		var req struct {
 			Limit int `json:"limit"`
 		}
@@ -727,7 +750,8 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Export failed: %v", exportErr), http.StatusInternalServerError)
 			return
 		}
-		f, err := os.Open(tmpFile)
+		// #nosec G304 -- opens temporary export file created by internal export routine
+		f, err := os.Open(filepath.Clean(tmpFile))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to read export: %v", err), http.StatusInternalServerError)
 			return
@@ -993,7 +1017,7 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 						"content": map[string]interface{}{
 							"application/json": map[string]interface{}{
 								"schema": map[string]interface{}{
-									"type": "object",
+									"type":     "object",
 									"required": []string{"target"},
 									"properties": map[string]interface{}{
 										"target":     map[string]interface{}{"type": "string", "example": "db.internal.net"},

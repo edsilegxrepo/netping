@@ -43,7 +43,7 @@ func NewDynamicTargetRegistry() *DynamicTargetRegistry {
 }
 
 // GetOrCreateStats retrieves or registers a stats object for a target.
-func (r *DynamicTargetRegistry) GetOrCreateStats(targetKey string, host string, ip netip.Addr, port uint16, proto consts.Protocol, svc string) *stats.Statistics {
+func (r *DynamicTargetRegistry) GetOrCreateStats(targetKey, host string, ip netip.Addr, port uint16, proto consts.Protocol, svc string) *stats.Statistics {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

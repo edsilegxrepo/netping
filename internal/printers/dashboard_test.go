@@ -23,7 +23,7 @@ func TestSingleDashboardModel(t *testing.T) {
 
 	// Success probe
 	m.Update(singleProbeMsg{
-		stat:        *st,
+		stat:        cloneStats(st),
 		isSuccess:   true,
 		timestamp:   time.Now(),
 		seq:         1,
@@ -36,7 +36,7 @@ func TestSingleDashboardModel(t *testing.T) {
 
 	// Failure probe
 	m.Update(singleProbeMsg{
-		stat:       *st,
+		stat:       cloneStats(st),
 		isSuccess:  false,
 		failReason: "Connection refused",
 		timestamp:  time.Now(),
@@ -156,4 +156,3 @@ func TestSparklineRenderingModes(t *testing.T) {
 	barsModern := renderLatencyBars(rtts, 10)
 	assert.NotEmpty(t, barsModern)
 }
-

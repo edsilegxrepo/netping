@@ -16,12 +16,14 @@ import (
 )
 
 type HTTPOptions struct {
-	Hostname string
-	IP       netip.Addr
-	Port     uint16
-	Protocol consts.Protocol
-	Timeout  time.Duration
-	Dialer   *net.Dialer
+	Hostname   string
+	IP         netip.Addr
+	Port       uint16
+	Protocol   consts.Protocol
+	Timeout    time.Duration
+	Dialer     *net.Dialer
+	SendData   string
+	ExpectData string
 }
 
 // HTTPing implements Pinger for HTTP and HTTPS protocols with full timing breakdown.
@@ -33,7 +35,6 @@ type HTTPing struct {
 	port       uint16
 	protocol   consts.Protocol
 	timeout    time.Duration
-	localAddr  net.Addr
 	sendData   string
 	expectData string
 }
@@ -92,28 +93,38 @@ func NewHTTPing(opts HTTPOptions) *HTTPing {
 	}
 
 	return &HTTPing{
-		client:   client,
-		url:      url,
-		hostname: opts.Hostname,
-		ip:       opts.IP,
-		port:     port,
-		protocol: opts.Protocol,
-		timeout:  opts.Timeout,
+		client:     client,
+		url:        url,
+		hostname:   opts.Hostname,
+		ip:         opts.IP,
+		port:       port,
+		protocol:   opts.Protocol,
+		timeout:    opts.Timeout,
+		sendData:   opts.SendData,
+		expectData: opts.ExpectData,
 	}
 }
 
 // Ping executes an HTTP/HTTPS probe with httptrace timing collection.
 func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 	method := http.MethodHead
+	var reqBody io.Reader
 	if h.sendData != "" {
 		method = http.MethodPost
+		reqBody = strings.NewReader(h.sendData)
+	} else if h.expectData != "" {
+		method = http.MethodGet
 	}
-	req, err := http.NewRequestWithContext(ctx, method, h.url, nil)
+
+	req, err := http.NewRequestWithContext(ctx, method, h.url, reqBody)
 	if err != nil {
 		return ProbeResult{Err: err}
 	}
 	req.Header.Set("User-Agent", "netping/1.0")
 	req.Header.Set("Accept", "*/*")
+	if h.sendData != "" {
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
 
 	var (
 		start          = time.Now()
@@ -188,7 +199,8 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 		}
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	respBodyStr := string(bodyBytes)
 
 	if resp.TLS != nil {
 		if tlsVersion == 0 {
@@ -216,8 +228,32 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 		ttfb = firstByte.Sub(start)
 	}
 
+	if h.expectData != "" && !strings.Contains(respBodyStr, h.expectData) {
+		snippet := strings.TrimSpace(respBodyStr)
+		if len(snippet) > 64 {
+			snippet = snippet[:64] + "..."
+		}
+		return ProbeResult{
+			LocalAddr:  localAddr,
+			RTT:        totalRTT,
+			DNSTime:    dnsTime,
+			TCPTime:    tcpTime,
+			TLSTime:    tlsTime,
+			TTFB:       ttfb,
+			HTTPStatus: resp.StatusCode,
+			CertExpiry: certExpiry,
+			Err:        fmt.Errorf("expected %q in response, received %q", h.expectData, snippet),
+		}
+	}
+
 	var diagParts []string
 	diagParts = append(diagParts, fmt.Sprintf("Status: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+	if h.sendData != "" {
+		diagParts = append(diagParts, fmt.Sprintf("Sent: %dB", len(h.sendData)))
+	}
+	if h.expectData != "" {
+		diagParts = append(diagParts, fmt.Sprintf("Matched: %q", h.expectData))
+	}
 	if srv := resp.Header.Get("Server"); srv != "" {
 		diagParts = append(diagParts, fmt.Sprintf("Server: %s", srv))
 	}

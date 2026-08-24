@@ -91,7 +91,8 @@ func NewStorageing(opts StorageOptions) *Storageing {
 	tr := &http.Transport{
 		DisableKeepAlives: true,
 		TLSClientConfig: &tls.Config{
-			ServerName:         opts.Hostname,
+			ServerName: opts.Hostname,
+			// #nosec G402 -- user-configurable TLS verification flag for storage probing
 			InsecureSkipVerify: opts.SkipVerify,
 		},
 		DialContext: dialContext,

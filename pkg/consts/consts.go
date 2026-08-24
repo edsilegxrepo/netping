@@ -1,4 +1,17 @@
-// Package consts provides protocol constants and exit codes.
+// Package consts defines canonical protocol identifiers, standard network constants,
+// and deterministic diagnostic exit codes used across netping.
+//
+// Objectives:
+//   - Centralize protocol enumeration (49 supported L3-L7 protocols).
+//   - Provide standardized, machine-readable diagnostic process exit codes.
+//
+// Core Components:
+//   - Protocol: Type-safe string identifier for supported diagnostic probers.
+//   - Exit* constants: Diagnostic codes for CLI/daemon automation and CI/CD pipelines.
+//
+// Data Flow:
+//
+//	CLI / REST API -> Protocol Normalization -> Prober Factory -> Network Dial -> Exit Code Determination.
 package consts
 
 type Protocol string

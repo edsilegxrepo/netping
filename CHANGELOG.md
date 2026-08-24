@@ -12,6 +12,8 @@
   - **Zero-Downtime Hot-Reloading Keystore**: Added JSON keystore persistence with file permission hardening (`0600`) and live modification detection without daemon restarts.
   - **Dual-Header Authentication Middleware**: Full support for `X-API-Key` and `Authorization: Bearer <key>` authentication schemes, structured 401 JSON error responses, and CORS preflight (`OPTIONS`) handling.
   - **In-Memory Security Hygiene**: Cryptographic memory wiping via `auth.ZeroBytes` and constant-time key validation (`subtle.ConstantTimeCompare`) against timing attacks.
+- **HTTP Probe Method Dispatching**:
+  - **Dynamic Method Routing**: Supports payload transmission (`--send` / `send_data` via HTTP `POST`) and response body assertion (`--expect` / `expect_data` via HTTP `GET`) across CLI and trigger API, while preserving standard lightweight `HEAD` requests by default.
 - **Testing & Verification**:
   - Comprehensive unit test suites across `pkg/auth`, `pkg/engine`, `pkg/web`, `internal/config`, and `cmd`.
   - 8-stage end-to-end lifecycle testing covering key generation, idle daemon startup, REST authentication, probe triggering, SSE streaming, and dashboard visualization.

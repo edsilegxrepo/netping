@@ -1,3 +1,20 @@
+// Package probers implements high-precision Layer 3 to Layer 7 network diagnostic probers,
+// protocol handshakes, and wire-level timing measurements across 49 supported protocols.
+//
+// Objectives:
+//   - Execute latency and connectivity checks with nanosecond clock precision.
+//   - Extract detailed protocol-level metadata (TLS ciphers, cert expiry, HTTP TTFB, DB banners, DNS RCODEs).
+//   - Provide a unified Pinger interface across all protocols and operational modes.
+//
+// Core Components:
+//   - Pinger: Core interface defining Ping(context.Context) ProbeResult.
+//   - ProbeResult: Standardized telemetry struct carrying latency breakdowns, status codes, and diagnostics.
+//   - BuildPinger: Factory function constructing protocol-specific pingers from unified configuration options.
+//
+// Data Flow:
+//
+//	Context & Target -> probers.BuildPinger -> Pinger.Ping(ctx) -> Socket Dial / Protocol Handshake
+//	-> Latency Breakdown (DNS, TCP, TLS, TTFB) -> Protocol Diagnostics -> ProbeResult.
 package probers
 
 import (

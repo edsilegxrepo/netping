@@ -2129,206 +2129,320 @@
     }
 
     function exportChartPNG() {
-      const exportW = Math.max(canvas.width, 1040);
-      const isFleet = targetsMap.size > 1;
-      const tableRowsCount = isFleet ? targetsMap.size : 1;
-      const tableHeight = isFleet ? (36 + tableRowsCount * 26 + 10) : 60;
-      const chartHeaderH = 34;
-      const chartExportH = 460; // Always render at full maximized height
-      const totalH = 50 + tableHeight + chartHeaderH + chartExportH + 24;
+      try {
+        const exportW = Math.max(canvas.width, 1200);
+        const isFleet = targetsMap.size > 1;
+        const chartExportH = 460;
 
-      const offscreen = document.createElement('canvas');
-      offscreen.width = exportW;
-      offscreen.height = totalH;
-      const octx = offscreen.getContext('2d');
+        // Calculate vertical layout
+        const headerY = 16;
+        const headerH = 50;
+        const currentY = headerY + headerH + 12;
 
-      // 1. Draw solid dark background
-      octx.fillStyle = '#0B0F19';
-      octx.fillRect(0, 0, exportW, totalH);
+        let kpiCardsH = 0;
+        let fleetTableH = 0;
 
-      // Top Title Bar Card
-      octx.fillStyle = '#111827';
-      octx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-      octx.lineWidth = 1;
-      octx.beginPath();
-      if (octx.roundRect) {
-        octx.roundRect(14, 12, exportW - 28, totalH - 24, 12);
-      } else {
-        octx.rect(14, 12, exportW - 28, totalH - 24);
-      }
-      octx.fill();
-      octx.stroke();
-
-      // Title & Timestamp
-      octx.fillStyle = '#38BDF8';
-      octx.font = '700 15px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-      octx.textAlign = 'left';
-      octx.fillText('netping Telemetry Report', 30, 36);
-
-      const now = new Date();
-      const timeStr = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
-      octx.fillStyle = '#9CA3AF';
-      octx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-      octx.textAlign = 'right';
-      octx.fillText(timeStr, exportW - 30, 36);
-
-      let currentY = 56;
-
-      // 2. Render Fleet Summary Table or Single KPI Bar
-      if (isFleet) {
-        octx.fillStyle = 'rgba(31, 41, 55, 0.7)';
-        octx.fillRect(24, currentY, exportW - 48, 26);
-
-        octx.fillStyle = '#9CA3AF';
-        octx.font = '600 10.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-        octx.textAlign = 'left';
-
-        const colX = {
-          target: 34,
-          proto: 280,
-          ip: 360,
-          sent: 540,
-          recv: 610,
-          loss: 680,
-          last: 760,
-          avg: 845,
-          max: 930
-        };
-
-        octx.fillText('TARGET', colX.target, currentY + 17);
-        octx.fillText('PROTOCOL', colX.proto, currentY + 17);
-        octx.fillText('RESOLVED IP', colX.ip, currentY + 17);
-        octx.fillText('SENT', colX.sent, currentY + 17);
-        octx.fillText('RECV', colX.recv, currentY + 17);
-        octx.fillText('LOSS %', colX.loss, currentY + 17);
-        octx.fillText('LAST (MS)', colX.last, currentY + 17);
-        octx.fillText('AVG (MS)', colX.avg, currentY + 17);
-        octx.fillText('MAX (MS)', colX.max, currentY + 17);
-
-        currentY += 26;
-
-        for (const [name, t] of targetsMap) {
-          octx.fillStyle = 'rgba(255, 255, 255, 0.02)';
-          octx.fillRect(24, currentY, exportW - 48, 25);
-
-          // Dot
-          octx.beginPath();
-          octx.arc(colX.target + 4, currentY + 12, 4, 0, Math.PI * 2);
-          octx.fillStyle = t.color;
-          octx.fill();
-
-          // Target Name
-          octx.fillStyle = '#F3F4F6';
-          octx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-          octx.fillText(name, colX.target + 14, currentY + 16);
-
-          // Protocol
-          octx.fillStyle = '#38BDF8';
-          octx.fillText(t.protocol, colX.proto, currentY + 16);
-
-          // IP
-          octx.fillStyle = '#9CA3AF';
-          octx.fillText(t.ip, colX.ip, currentY + 16);
-
-          // Sent / Recv
-          octx.fillStyle = '#F3F4F6';
-          octx.fillText(String(t.sent), colX.sent, currentY + 16);
-          octx.fillStyle = '#10B981';
-          octx.fillText(String(t.recv), colX.recv, currentY + 16);
-
-          // Loss
-          const lossColor = t.lossPercent > 0 ? '#EF4444' : '#10B981';
-          octx.fillStyle = lossColor;
-          octx.fillText(`${t.lossPercent.toFixed(1)}%`, colX.loss, currentY + 16);
-
-          // Latencies
-          octx.fillStyle = '#38BDF8';
-          octx.fillText(t.latestRTT.toFixed(2), colX.last, currentY + 16);
-          octx.fillStyle = '#F3F4F6';
-          octx.fillText(t.avgRTT.toFixed(2), colX.avg, currentY + 16);
-          octx.fillText(t.maxRTT.toFixed(2), colX.max, currentY + 16);
-
-          currentY += 26;
+        if (isFleet) {
+          fleetTableH = 34 + targetsMap.size * 28 + 12;
+        } else {
+          kpiCardsH = 86;
         }
-        currentY += 10;
-      } else {
-        const firstTarget = targetsMap.values().next().value;
-        if (firstTarget) {
-          octx.fillStyle = 'rgba(31, 41, 55, 0.5)';
+
+        const topSectionH = isFleet ? fleetTableH : kpiCardsH;
+        const chartCardY = currentY + topSectionH + 14;
+        const chartCardH = 40 + chartExportH + 16;
+        const totalH = chartCardY + chartCardH + 16;
+
+        const offscreen = document.createElement('canvas');
+        offscreen.width = exportW;
+        offscreen.height = totalH;
+        const octx = offscreen.getContext('2d');
+
+        const drawRoundRect = (x, y, w, h, r = 8, fill = '#111827', stroke = 'rgba(255, 255, 255, 0.08)') => {
+          octx.fillStyle = fill;
+          octx.strokeStyle = stroke;
+          octx.lineWidth = 1;
           octx.beginPath();
           if (octx.roundRect) {
-            octx.roundRect(24, currentY, exportW - 48, 50, 6);
+            octx.roundRect(x, y, w, h, r);
           } else {
-            octx.rect(24, currentY, exportW - 48, 50);
+            octx.rect(x, y, w, h);
           }
           octx.fill();
+          octx.stroke();
+        };
 
-          octx.fillStyle = '#38BDF8';
+        // 1. Draw solid canvas dark background
+        octx.fillStyle = '#0B0F19';
+        octx.fillRect(0, 0, exportW, totalH);
+
+        // 2. Top Header Bar Card
+        drawRoundRect(16, headerY, exportW - 32, headerH, 8, '#111827', 'rgba(255, 255, 255, 0.08)');
+
+        // Brand Logo
+        octx.textAlign = 'left';
+        octx.fillStyle = '#38BDF8';
+        octx.font = '800 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        octx.fillText('netping', 32, headerY + 32);
+
+        const firstTarget = targetsMap.values().next().value;
+
+        if (!isFleet && firstTarget) {
+          // Target pill badge
           octx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-          octx.fillText(`Target: ${firstTarget.target} (${firstTarget.protocol})`, 36, currentY + 22);
+          const tgtText = firstTarget.target || '';
+          const tgtW = octx.measureText(tgtText).width + 20;
+          const tgtX = 135;
+          const tgtY = headerY + 13;
 
-          octx.fillStyle = '#F3F4F6';
-          octx.fillText(`Last: ${firstTarget.latestRTT.toFixed(2)} ms   Avg: ${firstTarget.avgRTT.toFixed(2)} ms   Max: ${firstTarget.maxRTT.toFixed(2)} ms`, 36, currentY + 40);
+          drawRoundRect(tgtX, tgtY, tgtW, 24, 6, 'rgba(30, 41, 59, 0.85)', 'rgba(56, 189, 248, 0.25)');
+          octx.fillStyle = '#38BDF8';
+          octx.fillText(tgtText, tgtX + 10, tgtY + 16);
 
-          octx.textAlign = 'right';
-          const lossCol = firstTarget.lossPercent > 0 ? '#EF4444' : '#10B981';
-          octx.fillStyle = lossCol;
-          octx.fillText(`Loss: ${firstTarget.lossPercent.toFixed(1)}% (${firstTarget.failed} lost / ${firstTarget.sent} sent)`, exportW - 36, currentY + 30);
-          octx.textAlign = 'left';
+          // Protocol pill badge
+          const protoText = (firstTarget.protocol || 'TCP').toUpperCase();
+          octx.font = '700 10.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+          const protoW = octx.measureText(protoText).width + 16;
+          const protoX = tgtX + tgtW + 8;
+          const protoY = tgtY;
+
+          drawRoundRect(protoX, protoY, protoW, 24, 6, 'rgba(16, 185, 129, 0.15)', 'rgba(16, 185, 129, 0.3)');
+          octx.fillStyle = '#10B981';
+          octx.fillText(protoText, protoX + 8, protoY + 16);
+        } else if (isFleet) {
+          const fleetBadgeText = `Targets: ${targetsMap.size}`;
+          octx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+          const badgeW = octx.measureText(fleetBadgeText).width + 20;
+          drawRoundRect(135, headerY + 13, badgeW, 24, 6, 'rgba(30, 41, 59, 0.85)', 'rgba(56, 189, 248, 0.25)');
+          octx.fillStyle = '#38BDF8';
+          octx.fillText(fleetBadgeText, 145, headerY + 29);
         }
-        currentY += 60;
-      }
 
-      // Divider Line
-      octx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-      octx.beginPath();
-      octx.moveTo(24, currentY);
-      octx.lineTo(exportW - 24, currentY);
-      octx.stroke();
-      currentY += 12;
+        // Live monitoring status and timestamp on right
+        const now = new Date();
+        const timeStr = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
 
-      // 3. Chart Section Title & Legend
-      octx.fillStyle = '#F3F4F6';
-      octx.font = '700 12.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-      octx.fillText('Real-Time Latency Waveform', 30, currentY + 12);
+        octx.textAlign = 'right';
+        octx.fillStyle = '#6B7280';
+        octx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        octx.fillText(timeStr, exportW - 32, headerY + 31);
 
-      let legendX = 240;
-      for (const [name, t] of targetsMap) {
-        if (legendX + 160 < exportW - 20) {
-          octx.beginPath();
-          octx.arc(legendX, currentY + 8, 3.5, 0, Math.PI * 2);
-          octx.fillStyle = t.color;
-          octx.fill();
+        // Status indicator
+        octx.fillStyle = '#10B981';
+        octx.font = '700 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        octx.fillText('● LIVE MONITORING', exportW - 200, headerY + 31);
+
+        // 3. Render 5 KPI Cards (Single Target) OR Fleet Summary Table (Multi-Target)
+        if (!isFleet && firstTarget) {
+          const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+          const eh = Math.floor(elapsedSec / 3600);
+          const em = Math.floor((elapsedSec % 3600) / 60);
+          const es = elapsedSec % 60;
+          const uptimeStr = `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}:${String(es).padStart(2, '0')}`;
+
+          const latestHist = (firstTarget.history && firstTarget.history.length > 0) ? firstTarget.history[firstTarget.history.length - 1] : null;
+          const currentJitter = latestHist && latestHist.jitter ? `${latestHist.jitter.toFixed(2)} ms` : '0.00 ms';
+          const p95Val = (latestHist && latestHist.p95_rtt ? latestHist.p95_rtt : (firstTarget.avgRTT || 0)).toFixed(2);
+          const p99Val = (latestHist && latestHist.p99_rtt ? latestHist.p99_rtt : (firstTarget.maxRTT || 0)).toFixed(2);
+
+          const cardGap = 10;
+          const cardW = (exportW - 32 - 4 * cardGap) / 5;
+          const cardH = 86;
+          const cardY = currentY;
+
+          const kpiCards = [
+            {
+              label: 'CURRENT LATENCY',
+              val: (firstTarget.latestRTT && firstTarget.latestRTT > 0) ? `${firstTarget.latestRTT.toFixed(2)} ms` : '-- ms',
+              valColor: (firstTarget.latestRTT && firstTarget.latestRTT > 0) ? '#38BDF8' : '#F43F5E',
+              sub: `Jitter: ${currentJitter}`
+            },
+            {
+              label: 'PACKET LOSS',
+              val: `${(firstTarget.lossPercent || 0).toFixed(1)}%`,
+              valColor: (firstTarget.lossPercent && firstTarget.lossPercent > 0) ? '#F43F5E' : '#10B981',
+              sub: `${firstTarget.failed || 0} lost / ${firstTarget.sent || 0} sent`
+            },
+            {
+              label: 'LATENCY RANGE',
+              val: (firstTarget.avgRTT && firstTarget.avgRTT > 0) ? `${firstTarget.avgRTT.toFixed(2)} ms` : '-- ms',
+              valColor: '#F3F4F6',
+              sub: `Min: ${(firstTarget.minRTT || 0).toFixed(2)} | Max: ${(firstTarget.maxRTT || 0).toFixed(2)}`
+            },
+            {
+              label: 'SLA PERCENTILES',
+              val: `${p95Val} ms`,
+              valColor: '#F59E0B',
+              sub: `P99: ${p99Val} ms`
+            },
+            {
+              label: 'SESSION UPTIME',
+              val: uptimeStr,
+              valColor: '#F3F4F6',
+              sub: `Total Probes: ${firstTarget.sent || 0}`
+            }
+          ];
+
+          kpiCards.forEach((kpi, idx) => {
+            const cx = 16 + idx * (cardW + cardGap);
+            drawRoundRect(cx, cardY, cardW, cardH, 8, '#111827', 'rgba(255, 255, 255, 0.08)');
+
+            octx.textAlign = 'left';
+            // Label
+            octx.fillStyle = '#9CA3AF';
+            octx.font = '700 9.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+            octx.fillText(kpi.label, cx + 14, cardY + 22);
+
+            // Value
+            octx.fillStyle = kpi.valColor;
+            octx.font = '700 17px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+            octx.fillText(kpi.val, cx + 14, cardY + 49);
+
+            // Sub
+            octx.fillStyle = '#6B7280';
+            octx.font = '500 10.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+            octx.fillText(kpi.sub, cx + 14, cardY + 71);
+          });
+        } else if (isFleet) {
+          // Multi-Target Fleet Summary Table
+          drawRoundRect(16, currentY, exportW - 32, fleetTableH, 8, '#111827', 'rgba(255, 255, 255, 0.08)');
+
+          let tableY = currentY + 6;
+          octx.fillStyle = 'rgba(31, 41, 55, 0.7)';
+          octx.fillRect(24, tableY, exportW - 48, 26);
 
           octx.fillStyle = '#9CA3AF';
-          octx.font = '500 10.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-          octx.fillText(name, legendX + 8, currentY + 12);
-          legendX += (name.length * 7.5 + 40);
+          octx.font = '600 10.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+          octx.textAlign = 'left';
+
+          const colX = {
+            target: 34,
+            proto: 280,
+            ip: 360,
+            sent: 540,
+            recv: 610,
+            loss: 680,
+            last: 760,
+            avg: 845,
+            max: 930
+          };
+
+          octx.fillText('TARGET', colX.target, tableY + 17);
+          octx.fillText('PROTOCOL', colX.proto, tableY + 17);
+          octx.fillText('RESOLVED IP', colX.ip, tableY + 17);
+          octx.fillText('SENT', colX.sent, tableY + 17);
+          octx.fillText('RECV', colX.recv, tableY + 17);
+          octx.fillText('LOSS %', colX.loss, tableY + 17);
+          octx.fillText('LAST (MS)', colX.last, tableY + 17);
+          octx.fillText('AVG (MS)', colX.avg, tableY + 17);
+          octx.fillText('MAX (MS)', colX.max, tableY + 17);
+
+          tableY += 26;
+
+          for (const [name, t] of targetsMap) {
+            octx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+            octx.fillRect(24, tableY, exportW - 48, 25);
+
+            // Dot
+            octx.beginPath();
+            octx.arc(colX.target + 4, tableY + 12, 4, 0, Math.PI * 2);
+            octx.fillStyle = t.color;
+            octx.fill();
+
+            // Target Name
+            octx.fillStyle = '#F3F4F6';
+            octx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+            octx.fillText(name, colX.target + 14, tableY + 16);
+
+            // Protocol
+            octx.fillStyle = '#38BDF8';
+            octx.fillText(t.protocol, colX.proto, tableY + 16);
+
+            // IP
+            octx.fillStyle = '#9CA3AF';
+            octx.fillText(t.ip || '-', colX.ip, tableY + 16);
+
+            // Sent / Recv
+            octx.fillStyle = '#F3F4F6';
+            octx.fillText(String(t.sent || 0), colX.sent, tableY + 16);
+            octx.fillStyle = '#10B981';
+            octx.fillText(String(t.recv || 0), colX.recv, tableY + 16);
+
+            // Loss
+            const lossColor = (t.lossPercent && t.lossPercent > 0) ? '#EF4444' : '#10B981';
+            octx.fillStyle = lossColor;
+            octx.fillText(`${(t.lossPercent || 0).toFixed(1)}%`, colX.loss, tableY + 16);
+
+            // Latencies
+            octx.fillStyle = '#38BDF8';
+            octx.fillText((t.latestRTT || 0).toFixed(2), colX.last, tableY + 16);
+            octx.fillStyle = '#F3F4F6';
+            octx.fillText((t.avgRTT || 0).toFixed(2), colX.avg, tableY + 16);
+            octx.fillText((t.maxRTT || 0).toFixed(2), colX.max, tableY + 16);
+
+            tableY += 26;
+          }
         }
+
+        // 4. Render Latency Waveform Chart Card Container
+        drawRoundRect(16, chartCardY, exportW - 32, chartCardH, 8, '#111827', 'rgba(255, 255, 255, 0.08)');
+
+        // Chart Title
+        octx.textAlign = 'left';
+        octx.fillStyle = '#F3F4F6';
+        octx.font = '700 13px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        octx.fillText('Real-Time Latency Waveform', 32, chartCardY + 25);
+
+        // Legend items
+        let legendX = 260;
+        for (const [name, t] of targetsMap) {
+          if (legendX + 160 < exportW - 180) {
+            octx.beginPath();
+            octx.arc(legendX, chartCardY + 21, 4, 0, Math.PI * 2);
+            octx.fillStyle = t.color;
+            octx.fill();
+
+            octx.fillStyle = '#9CA3AF';
+            octx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+            octx.fillText(name, legendX + 10, chartCardY + 25);
+            legendX += (name.length * 7.5 + 40);
+          }
+        }
+
+        // Window text on top right
+        const activePoints = zoomRange ? (zoomRange.endIdx - zoomRange.startIdx + 1) : maxDataPoints;
+        octx.textAlign = 'right';
+        octx.fillStyle = '#6B7280';
+        octx.font = '500 10.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        octx.fillText(`Window: Last ${activePoints} Probes`, exportW - 32, chartCardY + 25);
+
+        // 5. Render Chart into offscreen canvas
+        const chartInnerW = exportW - 48;
+        const tempChartCanvas = document.createElement('canvas');
+        tempChartCanvas.width = chartInnerW;
+        tempChartCanvas.height = chartExportH;
+        const tctx = tempChartCanvas.getContext('2d');
+        renderChartOnContext(tctx, chartInnerW, chartExportH);
+
+        octx.drawImage(tempChartCanvas, 24, chartCardY + 38);
+
+        // 6. Trigger download
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `netping-telemetry-snapshot-${timestamp}.png`;
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = offscreen.toDataURL('image/png');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showToast(`✔ Exported ${filename}`);
+      } catch (err) {
+        console.error('Export PNG failed:', err);
+        showToast('✖ Failed to export PNG: ' + err.message);
+      } finally {
+        closeActionMenu();
       }
-      currentY += 22;
-
-      // 4. Render High-Resolution 460px Chart directly into offscreen context
-      const tempChartCanvas = document.createElement('canvas');
-      tempChartCanvas.width = exportW - 40;
-      tempChartCanvas.height = chartExportH;
-      const tctx = tempChartCanvas.getContext('2d');
-      renderChartOnContext(tctx, exportW - 40, chartExportH);
-
-      octx.drawImage(tempChartCanvas, 20, currentY);
-
-      // 5. Trigger download
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `netping-telemetry-snapshot-${timestamp}.png`;
-      const link = document.createElement('a');
-      link.download = filename;
-      link.href = offscreen.toDataURL('image/png');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      showToast(`✔ Exported ${filename}`);
-      closeActionMenu();
     }
 
     function openApiSpecsModal() {

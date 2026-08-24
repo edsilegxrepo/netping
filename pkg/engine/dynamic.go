@@ -1,3 +1,21 @@
+// Package engine provides dynamic on-demand probe orchestration, concurrent worker pooling,
+// real-time target registry management, and SLA threshold evaluation for netping.
+//
+// Objectives:
+//   - Execute on-demand Layer 3-7 network diagnostic probes triggered via REST API.
+//   - Enforce concurrency boundaries using buffered channel semaphores.
+//   - Evaluate SLA latency thresholds and calculate packet loss, jitter, and response percentiles.
+//   - Maintain synchronization with the dynamic fleet target registry and real-time SSE broadcaster.
+//
+// Core Components:
+//   - DynamicEngine: Core orchestrator managing concurrent execution workers and probe lifecycles.
+//   - DynamicTargetRegistry: Thread-safe target inventory tracking active endpoints and statistics.
+//   - Execute: Primary dispatch handler for single probes, iterative runs, and traceroutes.
+//
+// Data Flow:
+//
+//	POST /api/v1/trigger -> resolveTriggerTarget -> DynamicTargetRegistry.GetOrCreateTarget
+//	-> Semaphore Acquire -> probers.BuildPinger -> Pinger.Ping -> Stats Update -> SSE Broadcast -> JSON Response.
 package engine
 
 import (
@@ -18,17 +36,18 @@ import (
 )
 
 // Type aliases to pkg/web
-type TriggerRequest = web.TriggerRequest
-type SingleProbeItem = web.SingleProbeItem
-type HopItem = web.HopItem
-type TriggerResponse = web.TriggerResponse
+type (
+	TriggerRequest  = web.TriggerRequest
+	SingleProbeItem = web.SingleProbeItem
+	HopItem         = web.HopItem
+	TriggerResponse = web.TriggerResponse
+)
 
 // DynamicEngine coordinates on-demand and dynamic fleet probe executions.
 type DynamicEngine struct {
 	broadcaster *web.Broadcaster
 	registry    *DynamicTargetRegistry
 	sem         chan struct{}
-	mu          sync.RWMutex
 }
 
 // NewDynamicEngine constructs a new DynamicEngine.
@@ -402,7 +421,7 @@ func resolveTriggerTarget(req TriggerRequest) (string, uint16, consts.Protocol, 
 	if h, p, err := net.SplitHostPort(rawTarget); err == nil {
 		host = h
 		if port == 0 {
-			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 && parsed <= 65535 {
 				port = uint16(parsed)
 			}
 		}
@@ -410,7 +429,7 @@ func resolveTriggerTarget(req TriggerRequest) (string, uint16, consts.Protocol, 
 
 	proto, defPortStr, _ := resolveProtocolAndDefaultPort(protoStr)
 	if port == 0 {
-		if defP, err := strconv.Atoi(defPortStr); err == nil && defP > 0 {
+		if defP, err := strconv.Atoi(defPortStr); err == nil && defP > 0 && defP <= 65535 {
 			port = uint16(defP)
 		} else {
 			port = 443
@@ -421,542 +440,23 @@ func resolveTriggerTarget(req TriggerRequest) (string, uint16, consts.Protocol, 
 }
 
 func resolveProtocolAndDefaultPort(protocolStr string) (consts.Protocol, string, string) {
-	switch strings.ToLower(protocolStr) {
-	case "http":
-		return consts.HTTP, "80", ""
-	case "https":
-		return consts.HTTPS, "443", ""
-	case "grpc":
-		return consts.GRPC, "50051", ""
-	case "grpcs":
-		return consts.GRPCS, "443", ""
-	case "udp":
-		return consts.UDP, "53", ""
-	case "icmp", "ping":
-		return consts.ICMP, "0", ""
-	case "ws":
-		return consts.WS, "80", ""
-	case "wss":
-		return consts.WSS, "443", ""
-	case "dns":
-		return consts.DNS, "53", ""
-	case "doh":
-		return consts.DOH, "443", ""
-	case "dot":
-		return consts.DOT, "853", ""
-	case "redis":
-		return consts.REDIS, "6379", ""
-	case "rediss":
-		return consts.REDISS, "6380", ""
-	case "ssh", "sftp":
-		return consts.SSH, "22", ""
-	case "postgres", "postgresql":
-		return consts.POSTGRES, "5432", ""
-	case "mysql", "mariadb":
-		return consts.MYSQL, "3306", ""
-	case "mssql", "sqlserver":
-		return consts.MSSQL, "1433", ""
-	case "oracle", "tns":
-		return consts.ORACLE, "1521", ""
-	case "mongodb", "mongo":
-		return consts.MONGODB, "27017", ""
-	case "mongodbs", "mongodb+ssl":
-		return consts.MONGODBS, "27017", ""
-	case "cassandra", "scylla", "cql":
-		return consts.CASSANDRA, "9042", ""
-	case "cassandras", "cqls":
-		return consts.CASSANDRAS, "9042", ""
-	case "saphana", "hana":
-		return consts.SAPHANA, "30015", ""
-	case "memcached", "memcache":
-		return consts.MEMCACHED, "11211", ""
-	case "memcacheds", "memcaches":
-		return consts.MEMCACHEDS, "11211", ""
-	case "smtp":
-		return consts.SMTP, "25", ""
-	case "smtps":
-		return consts.SMTPS, "465", ""
-	case "imap":
-		return consts.IMAP, "143", ""
-	case "imaps":
-		return consts.IMAPS, "993", ""
-	case "pop3":
-		return consts.POP3, "110", ""
-	case "pop3s":
-		return consts.POP3S, "995", ""
-	case "ldap":
-		return consts.LDAP, "389", ""
-	case "ldaps":
-		return consts.LDAPS, "636", ""
-	case "o365", "graph":
-		return consts.O365, "443", ""
-	case "s3":
-		return consts.S3, "443", ""
-	case "azureblob":
-		return consts.AZUREBLOB, "443", ""
-	case "gcs":
-		return consts.GCS, "443", ""
-	case "kafka":
-		return consts.KAFKA, "9092", ""
-	case "kafkas":
-		return consts.KAFKAS, "9093", ""
-	case "rabbitmq", "amqp":
-		return consts.RABBITMQ, "5672", ""
-	case "amqps":
-		return consts.AMQPS, "5671", ""
-	case "smb":
-		return consts.SMB, "445", ""
-	case "rsync":
-		return consts.RSYNC, "873", ""
-	case "ftp":
-		return consts.FTP, "21", ""
-	case "ftps":
-		return consts.FTPS, "990", ""
-	case "tls", "tcps", "ssl":
-		return consts.TLS, "443", ""
-	default:
-		return consts.TCP, "443", ""
-	}
+	proto, port, _ := consts.NormalizeProtocol(protocolStr)
+	return proto, strconv.Itoa(int(port)), ""
 }
 
 func buildPinger(host string, ip netip.Addr, port uint16, proto consts.Protocol, svc string, timeout time.Duration, req TriggerRequest) probers.Pinger {
-	var dialer *net.Dialer
-
-	switch proto {
-	case consts.HTTP, consts.HTTPS:
-		return probers.NewHTTPing(probers.HTTPOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Protocol: proto,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.UDP:
-		return probers.NewUDPing(probers.UDPOptions{
-			IP:         ip,
-			Port:       port,
-			Timeout:    timeout,
-			Dialer:     dialer,
-			SendData:   req.SendData,
-			ExpectData: req.ExpectData,
-		})
-	case consts.ICMP:
-		return probers.NewICMPing(probers.ICMPOptions{
-			IP:      ip,
-			Timeout: timeout,
-			UseIPv6: req.UseIPv6,
-		})
-	case consts.GRPC:
-		return probers.NewGRPCing(probers.GRPCOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.GRPCS:
-		return probers.NewGRPCing(probers.GRPCOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.WS:
-		return probers.NewWSing(probers.WSOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   false,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.WSS:
-		return probers.NewWSing(probers.WSOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.DNS:
-		return probers.NewDNSQueryProber(probers.DNSQueryOptions{
-			Nameserver: host,
-			IP:         ip,
-			Port:       port,
-			Domains:    req.DNSHosts,
-			Domain:     host,
-			IsDoH:      false,
-			Timeout:    timeout,
-			Dialer:     dialer,
-		})
-	case consts.DOH:
-		return probers.NewDNSQueryProber(probers.DNSQueryOptions{
-			Nameserver: host,
-			IP:         ip,
-			Port:       port,
-			Domains:    req.DNSHosts,
-			Domain:     host,
-			IsDoH:      true,
-			Timeout:    timeout,
-			Dialer:     dialer,
-		})
-	case consts.DOT:
-		return probers.NewDNSQueryProber(probers.DNSQueryOptions{
-			Nameserver: host,
-			IP:         ip,
-			Port:       port,
-			Domains:    req.DNSHosts,
-			Domain:     host,
-			IsDoT:      true,
-			Timeout:    timeout,
-			Dialer:     dialer,
-		})
-	case consts.REDIS:
-		return probers.NewRedising(probers.RedisOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.REDISS:
-		return probers.NewRedising(probers.RedisOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.SSH:
-		return probers.NewSSHing(probers.SSHOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.POSTGRES:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.PostgreSQL,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.MYSQL:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.MySQL,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.MSSQL:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.MSSQL,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.ORACLE:
-		return probers.NewDBing(probers.DBOptions{
-			Type:        probers.Oracle,
-			Hostname:    host,
-			IP:          ip,
-			Port:        port,
-			ServiceName: svc,
-			Timeout:     timeout,
-			Dialer:      dialer,
-		})
-	case consts.MONGODB:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.MongoDB,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.MONGODBS:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.MongoDB,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.CASSANDRA:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.Cassandra,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.CASSANDRAS:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.Cassandra,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.SAPHANA:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.SAPHANA,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.MEMCACHED:
-		return probers.NewMemcacheding(probers.MemcachedOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.MEMCACHEDS:
-		return probers.NewMemcacheding(probers.MemcachedOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.SMTP:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailSMTP,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   false,
-			StartTLS: req.StartTLS,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.SMTPS:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailSMTP,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			StartTLS: false,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.IMAP:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailIMAP,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   false,
-			StartTLS: req.StartTLS,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.IMAPS:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailIMAP,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			StartTLS: false,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.POP3:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailPOP3,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   false,
-			StartTLS: req.StartTLS,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.POP3S:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailPOP3,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			StartTLS: false,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.LDAP:
-		return probers.NewLDAPing(probers.LDAPOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   false,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.LDAPS:
-		return probers.NewLDAPing(probers.LDAPOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.O365:
-		return probers.NewO365ing(probers.O365Options{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.S3:
-		return probers.NewStorageing(probers.StorageOptions{
-			Type:     probers.StorageS3,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.AZUREBLOB:
-		return probers.NewStorageing(probers.StorageOptions{
-			Type:     probers.StorageAzureBlob,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.GCS:
-		return probers.NewStorageing(probers.StorageOptions{
-			Type:     probers.StorageGCS,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.KAFKA:
-		return probers.NewQueueing(probers.QueueOptions{
-			Protocol: probers.QueueKafka,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   false,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.KAFKAS:
-		return probers.NewQueueing(probers.QueueOptions{
-			Protocol: probers.QueueKafka,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.RABBITMQ, consts.AMQP:
-		return probers.NewQueueing(probers.QueueOptions{
-			Protocol: probers.QueueRabbitMQ,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   false,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.AMQPS:
-		return probers.NewQueueing(probers.QueueOptions{
-			Protocol: probers.QueueRabbitMQ,
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.SMB:
-		return probers.NewSMBing(probers.SMBOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.RSYNC:
-		return probers.NewRsyncing(probers.RsyncOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.FTP:
-		return probers.NewFTPing(probers.FTPOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   false,
-			StartTLS: req.StartTLS,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.FTPS:
-		return probers.NewFTPing(probers.FTPOptions{
-			Hostname: host,
-			IP:       ip,
-			Port:     port,
-			UseTLS:   true,
-			StartTLS: false,
-			Timeout:  timeout,
-			Dialer:   dialer,
-		})
-	case consts.TLS:
-		return probers.NewTLSing(probers.TLSOptions{
-			Hostname:  host,
-			IP:        ip,
-			Port:      port,
-			Timeout:   timeout,
-			Dialer:    dialer,
-			FastClose: req.FastClose,
-		})
-	case consts.TCP:
-		fallthrough
-	default:
-		return probers.NewTcping(probers.TCPOptions{
-			Hostname:   host,
-			IP:         ip,
-			Port:       port,
-			Timeout:    timeout,
-			Dialer:     dialer,
-			SendData:   req.SendData,
-			ExpectData: req.ExpectData,
-			FastClose:  req.FastClose,
-		})
-	}
+	return probers.BuildPinger(probers.FactoryOptions{
+		Protocol:    proto,
+		Hostname:    host,
+		IP:          ip,
+		Port:        port,
+		Timeout:     timeout,
+		UseIPv4:     req.UseIPv4,
+		UseIPv6:     req.UseIPv6,
+		SendData:    req.SendData,
+		ExpectData:  req.ExpectData,
+		ServiceName: svc,
+		StartTLS:    req.StartTLS,
+		FastClose:   req.FastClose,
+	})
 }

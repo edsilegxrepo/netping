@@ -83,7 +83,8 @@ func (t *TLSing) Ping(ctx context.Context) ProbeResult {
 	_ = tcpConn.SetDeadline(time.Now().Add(t.timeout))
 
 	tlsConfig := &tls.Config{
-		ServerName:         targetHost,
+		ServerName: targetHost,
+		// #nosec G402 -- user-configurable TLS certificate verification for latency probing
 		InsecureSkipVerify: t.skipVerify,
 	}
 

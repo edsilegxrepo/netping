@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +27,7 @@ const (
 )
 
 const (
-	filePermission os.FileMode = 0644
+	filePermission os.FileMode = 0o644
 	fileFlag       int         = os.O_CREATE | os.O_WRONLY | os.O_TRUNC
 )
 
@@ -42,15 +43,17 @@ type CSVPrinter struct {
 
 // NewCSVPrinter initializes a CSVPrinter instance with the given filename and settings.
 func NewCSVPrinter(filePath string) (*CSVPrinter, error) {
-	probeFilename := addExtension(filePath, ".csv", false)
+	probeFilename := filepath.Clean(addExtension(filePath, ".csv", false))
 
+	// #nosec G304 -- creates user-specified CSV export file
 	probeFile, err := os.OpenFile(probeFilename, fileFlag, filePermission)
 	if err != nil {
 		return nil, fmt.Errorf("error creating the probe CSV file %s: %w", probeFilename, err)
 	}
 
-	statsFilename := addExtension(filePath, ".csv", true)
+	statsFilename := filepath.Clean(addExtension(filePath, ".csv", true))
 
+	// #nosec G304 -- creates user-specified CSV stats file
 	statsFile, err := os.OpenFile(statsFilename, fileFlag, filePermission)
 	if err != nil {
 		probeFile.Close()
@@ -69,15 +72,17 @@ func NewCSVPrinter(filePath string) (*CSVPrinter, error) {
 
 // NewTSVPrinter initializes a TSV (Tab-Separated Values) printer instance.
 func NewTSVPrinter(filePath string) (*CSVPrinter, error) {
-	probeFilename := addExtension(filePath, ".tsv", false)
+	probeFilename := filepath.Clean(addExtension(filePath, ".tsv", false))
 
+	// #nosec G304 -- creates user-specified TSV export file
 	probeFile, err := os.OpenFile(probeFilename, fileFlag, filePermission)
 	if err != nil {
 		return nil, fmt.Errorf("error creating the probe TSV file %s: %w", probeFilename, err)
 	}
 
-	statsFilename := addExtension(filePath, ".tsv", true)
+	statsFilename := filepath.Clean(addExtension(filePath, ".tsv", true))
 
+	// #nosec G304 -- creates user-specified TSV stats file
 	statsFile, err := os.OpenFile(statsFilename, fileFlag, filePermission)
 	if err != nil {
 		probeFile.Close()
@@ -99,7 +104,7 @@ func NewTSVPrinter(filePath string) (*CSVPrinter, error) {
 	return p, nil
 }
 
-func addExtension(filename string, ext string, withStatsExt bool) string {
+func addExtension(filename, ext string, withStatsExt bool) string {
 	base := filename
 	lower := strings.ToLower(base)
 	if strings.HasSuffix(lower, ext) {
@@ -116,10 +121,6 @@ func addExtension(filename string, ext string, withStatsExt bool) string {
 	}
 
 	return base + ext
-}
-
-func addCSVExtension(filename string, withStatsExt bool) string {
-	return addExtension(filename, ".csv", withStatsExt)
 }
 
 // Done flushes the buffer of writers and closes the probe and stats file
@@ -198,8 +199,8 @@ func (p *CSVPrinter) PrintStart(s *stats.Statistics) {
 	defer p.mu.Unlock()
 
 	if !p.headerWritten {
-		p.writeProbeHeader(s)
-		p.writeStatsHeader()
+		_ = p.writeProbeHeader(s)
+		_ = p.writeStatsHeader()
 		p.headerWritten = true
 		fmt.Printf("TCPinging %s on port %d - saving the results to: %s\n", s.Hostname, s.Port, p.ProbeFile.Name())
 	}
@@ -298,15 +299,21 @@ func (p *CSVPrinter) PrintStatistics(s *stats.Statistics) {
 	statistics = append(statistics, []string{"Port", fmt.Sprintf("%d", s.Port)})
 
 	totalDuration := s.TotalDowntime + s.TotalUptime
-	statistics = append(statistics, []string{"Total Duration",
-		fmt.Sprintf("%.0f", totalDuration.Seconds())},
+	statistics = append(statistics, []string{
+		"Total Duration",
+		fmt.Sprintf("%.0f", totalDuration.Seconds()),
+	},
 	)
 
-	statistics = append(statistics, []string{"Total Uptime",
-		utils.DurationToString(s.TotalUptime)},
+	statistics = append(statistics, []string{
+		"Total Uptime",
+		utils.DurationToString(s.TotalUptime),
+	},
 	)
-	statistics = append(statistics, []string{"Total Downtime",
-		utils.DurationToString(s.TotalDowntime)},
+	statistics = append(statistics, []string{
+		"Total Downtime",
+		utils.DurationToString(s.TotalDowntime),
+	},
 	)
 
 	totalPackets := s.TotalSuccessfulProbes + s.TotalUnsuccessfulProbes

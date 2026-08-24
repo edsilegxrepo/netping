@@ -336,6 +336,10 @@ func TestLive_FTP_Rebex(t *testing.T) {
 	})
 
 	res := f.Ping(context.Background())
+	if res.Err != nil && strings.Contains(res.Err.Error(), "quota") {
+		t.Skipf("skipping: public test.rebex.net rate limited or quota exceeded: %v", res.Err)
+		return
+	}
 	assert.NoError(t, res.Err)
 	assert.Contains(t, res.Diagnostics, "Features")
 }
@@ -1627,6 +1631,3 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 		assert.Equal(t, 0, broadcaster.GetHistoryCount())
 	})
 }
-
-
-

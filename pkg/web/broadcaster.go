@@ -9,30 +9,30 @@ type ProbeEvent struct {
 	RawTime        time.Time `json:"-"`
 	Timestamp      string    `json:"timestamp"`
 	Sequence       uint      `json:"sequence"`
-	Success        bool    `json:"success"`
-	RTT            float64 `json:"rtt"`
-	Target         string  `json:"target"`
-	Hostname       string  `json:"hostname"`
-	IP             string  `json:"ip"`
-	Port           uint16  `json:"port"`
-	Protocol       string  `json:"protocol"`
-	Diagnostics    string  `json:"diagnostics,omitempty"`
-	Error          string  `json:"error,omitempty"`
-	DNSTime        float64 `json:"dns_time,omitempty"`
-	TCPTime        float64 `json:"tcp_time,omitempty"`
-	TLSTime        float64 `json:"tls_time,omitempty"`
-	HTTPStatus     int     `json:"http_status,omitempty"`
-	TotalSent      uint    `json:"total_sent"`
-	TotalSuccess   uint    `json:"total_success"`
-	TotalFailed    uint    `json:"total_failed"`
-	PacketLoss     float64 `json:"packet_loss"`
-	AvgRTT         float64 `json:"avg_rtt"`
-	MinRTT         float64 `json:"min_rtt"`
-	MaxRTT         float64 `json:"max_rtt"`
-	P95RTT         float64 `json:"p95_rtt"`
-	P99RTT         float64 `json:"p99_rtt"`
-	Jitter         float64 `json:"jitter"`
-	UptimeDuration string  `json:"uptime_duration"`
+	Success        bool      `json:"success"`
+	RTT            float64   `json:"rtt"`
+	Target         string    `json:"target"`
+	Hostname       string    `json:"hostname"`
+	IP             string    `json:"ip"`
+	Port           uint16    `json:"port"`
+	Protocol       string    `json:"protocol"`
+	Diagnostics    string    `json:"diagnostics,omitempty"`
+	Error          string    `json:"error,omitempty"`
+	DNSTime        float64   `json:"dns_time,omitempty"`
+	TCPTime        float64   `json:"tcp_time,omitempty"`
+	TLSTime        float64   `json:"tls_time,omitempty"`
+	HTTPStatus     int       `json:"http_status,omitempty"`
+	TotalSent      uint      `json:"total_sent"`
+	TotalSuccess   uint      `json:"total_success"`
+	TotalFailed    uint      `json:"total_failed"`
+	PacketLoss     float64   `json:"packet_loss"`
+	AvgRTT         float64   `json:"avg_rtt"`
+	MinRTT         float64   `json:"min_rtt"`
+	MaxRTT         float64   `json:"max_rtt"`
+	P95RTT         float64   `json:"p95_rtt"`
+	P99RTT         float64   `json:"p99_rtt"`
+	Jitter         float64   `json:"jitter"`
+	UptimeDuration string    `json:"uptime_duration"`
 }
 
 // Broadcaster manages real-time Server-Sent Events subscriber channels and probe history.
@@ -117,7 +117,7 @@ func (b *Broadcaster) GetHistory() []ProbeEvent {
 }
 
 // GetProbes retrieves a paginated and optionally filtered window of probe events from history (newest first).
-func (b *Broadcaster) GetProbes(target string, status string, limit int, offset int) ([]ProbeEvent, int) {
+func (b *Broadcaster) GetProbes(target, status string, limit, offset int) ([]ProbeEvent, int) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## v3.5.2 - 2026-08-23
+
+- **Interactive Web Dashboard**:
+  - **Enhanced Latency Waveform**: Real-time hover tooltips, drag/wheel zoom with reset, and X-axis timestamp scale.
+  - **Enterprise Controls & View Menu**: Maximize Waveform or Event Stream views (window-bounded), toggle Line vs Bar chart mode, and context-aware action states.
+  - **Live Event Stream Filter**: Universal search bar filtering incoming probe events across all fields.
+  - **API Specs Popup Modal**: Embedded Swagger UI/OpenAPI viewer with dedicated tab option.
+  - **Composite PNG Snapshot**: Telemetry export combining target fleet metrics and waveform chart.
+  - **Sticky Header**: Pinned header with solid background mask.
+- **Engine Precision & Performance**:
+  - **Wire-Level HTTP Timing**: Measures true network RTT from TCP connection start to first byte response (`TTFB`).
+  - **Detached Async Saves**: Zero-latency-spike background export process on Windows and POSIX.
+  - **Dynamic History Buffer**: Expandable in-memory retention buffer up to 5M events (`--history-limit`) with REST API controls (`/api/v1/config/history`).
+
 ## v3.5.1 - 2026-08-21
 
 - **Features & Protocol Diagnostics**:

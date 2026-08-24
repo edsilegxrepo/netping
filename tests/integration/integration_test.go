@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -26,6 +27,7 @@ import (
 	"github.com/edsilegx/netping/pkg/consts"
 	"github.com/edsilegx/netping/pkg/probers"
 	"github.com/edsilegx/netping/pkg/stats"
+	"github.com/edsilegx/netping/pkg/web"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"zombiezen.com/go/sqlite"
@@ -1434,6 +1436,195 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		assert.Equal(t, 4, probeCount, "Expected exactly 4 probe records in NDJSON")
 		assert.Equal(t, 2, statsCount, "Expected exactly 2 stats records in NDJSON")
 		assert.True(t, lineCount >= 8, "Expected at least 8 total lines in NDJSON")
+	})
+}
+
+// ==========================================
+// 10. Live Web Server & REST API End-to-End Tests
+// ==========================================
+
+func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
+	st := stats.NewStatistics(stats.Options{
+		Hostname: "api-e2e.example.com",
+		IP:       netip.MustParseAddr("1.1.1.1"),
+		Port:     443,
+	})
+	st.RecordSuccess(14.2, time.Now())
+	st.RecordSuccess(18.6, time.Now())
+
+	broadcaster := web.NewBroadcaster()
+	for i := 1; i <= 5; i++ {
+		broadcaster.Broadcast(web.ProbeEvent{
+			Sequence: uint(i),
+			Success:  true,
+			RTT:      float64(i) * 3.5,
+			Target:   "api-e2e.example.com:443",
+			Protocol: "HTTPS",
+			IP:       "1.1.1.1",
+		})
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	actualAddr := ln.Addr().String()
+	_ = ln.Close()
+
+	server := web.NewServer(actualAddr, st, broadcaster)
+	server.SetTargetsSupplier(func() []printers.FleetTarget {
+		return []printers.FleetTarget{
+			{Target: "api-e2e.example.com:443", Host: "api-e2e.example.com", Port: 443, Protocol: "HTTPS", Stats: st},
+		}
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		_ = server.Start(ctx)
+	}()
+
+	baseURL := fmt.Sprintf("http://%s", actualAddr)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	require.Eventually(t, func() bool {
+		resp, err := client.Get(baseURL + "/api/v1/health")
+		if err == nil && resp.StatusCode == http.StatusOK {
+			_ = resp.Body.Close()
+			return true
+		}
+		return false
+	}, 3*time.Second, 50*time.Millisecond, "Server failed to start")
+
+	// 1. GET / (Dashboard SPA)
+	t.Run("GET_Index_Dashboard", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		assert.Contains(t, string(body), "netping Enterprise Dashboard")
+		assert.Contains(t, string(body), "Live Probe Event Stream")
+	})
+
+	// 2. GET /api/v1/health
+	t.Run("GET_Health", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/api/v1/health")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		var h map[string]interface{}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&h))
+		assert.Equal(t, "healthy", h["status"])
+		assert.Equal(t, float64(5), h["history_count"])
+	})
+
+	// 3. GET /api/v1/metrics
+	t.Run("GET_Metrics", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/api/v1/metrics")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		var m map[string]interface{}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&m))
+		assert.Contains(t, m, "targets")
+	})
+
+	// 4. GET /api/v1/targets
+	t.Run("GET_Targets", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/api/v1/targets")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		var tgts map[string]interface{}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&tgts))
+		assert.Equal(t, float64(1), tgts["total"])
+	})
+
+	// 5. GET /api/v1/probes
+	t.Run("GET_Probes", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/api/v1/probes?limit=3")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		var probes map[string]interface{}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&probes))
+		assert.Equal(t, float64(5), probes["total"])
+		dataList, ok := probes["data"].([]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, 3, len(dataList))
+	})
+
+	// 6. GET /docs & GET /api/openapi.json
+	t.Run("GET_Swagger_And_OpenAPI", func(t *testing.T) {
+		respDocs, err := client.Get(baseURL + "/docs")
+		require.NoError(t, err)
+		defer respDocs.Body.Close()
+		assert.Equal(t, http.StatusOK, respDocs.StatusCode)
+
+		respSpec, err := client.Get(baseURL + "/api/openapi.json")
+		require.NoError(t, err)
+		defer respSpec.Body.Close()
+		assert.Equal(t, http.StatusOK, respSpec.StatusCode)
+		var spec map[string]interface{}
+		require.NoError(t, json.NewDecoder(respSpec.Body).Decode(&spec))
+		assert.Equal(t, "3.0.3", spec["openapi"])
+	})
+
+	// 7. GET /api/v1/config/history & POST /api/v1/config/history
+	t.Run("GET_POST_Config_History", func(t *testing.T) {
+		respGet, err := client.Get(baseURL + "/api/v1/config/history")
+		require.NoError(t, err)
+		defer respGet.Body.Close()
+		assert.Equal(t, http.StatusOK, respGet.StatusCode)
+
+		respPost, err := client.Post(baseURL+"/api/v1/config/history", "application/json", strings.NewReader(`{"limit": 250000}`))
+		require.NoError(t, err)
+		defer respPost.Body.Close()
+		assert.Equal(t, http.StatusOK, respPost.StatusCode)
+		var res map[string]interface{}
+		require.NoError(t, json.NewDecoder(respPost.Body).Decode(&res))
+		assert.Equal(t, float64(250000), res["history_limit"])
+	})
+
+	// 8. GET /api/v1/export streaming (JSON & CSV)
+	t.Run("GET_Export_Streaming", func(t *testing.T) {
+		respJSON, err := client.Get(baseURL + "/api/v1/export?format=json")
+		require.NoError(t, err)
+		defer respJSON.Body.Close()
+		assert.Equal(t, http.StatusOK, respJSON.StatusCode)
+		assert.Equal(t, "application/json", respJSON.Header.Get("Content-Type"))
+
+		respCSV, err := client.Get(baseURL + "/api/v1/export?format=csv")
+		require.NoError(t, err)
+		defer respCSV.Body.Close()
+		assert.Equal(t, http.StatusOK, respCSV.StatusCode)
+		assert.Equal(t, "text/csv", respCSV.Header.Get("Content-Type"))
+	})
+
+	// 9. POST /api/v1/export (host file save)
+	t.Run("POST_Export_Host_Save", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		outPath := filepath.Join(tmpDir, "e2e_live_export.json")
+		reqBody := fmt.Sprintf(`{"format":"json","path":%q}`, outPath)
+
+		resp, err := client.Post(baseURL+"/api/v1/export", "application/json", strings.NewReader(reqBody))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		require.Eventually(t, func() bool {
+			info, err := os.Stat(outPath)
+			return err == nil && info.Size() > 0
+		}, 3*time.Second, 50*time.Millisecond)
+	})
+
+	// 10. POST /api/v1/reset
+	t.Run("POST_Reset_Telemetry", func(t *testing.T) {
+		resp, err := client.Post(baseURL+"/api/v1/reset", "application/json", nil)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, 0, broadcaster.GetHistoryCount())
 	})
 }
 

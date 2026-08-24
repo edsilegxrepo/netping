@@ -4,7 +4,7 @@
 
 # Meta
 SHELL := /bin/bash
-VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
+VERSION ?= $(shell cat version.txt 2>/dev/null || echo "dev")
 MAINTAINER := https://github.com/edsilegxrepo
 DESCRIPTION := Modern, multi-protocol network latency and diagnostics prober. Written in Go
 

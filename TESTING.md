@@ -65,7 +65,8 @@ netping/
 │   ├── consts/protocols_test.go # Protocol aliases, default IANA ports, and enums.
 │   ├── engine/engine_test.go    # Dynamic trigger execution, worker semaphores, and SLA alarms.
 │   ├── metrics/prometheus_test.go # OpenMetrics formatting, scrape endpoints, and histograms.
-│   ├── probers/*_test.go        # Wire-level mock servers for databases, queues, mail, and web.
+│   ├── probers/factory_test.go  # Centralized prober builder pattern validation across 49 protocols.
+│   ├── probers/probers_test.go  # Wire-level mock servers for databases, queues, mail, HTTP method dispatch, and web.
 │   ├── stats/stats_test.go      # RFC 3550 jitter calculation, streak tracking, and snapshots.
 │   ├── utils/utils_test.go      # Percentile ranks, error taxonomy classifiers, and sparklines.
 │   └── web/server_test.go       # Embedded Web dashboard, SSE broadcaster, and REST endpoints.
@@ -146,9 +147,10 @@ sequenceDiagram
 | **DNS Resolution** | `TestCustomDNSLookup_Fallback` | Tests resolution fallback to system resolver on custom DNS timeout. | PASS if resolver falls back gracefully and records resolution duration. |
 | **Network Interface** | `TestNewNetworkInterface_ValidLocalIP` | Tests outbound socket binding to host loopback / active NIC addresses. | PASS if dialer.LocalAddr binds cleanly to designated local IP. |
 | **Network Interface** | `TestNewNetworkInterface_AutoDetect` | Verifies auto-detection of default outbound network interface and gateway. | PASS if non-empty local IP is selected without errors. |
+| **Printers (TUI)** | `TestSparklineRenderingModes` | Tests `shouldUseCompatGlyphs()` across environment overrides and modern/fallback block glyph sets. | PASS if legacy 3-glyph and modern 8-glyph modes render accurately. |
 | **Probers (Factory)** | `TestBuildPinger_AllProtocols` | Instantiates prober instances across all 49 supported protocols. | PASS if BuildPinger produces non-nil Pinger for every protocol constant. |
 | **Probers (HTTP/S)** | `TestHTTPing_Ping_Success` | Probes mock HTTP server collecting DNS, TCP, TLS, and TTFB trace timings. | PASS if TTFB > 0, HTTPStatus = 200, and RTT is within bounds. |
-| **Probers (HTTP/S)** | `TestHTTPing_SendDataAndExpectData` | Validates method dispatch (HEAD, POST with body, GET with expect matching). | PASS if POST transmits payload and GET asserts expected response substring. |
+| **Probers (HTTP/S)** | `TestHTTPing_SendDataAndExpectData` | Validates method dispatch (HEAD default, POST with body, GET with expect substring matching). | PASS if POST transmits payload and GET asserts expected response substring. |
 | **Probers (Database)** | `TestDBing_Postgres_Handshake` | Simulates PostgreSQL SSLRequest and StartupMessage protocol handshakes. | PASS if SSL capability and server version are parsed into Diagnostics. |
 | **Probers (Database)** | `TestDBing_MySQL_Handshake` | Simulates MySQL HandshakeV10 greeting frame decoding. | PASS if proto version, thread ID, and auth plugin are extracted. |
 | **Probers (Database)** | `TestDBing_MSSQL_Handshake` | Simulates MSSQL TDS 7.x/8.0 PRELOGIN token exchange. | PASS if server response token is recognized and parsed. |
@@ -227,16 +229,16 @@ All integration and E2E tests are executed with `-tags=integration` and probe ag
 | :--- | :--- | :---: | :---: |
 | `internal/app` | Signal trapping & process lifecycle management | **100.0%** | PASS |
 | `internal/config` | Flag parsing, argument permutation & target expansion | **82.2%** | PASS |
-| `internal/dns` | Custom DNS nameserver resolution & retry backoff | **86.3%** | PASS |
-| `internal/nic` | Network interface binding & socket dialer construction | **88.6%** | PASS |
+| `internal/dns` | Custom DNS nameserver resolution & retry backoff | **85.7%** | PASS |
+| `internal/nic` | Network interface binding & socket dialer construction | **88.1%** | PASS |
 | `internal/printers` | TUI dashboard, SQLite3, CSV, TSV, JSON formatters | **80.2%** | PASS |
 | `pkg/auth` | Argon2id key generation, keystores & LRU cache | **89.2%** | PASS |
 | `pkg/consts` | Protocol constants, port mapping & exit codes | **100.0%** | PASS |
-| `pkg/engine` | Dynamic trigger orchestration & worker semaphores | **84.0%** | PASS |
+| `pkg/engine` | Dynamic trigger orchestration & worker semaphores | **84.3%** | PASS |
 | `pkg/metrics` | Embedded Prometheus/OpenMetrics exporter | **100.0%** | PASS |
-| `pkg/probers` | 49 L3–L7 protocol handshakes & wire parsers | **80.1%** | PASS |
+| `pkg/probers` | 49 L3–L7 protocol handshakes & wire parsers | **81.0%** | PASS |
 | `pkg/stats` | RFC 3550 jitter, streak tracking & snapshots | **98.3%** | PASS |
-| `pkg/utils` | Percentile ranks, error taxonomy & sparklines | **81.7%** | PASS |
+| `pkg/utils` | Percentile ranks, error taxonomy & sparklines | **82.1%** | PASS |
 | `pkg/web` | Embedded web server, SSE broadcaster & REST API | **84.2%** | PASS |
 
 ### 5.2. How to Generate and Refresh Coverage Stats

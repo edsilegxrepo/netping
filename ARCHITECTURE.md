@@ -16,15 +16,21 @@ graph TB
         App["internal/app"]
     end
 
+    subgraph DynamicEngineSub ["Dynamic Trigger Engine & Auth"]
+        Engine["pkg/engine (DynamicEngine)"]
+        Auth["pkg/auth (Argon2id Verifier & Keystore)"]
+    end
+
     subgraph CoreEngine ["Probing Engine & Orchestrator"]
         Prober["pkg/probers.Prober"]
         MultiProber["pkg/probers.MultiProber"]
+        Factory["pkg/probers.BuildPinger (Factory)"]
         PingerContract["pkg/probers.Pinger (Interface)"]
     end
 
-    subgraph Probers ["Protocol-Specific Probers"]
+    subgraph Probers ["Protocol-Specific Probers (49 Protocols)"]
         TCP["pkg/probers/tcp.go"]
-        HTTP["pkg/probers/http.go"]
+        HTTP["pkg/probers/http.go (HEAD/POST/GET)"]
         TLS["pkg/probers/raw_tls.go"]
         UDP["pkg/probers/udp.go"]
         ICMP["pkg/probers/icmp.go"]
@@ -48,7 +54,7 @@ graph TB
         CLIPrinters["internal/printers (Color, Plain, JSON, NDJSON)"]
         StoragePrinters["internal/printers (CSV, TSV, SQLite3)"]
         TUIDashboard["internal/printers/dashboard.go (120-Col TUI)"]
-        WebDash["pkg/web (SSE Web Server)"]
+        WebDash["pkg/web (SSE Web Server & PNG Canvas Exporter)"]
         PromMetrics["pkg/metrics (Prometheus Exporter)"]
     end
 
@@ -56,9 +62,13 @@ graph TB
     Entry --> App
     Entry --> Prober
     Entry --> MultiProber
+    Entry --> Engine
+    Engine --> Auth
+    Engine --> Factory
 
-    Prober --> PingerContract
-    MultiProber --> PingerContract
+    Prober --> Factory
+    MultiProber --> Factory
+    Factory --> PingerContract
     PingerContract --> TCP
     PingerContract --> HTTP
     PingerContract --> TLS
@@ -111,7 +121,7 @@ graph TB
 
 | Edge Case | Failure Mode | Mitigation Strategy | Reference |
 | :--- | :--- | :--- | :--- |
-| **High-Frequency Socket Exhaustion** | Probing at sub-millisecond intervals (`-i 0.002`) exhausts ephemeral ports, filling OS socket table with `TIME_WAIT`. | Added `--fast-close` (`SO_LINGER=0`), forcing immediate `TCP RST` packets on socket teardown to bypass `TIME_WAIT`. | [`pkg/probers/tcp.go`](pkg/probers/tcp.go) |
+| **High-Frequency Socket Exhaustion** | Probing at sub-millisecond intervals (`--interval 0.002`) exhausts ephemeral ports, filling OS socket table with `TIME_WAIT`. | Added `--fast-close` (`SO_LINGER=0`), forcing immediate `TCP RST` packets on socket teardown to bypass `TIME_WAIT`. | [`pkg/probers/tcp.go`](pkg/probers/tcp.go) |
 | **Anycast / CDN DNS Flapping** | Target IP rotates dynamically under Anycast routing or multi-record DNS configurations. | Added `--resolve-every-probe` to re-query upstream DNS on each cycle and track hostname-to-IP transitions. | [`pkg/probers/probers.go`](pkg/probers/probers.go) |
 | **Transient Network Drops** | Brief packet loss or gateway flaps cause false-positive alert cascades. | Exponential backoff engine with randomized full jitter (`--retry`, `--retry-backoff`, `--retry-jitter`) to absorb network burps. | [`pkg/utils/backoff.go`](pkg/utils/backoff.go) |
 | **Terminal Width Misalignment** | ANSI escape codes disrupt character counts in variable-width terminal emulators. | Built ANSI-safe width calculation (`padRightVisible`) with automatic ellipsis truncation (`…\033[0m`) guaranteeing strict 120-column table alignment. | [`internal/printers/dashboard.go`](internal/printers/dashboard.go) |
@@ -140,7 +150,7 @@ sequenceDiagram
     participant Stats as pkg/stats.Statistics
     participant Outputs as Printers / Web / Prometheus
 
-    User->>Main: Execute CLI (e.g. netping 1.1.1.1 443 --diags)
+    User->>Main: Execute CLI (e.g. netping --host 1.1.1.1 --port 443 --diags)
     Main->>Main: Parse args & configure Resolver, NIC, Printers
     Main->>Prober: Start Prober.Run(ctx)
     loop Every Probe Interval (default 1s)
@@ -154,7 +164,7 @@ sequenceDiagram
         Prober->>Stats: Ingest ProbeResult (Update Min/Avg/Max, Jitter, Percentiles)
         Stats-->>Outputs: Dispatch formatted event (CLI / TUI / SSE / SQLite / CSV)
     end
-    User->>Main: SIGINT (Ctrl+C) / Count Reached (-c)
+    User->>Main: SIGINT (Ctrl+C) / Count Reached (--count)
     Main->>Outputs: Flush Buffers (Done) & Render Final SLA Statistics
     Main-->>User: Exit with Diagnostic Code (0, 1, 2, 3, 4, 5, 6, 7, 130)
 ```
@@ -269,15 +279,15 @@ graph TD
 | **`internal/app`** | OS signal interception (`SIGINT`/`SIGTERM`) and graceful context shutdown. | Standard Library only |
 | **`internal/dns`** | Custom upstream DNS client and resolver caching bypass. | `pkg/consts` |
 | **`internal/nic`** | Network interface selector and local IP binding dialer. | `pkg/consts` |
-| **`internal/printers`** | Terminal formatting (Color, Plain, JSON, NDJSON, CSV, TSV, SQLite3, Dashboard). | `pkg/stats`, `pkg/utils`, `pkg/consts`, `modernc.org/sqlite`, `zombiezen.com/go/sqlite` |
-| **`pkg/probers`** | Layer 3 to Layer 7 prober drivers, traceroute, and multi-target orchestrator. | `pkg/stats`, `pkg/utils`, `pkg/consts`, `golang.org/x/net` |
+| **`internal/printers`** | Terminal formatting (Color, Plain, JSON, NDJSON, CSV, TSV, SQLite3, Dashboard). | `pkg/stats`, `pkg/utils`, `pkg/consts`, `modernc.org/sqlite` |
+| **`pkg/probers`** | Layer 3 to Layer 7 prober drivers, traceroute, centralized factory (`BuildPinger`), and multi-target orchestrator. | `pkg/stats`, `pkg/utils`, `pkg/consts`, `golang.org/x/net` |
 | **`pkg/stats`** | Thread-safe metric accumulators, SLA calculations, and snapshot generator. | `pkg/consts` |
 | **`pkg/metrics`** | Zero-dependency Prometheus/OpenMetrics HTTP exporter. | Standard Library only |
 | **`pkg/web`** | Zero-dependency embedded web server, SSE broadcaster, and Canvas 2D UI. | `pkg/stats`, `pkg/utils`, `internal/printers` |
-| **`pkg/auth`** | Argon2id token generation, keystore persistence, and fast-path verification cache. | `golang.org/x/crypto/argon2`, `pkg/consts` |
+| **`pkg/auth`** | Argon2id token generation, keystore persistence, fast-path verification cache, and memory zeroing (`ZeroBytes`). | `golang.org/x/crypto/argon2`, `pkg/consts` |
 | **`pkg/engine`** | Dynamic on-demand trigger orchestration, concurrency limiting, and fleet registry. | `pkg/probers`, `pkg/stats`, `pkg/web`, `pkg/consts` |
 | **`pkg/utils`** | Mathematical jitter, percentiles, sparklines, and backoff helpers. | `pkg/consts` |
-| **`pkg/consts`** | Immutable protocol constants, ANSI escape definitions, and exit codes. | Standard Library only |
+| **`pkg/consts`** | Immutable protocol constants, canonical protocol matrix, ANSI escape definitions, and exit codes. | Standard Library only |
 
 ---
 
@@ -293,6 +303,12 @@ graph TB
         RawSocketDrop["Unprivileged ICMP Fallback (Drop CAP_NET_RAW)"]
     end
 
+    subgraph AuthSecurity ["Authentication & Memory Security"]
+        ArgonHash["Argon2id Hashed Keystores (OWASP m=65536, t=3, p=4)"]
+        MemScrub["RAM Scrubbing on API Tokens (auth.ZeroBytes)"]
+        TimeConstant["Constant-Time Token Comparison (subtle.ConstantTimeCompare)"]
+    end
+
     subgraph DataIntegrity ["Data Storage & Export Integrity"]
         SQLSanitize["SQLite Table Name Sanitization (Regex Enforced)"]
         BufferSync["Guaranteed io.Closer Sync on SIGINT/SIGTERM"]
@@ -301,17 +317,28 @@ graph TB
 
     subgraph NetworkSurface ["Network Exposure Surface"]
         LoopbackOnly["Web Dashboard Defaults to 127.0.0.1 (Localhost Only)"]
-        ReadHeaders["Safe Header Parsing (Prevents Denial of Service)"]
+        ReadHeaders["Safe Header Parsing & 1MB Body Limit (Prevents DoS)"]
         NoAuthData["Zero Ingestion of Sensitive Passwords/Payloads"]
     end
 
     TLSVal --> CertChecks
+    ArgonHash --> MemScrub
+    ArgonHash --> TimeConstant
     SQLSanitize --> BufferSync
     LoopbackOnly --> ReadHeaders
 ```
 
 ### 5.1. Authentication & Protocol Security Layers
 
+- **Argon2id REST API Key Verification**:
+  - Validates API tokens using RFC 9106 Argon2id cryptographic parameters (`memory=64MB`, `iterations=3`, `parallelism=4`).
+  - Sensitive plaintext byte buffers are overwritten in RAM using [`auth.ZeroBytes`](pkg/auth/keygen.go) immediately after hashing.
+  - Constant-time verification comparisons prevent side-channel timing attacks.
+  - Accelerated by a thread-safe 30-second TTL in-memory LRU cache.
+- **HTTP/HTTPS Prober Method Routing**:
+  - Defaults to RFC 7231 `HEAD` method for zero body download overhead and minimal resource consumption.
+  - Automatically switches to `POST` when custom `--send` payload is provided.
+  - Automatically switches to `GET` when `--expect` substring validation is specified, with responses bounded to 64KB (`io.LimitReader`) to prevent memory exhaustion attacks.
 - **TLS / SSL Probing**:
   - Validates full X.509 certificate chains, alerting on expired certificates, invalid hostnames, or weak ciphers.
   - Supports testing direct ALPN negotiation (`h2`, `http/1.1`) and extracts certificate expiration dates (`NotAfter`).

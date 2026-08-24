@@ -2,7 +2,7 @@
 
 `netping` is an enterprise-grade, multi-protocol network latency prober, active telemetry collector, and diagnostics suite written in Go. Designed as the modern evolution of TCP socket ping utilities, `netping` spans Layer 3 through Layer 7, providing deep protocol negotiation analysis, visual interactive terminal and web dashboards, continuous SLA monitoring, and structured log streaming.
 
-For complete architectural specifications, concurrency mechanics, and dependency models, see [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`MODERNIZATION.md`](MODERNIZATION.md).
+For complete architectural specifications, concurrency mechanics, and dependency models, see [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/MODERNIZATION.md`](docs/MODERNIZATION.md).
 
 ---
 
@@ -18,7 +18,7 @@ Traditional ping utilities are typically restricted to Layer 3 ICMP or simple La
   - **Zero-Dependency Web Dashboard (`--web`)** with Server-Sent Events (SSE) and Canvas 2D timeline graphs.
 - **REST Trigger Listener & Fleet Orchestration (`--trigger-mode`)**: Dynamic probe execution via authenticated `POST /api/v1/trigger` with OWASP-compliant Argon2id key validation.
 - **Enterprise Resilience & Socket Controls**: Prevent socket exhaustion under high frequencies via `SO_LINGER=0` fast teardown (`--fast-close`), and recover from transient drops with randomized exponential jitter backoff (`--retry`).
-- **Flexible Data Pipelines**: Stream data natively into SIEM and monitoring pipelines using JSON (`--json`), NDJSON (`--ndjson`), JSON Lines (`--jsonl`), CSV (`--csv`), TSV (`--tsv`), SQLite3 (`--db`), or Prometheus metrics (`--metrics-addr`).
+- **Flexible Data Pipelines**: Stream data natively into SIEM and monitoring pipelines using structured output formats via `--output-format` (`json`, `pretty_json`, `ndjson`, `jsonl`, `csv`, `tsv`, `sqlite`, `txt`) with optional `--output-file`, or Prometheus metrics (`--metrics-addr`).
 
 ---
 
@@ -40,7 +40,7 @@ Traditional ping utilities are typically restricted to Layer 3 ICMP or simple La
 - **Loopback-Only Telemetry Binding**: The embedded Web Dashboard server (`--web`) defaults to `127.0.0.1:3000`, preventing unintended exposure to external network interfaces.
 
 ### 2.4. Library & Dependency Vulnerability Profile
-- **Pure-Go CGo-Free Footprint**: Embedded SQLite persistence utilizes `modernc.org/sqlite v1.57.0` transpiled C runtime and `zombiezen.com/go/sqlite v1.4.2` connection pooling, avoiding native CGo toolchain requirements.
+- **Pure-Go CGo-Free Footprint**: Embedded SQLite persistence utilizes `modernc.org/sqlite` transpiled C runtime, avoiding native CGo toolchain requirements.
 - **SQL Injection Prevention**: Database table names generated from target hostnames are validated against an alphanumeric regex allowlist (`^[a-zA-Z0-9_]+$`) prior to executing DDL statements.
 
 ---
@@ -67,98 +67,92 @@ Traditional ping utilities are typically restricted to Layer 3 ICMP or simple La
 
 ## 4. Command-Line Arguments Reference
 
-```
-netping [options] <hostname|IP> <port>
-netping [options] <hostname:port>
-netping [options] <target1:port> <target2:port> ...
+```bash
+netping --host <hostname|IP> --port <port> [options]
+netping --uri <scheme://host:port> [options]
+netping --host <host1,host2> --port <port1,port2> [options]
 ```
 
 ### 4.1. Target & Protocol Configuration
-| Flag | Short | Type | Default | Description |
-| :--- | :---: | :---: | :---: | :--- |
-| `--host` | — | `string` | `""` | Comma-separated target hostnames or IP addresses. |
-| `--port` | — | `string` | `""` | Comma-separated target port numbers. |
-| `--uri` | — | `string` | `""` | Comma-separated target URIs (e.g. `https://host:443,postgres://db:5432`). |
-| `--protocol` | — | `string` | `tcp` | Target protocol: `tcp`, `http`, `https`, `tls`, `udp`, `icmp`, `ws`, `wss`, `grpc`, `grpcs`, `dns`, `dot`, `doh`, `redis`, `rediss`, `memcached`, `smtp`, `smtps`, `imap`, `imaps`, `pop3`, `pop3s`, `ldap`, `ldaps`, `postgres`, `mysql`, `mssql`, `oracle`, `mongodb`, `cassandra`, `saphana`, `s3`, `blob`, `gcs`, `kafka`, `kafkas`, `rabbitmq`, `amqps`, `smb`, `rsync`, `ftp`, `ftps`, `ssh`, `o365`. |
-| `--service`, `--oracle-service` | — | `string` | `""` | Database service/SID name (Oracle) or domain realm. |
-| `--send` | — | `string` | `""` | Payload to transmit on connection (raw string for TCP/UDP; automatically switches HTTP/S prober to `POST` with request body). |
-| `--expect` | — | `string` | `""` | Expected response substring for validation (checks raw socket replies; automatically switches HTTP/S prober to `GET` to validate response body). |
-| `--starttls` | — | `bool` | `false` | Explicitly initiate protocol-level STARTTLS negotiation (SMTP/IMAP/POP3/LDAP). |
+| Flag | Type | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `--host` | `string` | `""` | Comma-separated target hostnames or IP addresses. |
+| `--port` | `string` | `""` | Comma-separated target port numbers. |
+| `--uri` | `string` | `""` | Comma-separated target URIs (e.g. `https://host:443,postgres://db:5432`). |
+| `--protocol` | `string` | `tcp` | Target protocol: `tcp`, `http`, `https`, `tls`, `udp`, `icmp`, `ws`, `wss`, `grpc`, `grpcs`, `dns`, `dot`, `doh`, `redis`, `rediss`, `memcached`, `smtp`, `smtps`, `imap`, `imaps`, `pop3`, `pop3s`, `ldap`, `ldaps`, `postgres`, `mysql`, `mssql`, `oracle`, `mongodb`, `cassandra`, `saphana`, `s3`, `blob`, `gcs`, `kafka`, `kafkas`, `rabbitmq`, `amqps`, `smb`, `rsync`, `ftp`, `ftps`, `ssh`, `o365`. |
+| `--service`, `--oracle-service` | `string` | `""` | Database service/SID name (Oracle) or domain realm. |
+| `--send` | `string` | `""` | Payload to transmit on connection (raw string for TCP/UDP; automatically switches HTTP/S prober to `POST` with request body). |
+| `--expect` | `string` | `""` | Expected response substring for validation (checks raw socket replies; automatically switches HTTP/S prober to `GET` to validate response body). |
+| `--starttls` | `bool` | `false` | Explicitly initiate protocol-level STARTTLS negotiation (SMTP/IMAP/POP3/LDAP). |
 
 ### 4.2. Timing, Limits & SLA Thresholds
-| Flag | Short | Type | Default | Description |
-| :--- | :---: | :---: | :---: | :--- |
-| `--count` | `-c` | `uint` | `0` (infinite) | Total number of probes to transmit before stopping. |
-| `--interval` | `-i` | `duration` | `1s` | Interval between probes (e.g. `1s`, `500ms`, `0.002`). |
-| `--timeout` | `-t` | `duration` | `1s` | Per-probe network timeout threshold. |
-| `--max-latency` | — | `float` | `0` | Threshold latency in milliseconds; breaches count as SLA failures. |
-| `--max-consecutive-fails`| — | `uint` | `0` | Automatically terminate probing after $N$ consecutive failures. |
+| Flag | Type | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `--count` | `uint` | `0` (infinite) | Total number of probes to transmit before stopping. |
+| `--interval` | `duration` | `1s` | Interval between probes (e.g. `1s`, `500ms`, `0.002`). |
+| `--timeout` | `duration` | `1s` | Per-probe network timeout threshold. |
+| `--max-latency` | `float` | `0` | Threshold latency in milliseconds; breaches count as SLA failures. |
+| `--max-consecutive-fails`| `uint` | `0` | Automatically terminate probing after $N$ consecutive failures. |
 
 ### 4.3. Resilience, Retries & Socket Performance
-| Flag | Short | Type | Default | Description |
-| :--- | :---: | :---: | :---: | :--- |
-| `--retry` | — | `uint` | `0` | Number of transient retry attempts per probe before recording a failure. |
-| `--retry-backoff` | — | `float` | `0.05` | Initial retry backoff delay in seconds. |
-| `--retry-max-backoff` | — | `float` | `2.0` | Maximum retry backoff delay cap in seconds. |
-| `--retry-jitter` | — | `bool` | `true` | Apply randomized full jitter to exponential retry backoffs. |
-| `--fast-close` | — | `bool` | `false` | Enable `SO_LINGER=0` (TCP RST) to bypass `TIME_WAIT` socket accumulation. |
-| `--concurrency` | — | `int` | `0` (unlimited) | Maximum concurrent target workers during multi-target fleet probing. |
+| Flag | Type | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `--retry` | `uint` | `0` | Number of transient retry attempts per probe before recording a failure. |
+| `--retry-backoff` | `float` | `0.05` | Initial retry backoff delay in seconds. |
+| `--retry-max-backoff` | `float` | `2.0` | Maximum retry backoff delay cap in seconds. |
+| `--retry-jitter` | `bool` | `true` | Apply randomized full jitter to exponential retry backoffs. |
+| `--fast-close` | `bool` | `false` | Enable `SO_LINGER=0` (TCP RST) to bypass `TIME_WAIT` socket accumulation. |
+| `--concurrency` | `int` | `0` (unlimited) | Maximum concurrent target workers during multi-target fleet probing. |
 
 ### 4.4. Network Interfaces, DNS & Routing
-| Flag | Short | Type | Default | Description |
-| :--- | :---: | :---: | :---: | :--- |
-| `--interface` | `-I` | `string` | `""` | Bind outbound traffic to a specific network interface or source IP. |
-| `--dns-server` | `-d` | `string` | `""` | Use custom DNS server IP or IP:port for hostname resolution. |
-| `--dns-host` | — | `string` | `""` | Specific hostname to resolve when testing DNS probers. |
-| `--retry-resolve` | `-r` | `uint` | `0` | Retry DNS resolution after $N$ consecutive probe failures. |
-| `--resolve-every-probe`| — | `bool` | `false` | Re-resolve target DNS on every probe cycle to detect Anycast/CDN rotations. |
-| `-4`, `--ipv4` | `-4` | `bool` | `false` | Force IPv4 address resolution only. |
-| `-6`, `--ipv6` | `-6` | `bool` | `false` | Force IPv6 address resolution only. |
-| `--traceroute` | — | `bool` | `false` | Execute hop-by-hop Layer-4 TCP route discovery to target port. |
-| `--max-hops`, `--hops`| — | `int` | `30` | Maximum TTL hop limit for traceroute discovery. |
+| Flag | Type | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `--interface` | `string` | `""` | Bind outbound traffic to a specific network interface or source IP. |
+| `--dns-server` | `string` | `""` | Use custom DNS server IP or IP:port for hostname resolution. |
+| `--dns-host` | `string` | `""` | Specific hostname to resolve when testing DNS probers. |
+| `--retry-resolve` | `uint` | `0` | Retry DNS resolution after $N$ consecutive probe failures. |
+| `--resolve-every-probe`| `bool` | `false` | Re-resolve target DNS on every probe cycle to detect Anycast/CDN rotations. |
+| `--ipv4` | `bool` | `false` | Force IPv4 address resolution only. |
+| `--ipv6` | `bool` | `false` | Force IPv6 address resolution only. |
+| `--traceroute` | `bool` | `false` | Execute hop-by-hop Layer-4 TCP route discovery to target port. |
 
 ### 4.5. Output Formatting, Exporters & Logging
-| Flag | Short | Type | Default | Description |
-| :--- | :---: | :---: | :---: | :--- |
-| `--diags`, `--diagnostics` | — | `bool` | `false` | Enable deep protocol negotiation metadata and handshake breakdown. |
-| `--json` | `-j` | `bool` | `false` | Output results as JSON documents. |
-| `--pretty` | — | `bool` | `false` | Indent/prettify JSON output (requires `--json`). |
-| `--ndjson` | — | `bool` | `false` | Output real-time Newline-Delimited JSON stream. |
-| `--jsonl` | — | `bool` | `false` | Output real-time JSON Lines stream. |
-| `--csv` | — | `string` | `""` | File path to export probe events and stats summary to CSV. |
-| `--tsv` | — | `string` | `""` | File path to export probe events and stats summary to TSV. |
-| `--db` | — | `string` | `""` | File path to persist probe events and statistics into a SQLite3 database. |
-| `--output-format` | — | `string` | `plain` | Structured output format: `plain`, `json`, `csv`, `tsv`, `sqlite3`, `db`. |
-| `--output-file` | — | `string` | `""` | Destination file path for structured output exporter. |
-| `--no-color` | `-n` | `bool` | `false` | Disable ANSI color escapes for plain text output. |
-| `--quiet` | `-q` | `bool` | `false` | Quiet mode: suppress per-probe lines, output only final summary. |
-| `--show-source-address`| `-S` | `bool` | `false` | Display local IP address and dynamic ephemeral port for each connection. |
-| `--timestamp` | `-ts` | `bool` | `false` | Print local timestamp prefix before every probe. |
-| `--show-failures-only` | `-f` | `bool` | `false` | Suppress successful replies, displaying only failed probes. |
-| `--metrics-addr` | — | `string` | `""` | Expose Prometheus/OpenMetrics telemetry server on given address (e.g. `:9100`). |
+| Flag | Type | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `--diags`, `--diagnostics` | `bool` | `false` | Enable deep protocol negotiation metadata and handshake breakdown. |
+| `--output-format` | `string` | `plain` | Structured output format: `plain`, `json`, `pretty_json`, `csv`, `tsv`, `sqlite`, `ndjson`, `jsonl`, `txt`. |
+| `--output-file` | `string` | `""` | Destination file path for structured output exporter. |
+| `--no-color` | `bool` | `false` | Disable ANSI color escapes for plain text output. |
+| `--quiet` | `bool` | `false` | Quiet mode: suppress per-probe lines, output only final summary. |
+| `--show-source-address`| `bool` | `false` | Display local IP address and dynamic ephemeral port for each connection. |
+| `--timestamp` | `bool` | `false` | Print local timestamp prefix before every probe. |
+| `--show-failures-only` | `bool` | `false` | Suppress successful replies, displaying only failed probes. |
+| `--metrics-addr` | `string` | `""` | Expose Prometheus/OpenMetrics telemetry server on given address (e.g. `:9100`). |
 
 ### 4.6. Visual Dashboards (Interactive TUI & Web)
-| Flag | Short | Type | Default | Description |
-| :--- | :---: | :---: | :---: | :--- |
-| `--dashboard`, `-ui` | — | `bool` | `false` | Launch full-screen interactive 120-column TUI dashboard with waveform history. |
-| `--web` | — | `bool` | `false` | Launch embedded real-time web dashboard with SSE event streaming. |
-| `--web-addr` | — | `string` | `127.0.0.1:3000` | Listening address and port for the embedded web dashboard. |
+| Flag | Type | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `--dashboard` | `bool` | `false` | Launch full-screen interactive 120-column TUI dashboard with waveform history. |
+| `--web` | `bool` | `false` | Launch embedded real-time web dashboard with SSE event streaming. |
+| `--web-addr` | `string` | `127.0.0.1:3000` | Listening address and port for the embedded web dashboard. |
 
 ### 4.7. REST API Trigger Daemon & Authentication
-| Flag | Short | Type | Default | Description |
-| :--- | :---: | :---: | :---: | :--- |
-| `--trigger-mode` | — | `bool` | `false` | Start as an idle daemon accepting dynamic on-demand probe triggers via REST API. |
-| `--generate-api-key` | — | `string` | `""` | Generate a high-entropy API key and persist its Argon2id hash to specified store path. |
-| `--api-key-store` | — | `string` | `""` | Path to JSON keystore containing valid Argon2id hashed API keys. |
-| `--api-key-hash` | — | `string` | `""` | Single raw Argon2id hash string for direct authentication without a keystore file. |
-| `--trigger-concurrency` | — | `int` | `100` | Maximum parallel worker threads for dynamic on-demand trigger executions. |
-| `--history-limit` | — | `uint` | `1000` | In-memory ring buffer event capacity for SSE broadcaster and REST history APIs. |
+| Flag | Type | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `--trigger-mode` | `bool` | `false` | Start as an idle daemon accepting dynamic on-demand probe triggers via REST API. |
+| `--listen` | `string` | `""` | Address to listen on for trigger mode (e.g. `127.0.0.1:3000` or `:3000`). |
+| `--generate-api-key` | `string` | `""` | Generate a high-entropy API key and persist its Argon2id hash to specified store path. |
+| `--api-key-store` | `string` | `""` | Path to JSON keystore containing valid Argon2id hashed API keys. |
+| `--api-key-hash` | `string` | `""` | Single raw Argon2id hash string for direct authentication without a keystore file. |
+| `--trigger-concurrency` | `int` | `100` | Maximum parallel worker threads for dynamic on-demand trigger executions. |
+| `--history-limit` | `uint` | `1000000` | In-memory ring buffer event capacity for SSE broadcaster and REST history APIs. |
 
 ### 4.8. General & Informational
-| Flag | Short | Type | Default | Description |
-| :--- | :---: | :---: | :---: | :--- |
-| `--version` | `-v` | `bool` | `false` | Display version and exit. |
-| `--help` | `-h` | `bool` | `false` | Display help and usage instructions. |
+| Flag | Type | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `--version` | `bool` | `false` | Display version and exit. |
+| `--help` | `bool` | `false` | Display help and usage instructions. |
+| `--check-updates` | `bool` | `false` | Check for updates and exit. |
 
 ---
 
@@ -168,7 +162,7 @@ netping [options] <target1:port> <target2:port> ...
 
 #### Standard TCP Probing with Source Address
 ```bash
-netping -S 1.1.1.1 443
+netping --host 1.1.1.1 --port 443 --show-source-address
 ```
 ```text
 Probing 1.1.1.1 on port 443
@@ -178,7 +172,7 @@ Probing 1.1.1.1 on port 443
 
 #### HTTPS Probing with Deep Protocol Diagnostics (`--diags`)
 ```bash
-netping --protocol https --diags -c 2 1.1.1.1 443
+netping --host 1.1.1.1 --port 443 --protocol https --diags --count 2
 ```
 ```text
 Probing 1.1.1.1 on port 443
@@ -202,13 +196,13 @@ The HTTP/HTTPS prober dynamically adapts its request method based on configured 
 
 ```bash
 # 1. Default Lightweight HEAD Reachability & Timing Probe
-netping --protocol https --diags api.example.com 443
+netping --host api.example.com --port 443 --protocol https --diags
 
 # 2. HTTP POST with Custom Request Payload (--send)
-netping --protocol https --send '{"action":"health"}' --diags api.example.com 443
+netping --host api.example.com --port 443 --protocol https --send '{"action":"health"}' --diags
 
 # 3. HTTP GET with Response Body Assertion (--expect)
-netping --protocol https --expect "healthy" --diags api.example.com 443
+netping --host api.example.com --port 443 --protocol https --expect "healthy" --diags
 ```
 ```text
 Probing api.example.com on port 443
@@ -222,7 +216,7 @@ Probing api.example.com on port 443
 
 #### 120-Column Interactive Terminal TUI Dashboard
 ```bash
-netping --dashboard --protocol https --diags 1.1.1.1 443
+netping --host 1.1.1.1 --port 443 --dashboard --protocol https --diags
 ```
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -250,7 +244,7 @@ Press Ctrl+C to stop probing and view final report.
 
 #### Zero-Dependency Embedded Web Dashboard
 ```bash
-netping --web --web-addr 127.0.0.1:3000 1.1.1.1 443
+netping --host 1.1.1.1 --port 443 --web --web-addr 127.0.0.1:3000
 ```
 - Opens native HTTP server at `http://127.0.0.1:3000`.
 - Connects via Server-Sent Events (SSE) for 0ms telemetry streaming and Canvas 2D latency timelines.
@@ -261,7 +255,7 @@ netping --web --web-addr 127.0.0.1:3000 1.1.1.1 443
 
 #### NDJSON Stream for Vector / FluentBit / Elasticsearch
 ```bash
-netping --ndjson 1.1.1.1 443 | jq -c '.'
+netping --host 1.1.1.1 --port 443 --output-format ndjson | jq -c '.'
 ```
 ```json
 {"type":"probe","success":true,"message":"Reply from 1.1.1.1 on port 443 TCP_conn=1 time=14.230 ms","ipAddress":"1.1.1.1","port":443,"destinationIsIP":true,"time":"14.230","ongoingSuccessfulProbes":1}
@@ -270,13 +264,13 @@ netping --ndjson 1.1.1.1 443 | jq -c '.'
 
 #### Tab-Separated Values (TSV) Export
 ```bash
-netping --tsv results.tsv -c 5 1.1.1.1 443
+netping --host 1.1.1.1 --port 443 --output-format tsv --output-file results.tsv --count 5
 ```
 Generates `results.tsv` (probe events) and `results_stats.tsv` (SLA summary).
 
 #### Standing Prometheus Metrics Exporter
 ```bash
-netping --metrics-addr :9100 1.1.1.1 443
+netping --host 1.1.1.1 --port 443 --metrics-addr :9100
 ```
 Scrape metrics on `http://localhost:9100/metrics`:
 ```text
@@ -297,17 +291,17 @@ tcping_packet_loss_ratio 0.000000
 
 #### High-Frequency Probing with Fast-Close (Bypass Socket Exhaustion)
 ```bash
-netping -i 0.002 --fast-close 1.1.1.1 443
+netping --host 1.1.1.1 --port 443 --interval 0.002 --fast-close
 ```
 
 #### Transient Failure Recovery with Exponential Jitter Backoff
 ```bash
-netping --retry 3 --retry-backoff 0.1 --retry-max-backoff 1.0 --retry-jitter 1.1.1.1 443
+netping --host 1.1.1.1 --port 443 --retry 3 --retry-backoff 0.1 --retry-max-backoff 1.0 --retry-jitter
 ```
 
 #### Multi-Target Concurrent Comparison
 ```bash
-netping 1.1.1.1:53 8.8.8.8:53 9.9.9.9:53
+netping --host 1.1.1.1,8.8.8.8,9.9.9.9 --port 53 --protocol dns
 ```
 ```text
 ========================= MULTI-TARGET SUMMARY =========================
@@ -379,5 +373,6 @@ curl -X POST http://localhost:3000/api/v1/trigger \
 For deep architectural reviews, sequence diagrams, concurrency models, dependency DAGs, testing strategies, and security specifications, refer to:
 - **[`ARCHITECTURE.md`](ARCHITECTURE.md)**: System architecture, data flow sequences, concurrency model, and threat matrix.
 - **[`TESTING.md`](TESTING.md)**: Test suite architecture, wire-level mock fixtures, and race detection guide.
-- **[`API_TRIGGER.md`](API_TRIGGER.md)**: Exhaustive API Trigger daemon specification and OpenAPI models.
-- **[`MODERNIZATION.md`](MODERNIZATION.md)**: Master modernization roadmap, protocol capabilities, and feature validation.
+- **[`docs/API_TRIGGER.md`](docs/API_TRIGGER.md)**: Exhaustive API Trigger daemon specification and OpenAPI models.
+- **[`docs/MODERNIZATION.md`](docs/MODERNIZATION.md)**: Master modernization roadmap, protocol capabilities, and feature validation.
+- **[`docs/CONCURRENCY.md`](docs/CONCURRENCY.md)**: Concurrency and thread safety audit.

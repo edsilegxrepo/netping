@@ -27,6 +27,8 @@ graph TD
     cmd --> stats[pkg/stats]
     cmd --> metrics[pkg/metrics]
     cmd --> web[pkg/web]
+    cmd --> engine[pkg/engine]
+    cmd --> auth[pkg/auth]
 
     probers --> stats
     probers --> utils[pkg/utils]
@@ -38,6 +40,12 @@ graph TD
 
     web --> stats
     web --> utils
+    web --> auth
+    web --> engine
+
+    engine --> probers
+    engine --> stats
+    engine --> consts
 
     dns --> consts
     nic --> consts
@@ -47,7 +55,7 @@ graph TD
     classDef core fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff;
     classDef leaf fill:#0f172a,stroke:#334155,stroke-width:1px,color:#cbd5e1;
     class cmd,app core;
-    class config,probers,printers,dns,nic,stats,utils,consts,metrics,web leaf;
+    class config,probers,printers,dns,nic,stats,utils,consts,metrics,web,engine,auth leaf;
 ```
 
 > [!NOTE]
@@ -338,14 +346,14 @@ flowchart TD
   - Enabled via `--sparkline` / `--graph` flag.
 - [x] **Multi-Target Concurrent Probing**:
   - Implemented `MultiProber` in [`pkg/probers/multi_prober.go`](pkg/probers/multi_prober.go).
-  - Supports probing arbitrary lists of targets concurrently (e.g. `netping 1.1.1.1:53 8.8.8.8:53 9.9.9.9:53`).
+  - Supports probing arbitrary lists of targets concurrently (e.g. `netping --host 1.1.1.1,8.8.8.8,9.9.9.9 --port 53`).
   - Outputs thread-safe synchronized per-target streams and prints an aggregated comparison summary table.
 - [x] **Interactive Real-Time TUI Dashboard**:
   - Implemented `DashboardPrinter` in [`internal/printers/dashboard.go`](internal/printers/dashboard.go).
-  - Enabled via `--dashboard` / `-ui`. Widened to **120 columns** with a **106-probe real-time latency waveform**, 5-column SLA/jitter KPI cards, and live endpoint diagnostics.
+  - Enabled via `--dashboard`. Widened to **120 columns** with a **106-probe real-time latency waveform**, 5-column SLA/jitter KPI cards, and live endpoint diagnostics.
 - [x] **Layer-4 / TCP Hop-by-Hop Route Discovery (Traceroute Mode)**:
   - Implemented `RunTraceroute` in [`pkg/probers/traceroute.go`](pkg/probers/traceroute.go).
-  - Enabled via `--traceroute` / `-t`. Performs hop-by-hop IP TTL incrementation to identify intermediate hops and RTT to target port.
+  - Enabled via `--traceroute`. Performs hop-by-hop IP TTL incrementation to identify intermediate hops and RTT to target port.
 - [x] **Robust Connection Handling, Retries & Exponential Backoff Engine**:
   - Implemented `CalculateBackoff`, `SleepWithContext`, and `BackoffConfig` in [`pkg/utils/backoff.go`](pkg/utils/backoff.go).
   - Integrated into `Prober.Probe` in [`pkg/probers/probers.go`](pkg/probers/probers.go).
@@ -369,6 +377,12 @@ flowchart TD
     - **Cloud Buckets & Queues**: Request IDs, storage regions, AMQP `Connection.Start`, Kafka `ApiVersions`.
     - **DNS**: Query type, domain, response RCODE, and payload size.
   - Formatted cleanly as structured sublines (`└─ [DIAG] ...`) in CLI, embedded in the 120-column TUI dashboard, and streamed into the Web UI event table.
+
+- [x] **Telemetry Distortion Mitigation & High-Performance Export Subsystem**:
+  - **Zero-Allocation Fast Path**: Added fast-path bypass (`strings.ContainsAny`) in `sanitizeExportField` in [`internal/printers/export.go`](internal/printers/export.go), eliminating regex heap allocations and preventing GC pauses that artificially spiked measured probe latency during exports.
+  - **Asynchronous TUI Dispatch**: Export operations in Bubble Tea TUI execute asynchronously via `tea.Cmd`, preventing UI loop blocking during disk I/O and SQLite operations.
+  - **Native Timestamp Preservation**: Preserves raw `time.Time` in `ProbeEvent` to eliminate timestamp parsing loss (`0000-01-01` bug) across web exports.
+  - **O(1) Statistics Snapshotting**: Running aggregates (`min`, `max`, `sum`, `count`) are calculated incrementally during probe ingestion, allowing non-blocking copy-on-read `stats.Snapshot` creation.
 
 ### Phase 6: Validation, Benchmark Suite & Verification (Completed)
 - [x] Comprehensive unit test suite covering all probers, HTTP/HTTPS, Prometheus exporter, printers, DNS retry, and statistical utilities.

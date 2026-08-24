@@ -51,7 +51,7 @@
 
 ## v3.5.0 - 2026-08-20
 
-Modernization and evolution into **`netping`** — an enterprise-grade multi-protocol network diagnostics and latency measurement suite. For the complete engineering architecture and design specification, see [`MODERNIZATION.md`](MODERNIZATION.md).
+Modernization and evolution into **`netping`** — an enterprise-grade multi-protocol network diagnostics and latency measurement suite. For the complete engineering architecture and design specification, see [`docs/MODERNIZATION.md`](docs/MODERNIZATION.md).
 
 - **Multi-Protocol Engine (15+ Protocols)**: Added Layer 3 to Layer 7 probers for HTTP/HTTPS (TTFB breakdown), TLS/SSL, UDP, ICMP Ping, WebSocket RFC 6455, gRPC Health, DNS/DoT/DoH, Redis, Memcached, Mail (SMTP/IMAP/POP3), Directory Services (LDAP/LDAPS), Databases (Postgres, MySQL, MSSQL, Oracle, MongoDB, Cassandra, SAP HANA), Cloud Buckets (S3, Blob, GCS), Message Queues (Kafka, RabbitMQ), and Microsoft 365 / Graph.
 - **Protocol Handshake Diagnostics Engine (`--diags` / `--diagnostics`)**: Real-time extraction of TLS cipher/version, certificate expiration, HTTP headers, database banners, cloud request IDs, and DNS RCODEs across CLI, TUI, and Web UI.

@@ -38,7 +38,7 @@ Netping operates in two distinct modes:
 
 | Dimension | Subscriber Mode (CLI-driven) | Trigger Mode (API-driven) |
 | :--- | :--- | :--- |
-| **Startup Command** | `netping <target> [flags] --web` | `netping --trigger-mode --api-key-store <path>` |
+| **Startup Command** | `netping --host <target> --port <port> [flags] --web` | `netping --trigger-mode --api-key-store <path>` |
 | **CLI Target Args** | **Required** (`--host`, `--port`, or `--uri`) | **None** (Starts idle listener daemon) |
 | **Probe Execution** | Fixed targets probed continuously from CLI | Dynamic on-demand or fleet probes via REST API |
 | **Telemetry / Web UI**| **Public** (`/api/v1/stream`, `/api/v1/metrics`, etc.) | **Public** for web dashboard and subscribers |

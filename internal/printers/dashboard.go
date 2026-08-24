@@ -1324,11 +1324,11 @@ var (
 // isLegacyWindowsConsole returns true if running on Windows inside legacy conhost (e.g. cmd.exe)
 // without native DirectWrite / Cascadia font fractional block character support.
 func isLegacyWindowsConsole() bool {
-	if runtime.GOOS != "windows" {
-		return false
-	}
 	if os.Getenv("NETPING_COMPAT_GLYPHS") == "1" || os.Getenv("NETPING_LEGACY_CONSOLE") == "1" {
 		return true
+	}
+	if runtime.GOOS != "windows" {
+		return false
 	}
 	if os.Getenv("NETPING_COMPAT_GLYPHS") == "0" || os.Getenv("NETPING_LEGACY_CONSOLE") == "0" {
 		return false

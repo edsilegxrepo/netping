@@ -101,7 +101,8 @@ func (f *FTPing) Ping(ctx context.Context) ProbeResult {
 
 	if f.useTLS {
 		tlsConfig := &tls.Config{
-			ServerName:         targetHost,
+			ServerName: targetHost,
+			// #nosec G402 -- diagnostic FTPS prober measuring connection latency
 			InsecureSkipVerify: true,
 		}
 		tlsDialer := &tls.Dialer{
@@ -177,7 +178,8 @@ func (f *FTPing) Ping(ctx context.Context) ProbeResult {
 		}
 
 		tlsConn := tls.Client(conn, &tls.Config{
-			ServerName:         targetHost,
+			ServerName: targetHost,
+			// #nosec G402 -- diagnostic AUTH TLS prober measuring handshake latency
 			InsecureSkipVerify: true,
 		})
 		if err := tlsConn.HandshakeContext(ctx); err != nil {

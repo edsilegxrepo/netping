@@ -112,7 +112,8 @@ func (r *Redising) Ping(ctx context.Context) ProbeResult {
 	var tlsDetails string
 	if r.useTLS {
 		tlsConfig := &tls.Config{
-			ServerName:         targetHost,
+			ServerName: targetHost,
+			// #nosec G402 -- diagnostic Redis TLS prober measuring connection latency
 			InsecureSkipVerify: true,
 		}
 		tlsDialer := &tls.Dialer{NetDialer: r.dialer, Config: tlsConfig}

@@ -1,3 +1,21 @@
+// Package auth provides cryptographically secure token generation, OWASP-standard Argon2id
+// key derivation, zero-downtime hot-reloading keystore management, and HTTP authentication middleware.
+//
+// Objectives:
+//   - Generate high-entropy (256-bit) API keys with `np_live_` prefix.
+//   - Provide OWASP-compliant Argon2id key hashing with in-memory plaintext scrubbing.
+//   - Protect daemon endpoints against timing attacks and denial-of-service attempts.
+//
+// Core Components:
+//   - Key Generation & Hashing: GenerateAPIKey, HashKey, ZeroBytes.
+//   - Keystore: Dynamic hot-reloading JSON keystore persistence with 0600 file permissions.
+//   - Verifier: Constant-time Argon2id comparison with 30s in-memory LRU verification cache.
+//   - Middleware: RequireAuth, ExtractAPIKey, and CORSMiddleware.
+//
+// Data Flow:
+//
+//	CLI (--generate-api-key) -> CSPRNG Entropy -> Hex Token -> Argon2id Hash -> Keystore File (0600)
+//	HTTP Request -> Authorization/X-API-Key Header -> In-Memory Cache / Argon2id -> Constant-Time Match.
 package auth
 
 import (

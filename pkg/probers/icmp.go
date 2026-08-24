@@ -63,6 +63,7 @@ func (i ICMPing) Ping(ctx context.Context) ProbeResult {
 	_ = conn.SetDeadline(time.Now().Add(i.timeout))
 
 	seq := atomic.AddUint32(&icmpSeq, 1) & 0xffff
+	// #nosec G115 -- PID masked to 16-bit ICMP identifier
 	pid := uint32(os.Getpid()) & 0xffff
 
 	icmpType := byte(8)

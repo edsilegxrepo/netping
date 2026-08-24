@@ -72,11 +72,11 @@ func (ks *Keystore) AddKey(entry KeyEntry) error {
 }
 
 // SaveKeyToStorePath creates or updates a keystore file at storePath with a new key hash.
-func SaveKeyToStorePath(storePath string, rawKey string, hash string) error {
+func SaveKeyToStorePath(storePath, rawKey, hash string) error {
 	cleanPath := filepath.Clean(storePath)
 	dir := filepath.Dir(cleanPath)
 	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("failed creating directory %q: %w", dir, err)
 		}
 	}
@@ -173,7 +173,7 @@ func (ks *Keystore) saveLocked() error {
 	cleanPath := filepath.Clean(ks.filePath)
 	dir := filepath.Dir(cleanPath)
 	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("creating parent directory: %w", err)
 		}
 	}
@@ -190,7 +190,7 @@ func (ks *Keystore) saveLocked() error {
 	}
 
 	tmpFile := cleanPath + ".tmp"
-	if err := os.WriteFile(tmpFile, data, 0600); err != nil {
+	if err := os.WriteFile(tmpFile, data, 0o600); err != nil {
 		return fmt.Errorf("writing temp keystore: %w", err)
 	}
 
@@ -198,7 +198,7 @@ func (ks *Keystore) saveLocked() error {
 		_ = os.Remove(tmpFile)
 		// Fallback for Windows if destination exists
 		_ = os.Remove(cleanPath)
-		if err := os.WriteFile(cleanPath, data, 0600); err != nil {
+		if err := os.WriteFile(cleanPath, data, 0o600); err != nil {
 			return fmt.Errorf("writing keystore file: %w", err)
 		}
 	}

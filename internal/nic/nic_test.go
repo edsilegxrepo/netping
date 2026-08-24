@@ -1,3 +1,6 @@
+// Test Strategy (internal/nic):
+//  1. Local Interface Enumeration: Validate dialer binding against active host network interfaces and loopback.
+//  2. Invalid Source Handling: Verify error handling when binding to non-existent or invalid IP addresses.
 package nic
 
 import (

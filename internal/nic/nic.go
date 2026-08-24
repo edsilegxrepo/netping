@@ -1,3 +1,12 @@
+// Package nic provides network interface binding, source IP configuration, and dialer construction.
+//
+// Objectives:
+//   - Bind outbound probing sockets to specific local network interfaces or source IP addresses.
+//   - Construct net.Dialer instances with customized local addresses and timeouts.
+//
+// Core Components:
+//   - NetworkInterface: Encapsulates local dialer configuration and resolved source IP.
+//   - NewNetworkInterface: Resolves interface names or source IPs to configure dialers.
 package nic
 
 import (
@@ -30,7 +39,7 @@ func NewNetworkInterface(
 	if interfaceAddress != nil { // we are given an IP address
 		ifaceAddrs, err := net.InterfaceAddrs()
 		if err != nil {
-			return NetworkInterface{}, fmt.Errorf("Unable to get interface IP addresses")
+			return NetworkInterface{}, fmt.Errorf("unable to get interface IP addresses")
 		}
 
 		for _, ifaceAddr := range ifaceAddrs {
@@ -74,14 +83,12 @@ func NewNetworkInterface(
 
 				if netIPAddr.Is4() && !useIPv6 {
 					interfaceAddress = ip
-					found = true
 					break
 				} else if netIPAddr.Is6() && !useIPv4 {
 					if netIPAddr.IsLinkLocalUnicast() {
 						continue
 					}
 					interfaceAddress = ip
-					found = true
 					break
 				}
 			}

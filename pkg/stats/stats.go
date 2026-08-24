@@ -1,3 +1,19 @@
+// Package stats provides thread-safe statistical telemetry tracking, RFC 3550 network jitter calculation,
+// running latency aggregates, uptime/downtime streak tracking, and immutable snapshot generation for netping.
+//
+// Objectives:
+//   - Calculate real-time latency aggregates (min, max, average, percentiles, packet loss) in O(1) time.
+//   - Compute statistical interarrival network jitter compliant with RFC 3550.
+//   - Expose thread-safe immutable snapshots for TUI rendering, file exports, and REST APIs.
+//
+// Core Components:
+//   - Statistics: Thread-safe operational state accumulating probe history, streaks, and metrics.
+//   - Snapshot: Immutable point-in-time representation safe for consumption without lock retention.
+//   - RecordProbe: Atomically updates counters, streak intervals, and jitter estimates.
+//
+// Data Flow:
+//
+//	Probe Execution -> Statistics.RecordProbe -> Mutex Write -> Jitter/Loss Math -> Snapshot() -> UI / Exporters.
 package stats
 
 import (
@@ -221,6 +237,9 @@ func (s *Statistics) RecordSuccess(rtt float32, now time.Time) {
 		}
 		s.SumRTT += float64(rtt)
 		s.CountRTT++
+		// RFC 3550 interarrival jitter algorithm:
+		// D(i-1, i) = |RTT_i - RTT_{i-1}|
+		// J_i = J_{i-1} + (|D(i-1, i)| - J_{i-1}) / 16
 		d := math.Abs(float64(rtt - s.LatestRTT))
 		s.Jitter += float32((d - float64(s.Jitter)) / 16.0)
 	}
@@ -241,7 +260,6 @@ func (s *Statistics) RecordFailure(reason string, now time.Time) {
 	s.OngoingUnsuccessfulProbes++
 	s.OngoingSuccessfulProbes = 0
 	s.LastUnsuccessfulProbe = now
-	s.LastFailureReason = reason
 	s.LastFailureReason = reason
 }
 

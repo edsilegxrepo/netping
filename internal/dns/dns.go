@@ -1,11 +1,26 @@
-// Package dns handles all the name resolution logic for the program to function
+// Package dns provides DNS resolution, custom nameserver dialing, continuous re-resolution,
+// and IPv4/IPv6 address selection for netping targets.
+//
+// Objectives:
+//   - Resolve hostnames to netip.Addr using system resolver or custom upstream nameservers.
+//   - Support dynamic DNS re-resolution between probe iterations to detect target IP migrations.
+//   - Enforce IPv4-only, IPv6-only, or dual-stack address filtering.
+//
+// Core Components:
+//   - Resolver: Configurable DNS resolver instance supporting custom server endpoints and timeouts.
+//   - ResolveWithRetry: Retries failed lookups with backoff and logs IP change transitions.
+//
+// Data Flow:
+//
+//	Hostname -> Resolver.LookupNetIP() -> netip.Addr IP List -> Address Selection -> Pinger.
 package dns
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/netip"
 	"time"
@@ -107,7 +122,11 @@ func selectRandomIP(ipAddrs []netip.Addr) (netip.Addr, error) {
 	if len(ipAddrs) == 0 {
 		return netip.Addr{}, ErrNoIPAddresses
 	}
-	return ipAddrs[rand.Intn(len(ipAddrs))], nil
+	n, err := crand.Int(crand.Reader, big.NewInt(int64(len(ipAddrs))))
+	if err != nil {
+		return ipAddrs[0], nil
+	}
+	return ipAddrs[n.Int64()], nil
 }
 
 func filterIPv4(ipAddrs []netip.Addr) []netip.Addr {

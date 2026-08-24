@@ -1,3 +1,9 @@
+// Test Strategy (pkg/engine):
+//  1. TCP & Multi-Protocol Execution: Verify on-demand dynamic dials against loopback TCP servers.
+//  2. Target Resolution & Scheme Parsing: Validate URI schemas (scheme://host:port), defaults, and protocol mappings.
+//  3. Concurrency Semaphore Throttling: Test concurrent trigger bursts ensuring worker limits are strictly respected.
+//  4. SLA Latency Assertions: Validate SLA breach detection when RTT exceeds configured max_latency_ms thresholds.
+//  5. Registry Lifecycle: Verify thread-safe target registration, statistics accumulation, and dynamic target removal.
 package engine
 
 import (
@@ -206,4 +212,54 @@ func TestDynamicEngine_ConcurrencyLimit(t *testing.T) {
 		Protocol: "tcp",
 	})
 	assert.Error(t, err)
+}
+
+func TestDynamicEngine_TracerouteExecution(t *testing.T) {
+	broadcaster := web.NewBroadcaster()
+	registry := NewDynamicTargetRegistry()
+	eng := NewDynamicEngine(broadcaster, registry, 10)
+
+	resp, err := eng.Execute(context.Background(), TriggerRequest{
+		Target:     "127.0.0.1:80",
+		Protocol:   "tcp",
+		Traceroute: true,
+		Timeout:    "100ms",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, "127.0.0.1:80", resp.Target)
+	assert.Equal(t, "TCP", resp.Protocol)
+}
+
+func TestDynamicEngine_MultipleProbes(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	addr := ln.Addr().(*net.TCPAddr)
+	broadcaster := web.NewBroadcaster()
+	registry := NewDynamicTargetRegistry()
+	eng := NewDynamicEngine(broadcaster, registry, 10)
+
+	resp, err := eng.Execute(context.Background(), TriggerRequest{
+		Target:    addr.String(),
+		Protocol:  "tcp",
+		Count:     3,
+		Interval:  "10ms",
+		Timeout:   "500ms",
+		ShowDiags: true,
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.Success)
+	assert.Len(t, resp.Probes, 3)
 }

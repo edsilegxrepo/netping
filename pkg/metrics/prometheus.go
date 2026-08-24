@@ -1,3 +1,16 @@
+// Package metrics implements an embedded lightweight Prometheus exposition endpoint
+// exporting real-time network telemetry, SLA status, and latency histograms.
+//
+// Objectives:
+//   - Expose OpenMetrics / Prometheus scrape endpoints without heavy external SDKs.
+//   - Report target reachability, RTT (min/avg/max/latest), packet loss, and RFC 3550 jitter.
+//
+// Core Components:
+//   - StartMetricsServer: HTTP listener serving the standard GET /metrics endpoint.
+//
+// Data Flow:
+//
+//	Prometheus Scraper -> GET /metrics -> Statistics.Snapshot() -> OpenMetrics Text Format -> HTTP 200.
 package metrics
 
 import (
@@ -65,14 +78,16 @@ func StartMetricsServer(ctx context.Context, addr string, s *stats.Statistics) *
 	})
 
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
 		_ = srv.ListenAndServe()
 	}()
 
+	// #nosec G118 -- graceful shutdown listener watching application lifecycle context
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -152,14 +167,16 @@ func StartMultiMetricsServer(ctx context.Context, addr string, statsList []*stat
 	})
 
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
 		_ = srv.ListenAndServe()
 	}()
 
+	// #nosec G118 -- graceful shutdown listener watching application lifecycle context
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -169,4 +186,3 @@ func StartMultiMetricsServer(ctx context.Context, addr string, statsList []*stat
 
 	return srv
 }
-

@@ -1,3 +1,8 @@
+// Test Strategy (pkg/utils):
+//  1. Conversions & Formatting: Validate nanosecond-to-millisecond conversions and human-friendly duration strings.
+//  2. Statistical Percentiles: Test nearest-rank percentile interpolation across odd, even, and edge-case datasets.
+//  3. Error Taxonomy: Validate deterministic categorization of net.OpError, syscall errors, timeouts, and custom errors.
+//  4. Sparkline Visualization: Validate UTF-8 bucket scaling and rendering under varying numeric distributions.
 package utils
 
 import (

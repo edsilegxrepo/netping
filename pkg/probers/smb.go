@@ -132,8 +132,8 @@ func buildSMB311NegotiatePacket() []byte {
 	return packet
 }
 
-// buildMultiProtocolNegotiatePacket constructs a universal multi-protocol negotiate packet for legacy servers.
-func buildMultiProtocolNegotiatePacket() []byte {
+// BuildMultiProtocolNegotiatePacket constructs a universal multi-protocol negotiate packet for legacy servers.
+func BuildMultiProtocolNegotiatePacket() []byte {
 	dialects := []string{
 		"PC NETWORK PROGRAM 1.0",
 		"LANMAN1.0",
@@ -318,14 +318,18 @@ func parseSMBNegotiateResponse(resp []byte) (string, error) {
 		ft := binary.LittleEndian.Uint64(payload[104:112])
 		const filetimeEpochDiff = 116444736000000000 // 100ns units between 1601 and 1970
 		if ft > filetimeEpochDiff {
-			unixNanos := int64((ft - filetimeEpochDiff) * 100)
-			serverTime := time.Unix(0, unixNanos)
-			skew := serverTime.Sub(time.Now())
-			skewMs := skew.Milliseconds()
-			if math.Abs(float64(skewMs)) < 60000 {
-				parts = append(parts, fmt.Sprintf("ClockSkew: %+dms", skewMs))
-			} else {
-				parts = append(parts, fmt.Sprintf("ClockSkew: %+ds", int64(skew.Seconds())))
+			diff := ft - filetimeEpochDiff
+			if diff < uint64(math.MaxInt64/100) {
+				// #nosec G115 -- diff checked against MaxInt64/100
+				unixNanos := int64(diff * 100)
+				serverTime := time.Unix(0, unixNanos)
+				skew := time.Until(serverTime)
+				skewMs := skew.Milliseconds()
+				if math.Abs(float64(skewMs)) < 60000 {
+					parts = append(parts, fmt.Sprintf("ClockSkew: %+dms", skewMs))
+				} else {
+					parts = append(parts, fmt.Sprintf("ClockSkew: %+ds", int64(skew.Seconds())))
+				}
 			}
 		}
 	}

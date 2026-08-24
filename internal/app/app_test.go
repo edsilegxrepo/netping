@@ -1,3 +1,5 @@
+// Test Strategy (internal/app):
+//  1. Signal Context Lifecycle: Verify valid context creation and cancellation signal propagation.
 package app
 
 import (

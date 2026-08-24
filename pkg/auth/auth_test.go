@@ -1,3 +1,9 @@
+// Test Strategy (pkg/auth):
+//  1. CSPRNG Entropy & Argon2id Derivation: Validate 256-bit token entropy, format prefixes, and Argon2id hash output.
+//  2. Keystore Persistence & Hot-Reload: Validate JSON keystore creation, multi-key retention, and live file updates.
+//  3. Middleware & Header Variants: Validate X-API-Key, Bearer, apikey, and raw token extraction with CORS preflights.
+//  4. In-Memory Verification Cache: Benchmark fast-path verification hits (<5ms) vs initial hash computations (~50ms).
+//  5. Malformed Hashes & Edge Cases: Verify rejection of invalid versions, corrupted base64 salts, and tampered signatures.
 package auth
 
 import (
@@ -149,10 +155,10 @@ func TestVerifyKey_CorruptedHashesAndEdges(t *testing.T) {
 
 	// Invalid format / missing parts
 	assert.False(t, VerifyKey(rawKey, "invalid_hash_string"))
-	assert.False(t, VerifyKey(rawKey, "$argon2i$v=19$m=65536,t=3,p=4$salt$hash")) // not argon2id
-	assert.False(t, VerifyKey(rawKey, "$argon2id$v=99$m=65536,t=3,p=4$salt$hash")) // invalid version
-	assert.False(t, VerifyKey(rawKey, "$argon2id$v=19$badparams$salt$hash"))         // bad params format
-	assert.False(t, VerifyKey(rawKey, "$argon2id$v=19$m=65536,t=3,p=4$bad#salt$hash")) // bad salt base64
+	assert.False(t, VerifyKey(rawKey, "$argon2i$v=19$m=65536,t=3,p=4$salt$hash"))        // not argon2id
+	assert.False(t, VerifyKey(rawKey, "$argon2id$v=99$m=65536,t=3,p=4$salt$hash"))       // invalid version
+	assert.False(t, VerifyKey(rawKey, "$argon2id$v=19$badparams$salt$hash"))             // bad params format
+	assert.False(t, VerifyKey(rawKey, "$argon2id$v=19$m=65536,t=3,p=4$bad#salt$hash"))   // bad salt base64
 	assert.False(t, VerifyKey(rawKey, "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$bad#hash")) // bad hash base64
 	assert.False(t, VerifyKey("", hashStr))
 	assert.False(t, VerifyKey(rawKey, ""))
@@ -218,4 +224,31 @@ func TestCORSMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusOK, wGet.Code)
 	assert.Equal(t, "*", wGet.Header().Get("Access-Control-Allow-Origin"))
 	assert.True(t, called)
+}
+
+func TestVerifyKey_CacheAcceleration(t *testing.T) {
+	ClearVerifyCache()
+
+	rawKey, hashStr, err := GenerateAPIKey()
+	require.NoError(t, err)
+
+	// First verification: cache miss, slow Argon2id calculation
+	start := time.Now()
+	assert.True(t, VerifyKey(rawKey, hashStr))
+	missDuration := time.Since(start)
+
+	// Second verification: cache hit, sub-millisecond fast-path
+	start = time.Now()
+	assert.True(t, VerifyKey(rawKey, hashStr))
+	hitDuration := time.Since(start)
+
+	// Cache hit should be significantly faster than initial hash calculation
+	assert.Less(t, hitDuration, missDuration)
+	assert.Less(t, hitDuration, 5*time.Millisecond)
+
+	// Invalid key should still fail
+	assert.False(t, VerifyKey("np_live_wrong", hashStr))
+
+	// Clearing cache works
+	ClearVerifyCache()
 }

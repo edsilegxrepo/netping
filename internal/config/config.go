@@ -1,4 +1,19 @@
-// Package config handles user input and the defaults to run tcping
+// Package config handles CLI flag registration, argument permutation, multi-target parsing,
+// operational mode resolution, and configuration defaults for netping.
+//
+// Objectives:
+//   - Parse POSIX and GNU-style command-line arguments and positional target endpoints.
+//   - Validate conflicting CLI flags and resolve default ports, timeouts, and intervals.
+//   - Initialize storage, printer, web server, and daemon operational configs.
+//
+// Core Components:
+//   - Config: Top-level runtime configuration struct.
+//   - TargetConfig: Individual target configuration (host, IP, port, protocol, service).
+//   - ProcessUserInput / ParseConfig: CLI flag parsing and configuration validation pipeline.
+//
+// Data Flow:
+//
+//	os.Args -> permuteArgs -> FlagSet.Parse -> parseConfigFromParsed -> Config.
 package config
 
 import (
@@ -185,170 +200,197 @@ type Config struct {
 func (c Config) GetHostname() string {
 	return c.Hostname
 }
+
 func (c Config) GetIP() netip.Addr {
 	return c.IP
 }
+
 func (c Config) GetPort() uint16 {
 	return c.Port
 }
+
 func (c Config) GetProtocol() consts.Protocol {
 	return c.Protocol
 }
+
 func (c Config) GetUseIPv4() bool {
 	return c.UseIPv4
 }
+
 func (c Config) GetUseIPv6() bool {
 	return c.UseIPv6
 }
+
 func (c Config) GetTimeout() string {
 	return c.Timeout.String()
 }
+
 func (c Config) GetProbesBeforeQuit() uint {
 	return c.ProbesBeforeQuit
 }
+
 func (c Config) GetTargetIsIP() bool {
 	return c.TargetIsIP
 }
+
 func (c Config) GetIntervalBetweenProbes() string {
 	return c.IntervalBetweenProbes.String()
 }
+
 func (c Config) GetShowFailuresOnly() bool {
 	return c.ShowFailuresOnly
 }
+
 func (c Config) GetShouldRetryResolve() bool {
 	return c.ShouldRetryResolve
 }
+
 func (c Config) GetRetryResolveAfterNFailures() uint {
 	return c.RetryHostnameLookupAfter
 }
+
 func (c Config) GetNetworkInterface() nic.NetworkInterface {
 	return c.NetworkInterface
 }
+
 func (c Config) GetPrinterConfig() printers.PrinterConfig {
 	return c.PrinterConfig
 }
+
 func (c Config) GetWithTimestamp() bool {
 	return c.PrinterConfig.WithTimestamp
 }
+
 func (c Config) GetWithSourceAddress() bool {
 	return c.PrinterConfig.WithSourceAddress
 }
 
 type flagOptions struct {
-	useIPv4                           *bool
-	useIPv6                           *bool
-	probesBeforeQuit                  *uint
-	intervalBetweenProbes             *float64
-	timeout                           *float64
-	showTimestamp                     *bool
+	useIPv4                            *bool
+	useIPv6                            *bool
+	probesBeforeQuit                   *uint
+	intervalBetweenProbes              *float64
+	timeout                            *float64
+	showTimestamp                      *bool
 	retryHostnameResolveAfterNFailures *uint
-	customDNSServer                   *string
-	interfaceName                     *string
-	showSourceAddress                 *bool
-	showFailuresOnly                  *bool
-	noColor                           *bool
-	outputFormat                      *string
-	outputFile                        *string
-	showVer                           *bool
-	checkUpdates                      *bool
-	showHelp                          *bool
-	sendData                          *string
-	expectData                        *string
-	fastClose                         *bool
-	resolveEveryProbe                 *bool
-	maxConsecutiveFails               *uint
-	maxLatency                        *float64
-	metricsAddr                       *string
-	protocol                          *string
-	quietMode                         *bool
-	showSparkline                     *bool
-	showDashboard                     *bool
-	tracerouteMode                    *bool
-	retries                           *uint
-	retryBackoff                      *float64
-	retryMaxBackoff                   *float64
-	retryJitter                       *bool
-	enableWeb                         *bool
-	webAddr                           *string
-	showDiags                         *bool
-	showDiagnostics                   *bool
-	startTLS                          *bool
-	dnsHost                           *string
-	serviceName                       *string
-	oracleService                     *string
-	host                              *string
-	port                              *string
-	uri                               *string
-	concurrency                       *uint
-	historyLimit                      *uint
-	generateAPIKey                    *string
-	apiKeyStore                       *string
-	apiKeyHash                        *string
-	triggerMode                       *bool
-	listen                            *string
-	triggerConcurrency                *int
+	customDNSServer                    *string
+	interfaceName                      *string
+	showSourceAddress                  *bool
+	showFailuresOnly                   *bool
+	noColor                            *bool
+	outputFormat                       *string
+	outputFile                         *string
+	showVer                            *bool
+	checkUpdates                       *bool
+	showHelp                           *bool
+	sendData                           *string
+	expectData                         *string
+	fastClose                          *bool
+	resolveEveryProbe                  *bool
+	maxConsecutiveFails                *uint
+	maxLatency                         *float64
+	metricsAddr                        *string
+	protocol                           *string
+	quietMode                          *bool
+	showSparkline                      *bool
+	showDashboard                      *bool
+	tracerouteMode                     *bool
+	retries                            *uint
+	retryBackoff                       *float64
+	retryMaxBackoff                    *float64
+	retryJitter                        *bool
+	enableWeb                          *bool
+	webAddr                            *string
+	showDiags                          *bool
+	showDiagnostics                    *bool
+	startTLS                           *bool
+	dnsHost                            *string
+	serviceName                        *string
+	oracleService                      *string
+	host                               *string
+	port                               *string
+	uri                                *string
+	concurrency                        *uint
+	historyLimit                       *uint
+	generateAPIKey                     *string
+	apiKeyStore                        *string
+	apiKeyHash                         *string
+	triggerMode                        *bool
+	listen                             *string
+	triggerConcurrency                 *int
 }
 
 func registerFlags(fs *flag.FlagSet) flagOptions {
 	return flagOptions{
-		host: fs.String("host", "", "Target host(s), comma-separated for multi-target."),
-		port: fs.String("port", "", "Target port(s), comma-separated for multi-port."),
-		uri:  fs.String("uri", "", "Target URI(s) in host:port or scheme://host:port format, comma-separated."),
+		host:        fs.String("host", "", "Target host(s), comma-separated for multi-target."),
+		port:        fs.String("port", "", "Target port(s), comma-separated for multi-port."),
+		uri:         fs.String("uri", "", "Target URI(s) in host:port or scheme://host:port format, comma-separated."),
 		concurrency: fs.Uint("concurrency", 0, "Max parallel prober workers (0 = unconstrained)."),
-		useIPv4: fs.Bool("ipv4", false, "Only use IPv4 to initiate probes."),
-		useIPv6: fs.Bool("ipv6", false, "Only use IPv6 to initiate probes."),
+		useIPv4:     fs.Bool("ipv4", false, "Only use IPv4 to initiate probes."),
+		useIPv6:     fs.Bool("ipv6", false, "Only use IPv6 to initiate probes."),
 		probesBeforeQuit: fs.Uint(
 			"count",
 			0,
 			`Stop after <n> probes, regardless of the result.
-		By default, no limit will be applied.`),
+		By default, no limit will be applied.`,
+		),
 		intervalBetweenProbes: fs.Float64(
 			"interval",
 			1,
 			`Interval between probes.
 		Real number allowed with dot as a decimal separator.
-		The default value is one second`),
+		The default value is one second`,
+		),
 		timeout: fs.Float64(
 			"timeout",
 			1,
 			`Time to wait for a response in seconds.
 		Real number allowed.
-		0 means infinite timeout.`),
+		0 means infinite timeout.`,
+		),
 		showTimestamp: fs.Bool(
 			"timestamp",
 			false,
-			"Show a timestamp for each probe in the output."),
+			"Show a timestamp for each probe in the output.",
+		),
 		retryHostnameResolveAfterNFailures: fs.Uint(
 			"retry-resolve",
 			0,
 			`Retry resolving target's hostname after <n> number of failed probes.
-		e.g. --retry-resolve 10 to retry after 10 failed probes.`),
+		e.g. --retry-resolve 10 to retry after 10 failed probes.`,
+		),
 		customDNSServer: fs.String(
 			"dns-server",
 			"",
 			`Custom DNS server IP to use. Defaults to the system-wide server.
-		IP and port combination is allowed: 1.1.1.1:53`),
+		IP and port combination is allowed: 1.1.1.1:53`,
+		),
 		interfaceName: fs.String(
 			"interface",
 			"",
-			"Use a specific interface name or IP address to initiate the probes."),
+			"Use a specific interface name or IP address to initiate the probes.",
+		),
 		showSourceAddress: fs.Bool(
 			"show-source-address",
 			false,
-			"Show source address and port used for probes."),
+			"Show source address and port used for probes.",
+		),
 		showFailuresOnly: fs.Bool(
 			"show-failures-only",
 			false,
-			"Show only the failed probes."),
+			"Show only the failed probes.",
+		),
 		noColor: fs.Bool("no-color", false, "Do not colorize output."),
 		outputFormat: fs.String(
 			"output-format",
 			"",
-			"Output format: json, pretty_json, csv, tsv, sqlite, txt."),
+			"Output format: json, pretty_json, csv, tsv, sqlite, txt.",
+		),
 		outputFile: fs.String(
 			"output-file",
 			"",
-			"Path to destination output file."),
+			"Path to destination output file.",
+		),
 		showVer:             fs.Bool("version", false, "Show version and exit."),
 		checkUpdates:        fs.Bool("check-updates", false, "Check for updates and exit."),
 		showHelp:            fs.Bool("help", false, "Show help message and exit."),
@@ -411,7 +453,7 @@ func ProcessUserInput() Config {
 	cfg, err := parseConfigFromParsed(flag.CommandLine, opts)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(consts.ExitUsageError)
 	}
 	return *cfg
 }

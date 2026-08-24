@@ -1,3 +1,10 @@
+// Test Strategy (cmd/netping - End-to-End & Integration):
+//  1. Full Lifecycle Integration: Validate key generation, idle daemon initialization, authenticated REST triggering,
+//     real-time SSE streaming, standing metrics computation, and Web UI target inventory registration.
+//  2. Protocol Factory Coverage: Validate BuildPinger construction across all 49 supported L3-L7 protocols.
+//  3. Security & Boundary Hardening: Test oversized HTTP body rejection (MaxBytesReader), malformed JSON payloads,
+//     tampered keystores, invalid auth headers, and high-concurrency trigger bursts.
+//  4. Diagnostic Exit Codes: Validate deterministic process termination status mappings.
 package main
 
 import (
@@ -6,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -354,6 +362,69 @@ func TestEndToEnd_TriggerMode_AllPayloadsAndFeatures(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, code)
 	assert.NotNil(t, resTrace.Hops)
+
+	// 8. HTTP Probe Method Dispatching (HEAD default, POST with send_data, GET with expect_data)
+	httpBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			b, _ := io.ReadAll(r.Body)
+			if string(b) == `{"action":"ping"}` {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"status":"pong","code":200}`))
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+		case http.MethodGet:
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok-service-ready"))
+		case http.MethodHead:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer httpBackend.Close()
+	httpU, _ := url.Parse(httpBackend.URL)
+	httpH, httpPStr, _ := net.SplitHostPort(httpU.Host)
+	httpPortNum, _ := strconv.Atoi(httpPStr)
+
+	// 8a. Default HEAD probe
+	resHTTPHead, code, err := sendTrigger(web.TriggerRequest{
+		Host:      httpH,
+		Port:      uint16(httpPortNum),
+		Protocol:  "http",
+		ShowDiags: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, code)
+	assert.True(t, resHTTPHead.Success)
+	assert.Equal(t, 200, resHTTPHead.HTTPStatus)
+
+	// 8b. POST probe with send_data and expect_data
+	resHTTPPost, code, err := sendTrigger(web.TriggerRequest{
+		Host:       httpH,
+		Port:       uint16(httpPortNum),
+		Protocol:   "http",
+		SendData:   `{"action":"ping"}`,
+		ExpectData: `"status":"pong"`,
+		ShowDiags:  true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, code)
+	assert.True(t, resHTTPPost.Success)
+	assert.Contains(t, resHTTPPost.Diagnostics, "Sent: 17B")
+	assert.Contains(t, resHTTPPost.Diagnostics, `Matched: "\"status\":\"pong\""`)
+
+	// 8c. GET probe with expect_data
+	resHTTPGet, code, err := sendTrigger(web.TriggerRequest{
+		Host:       httpH,
+		Port:       uint16(httpPortNum),
+		Protocol:   "http",
+		ExpectData: "service-ready",
+		ShowDiags:  true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, code)
+	assert.True(t, resHTTPGet.Success)
+	assert.Contains(t, resHTTPGet.Diagnostics, `Matched: "service-ready"`)
 
 	// Verify target registry tracked active targets
 	fleet := registry.GetFleetTargets()
@@ -746,4 +817,26 @@ func TestEndToEnd_TriggerMode_EdgeCases_And_SecurityBoundaries(t *testing.T) {
 	for i := 0; i < concurrencyCount; i++ {
 		assert.NoError(t, <-errChan)
 	}
+
+	// 8. Security Test: Oversized Payload Protection (MaxBytesReader)
+	oversizedBody := strings.Repeat("a", 2<<20) // 2MB payload (exceeds 1MB limit)
+	overReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/trigger", strings.NewReader(oversizedBody))
+	overReq.Header.Set("X-API-Key", rawKey)
+	overReq.Header.Set("Content-Type", "application/json")
+	overResp, err := http.DefaultClient.Do(overReq)
+	require.NoError(t, err)
+	defer overResp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, overResp.StatusCode, "oversized payload should be rejected with 400 Bad Request")
+}
+
+func TestDiagnosticExitCodes(t *testing.T) {
+	assert.Equal(t, 0, consts.ExitSuccess)
+	assert.Equal(t, 1, consts.ExitGeneralError)
+	assert.Equal(t, 2, consts.ExitUsageError)
+	assert.Equal(t, 3, consts.ExitDNSResolutionFailed)
+	assert.Equal(t, 4, consts.ExitNetworkInterfaceError)
+	assert.Equal(t, 5, consts.ExitTargetUnreachable)
+	assert.Equal(t, 6, consts.ExitPartialPacketLoss)
+	assert.Equal(t, 7, consts.ExitStorageError)
+	assert.Equal(t, 130, consts.ExitInterrupted)
 }

@@ -558,4 +558,3 @@ func (m *MultiProber) PrintSummaryTable() {
 		fmt.Printf("\033[38;5;244mduration (HH:MM:SS):\033[0m \033[1;37m%v\033[0m\n\n", durationTime.Format(time.TimeOnly))
 	}
 }
-

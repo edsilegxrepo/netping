@@ -1,3 +1,9 @@
+// Test Strategy (pkg/web):
+//  1. Dashboard & Static Content: Verify embedded HTML/JS delivery and valid HTTP headers (200 OK, text/html).
+//  2. SSE Streaming: Validate real-time event delivery and non-blocking subscriber disconnection.
+//  3. REST Endpoints: Test /api/v1/metrics, /api/v1/targets, /api/v1/probes, and /api/v1/openapi.json responses.
+//  4. History Retention: Validate limit configuration changes, ring-buffer capacity pruning, and reset endpoints.
+//  5. Data Exporting: Test server-side formatting into CSV, JSON, and plain-text formats.
 package web
 
 import (

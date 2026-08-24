@@ -123,7 +123,8 @@ func (m *Mailing) Ping(ctx context.Context) ProbeResult {
 
 	if m.useTLS {
 		tlsConfig := &tls.Config{
-			ServerName:         targetHost,
+			ServerName: targetHost,
+			// #nosec G402 -- diagnostic mail TLS prober measuring latency
 			InsecureSkipVerify: true,
 		}
 		tlsDialer := &tls.Dialer{
@@ -244,7 +245,8 @@ func (m *Mailing) Ping(ctx context.Context) ProbeResult {
 			}
 
 			tlsConn := tls.Client(conn, &tls.Config{
-				ServerName:         targetHost,
+				ServerName: targetHost,
+				// #nosec G402 -- diagnostic STARTTLS prober measuring handshake latency
 				InsecureSkipVerify: true,
 			})
 			if err := tlsConn.HandshakeContext(ctx); err != nil {

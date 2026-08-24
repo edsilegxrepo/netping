@@ -1,0 +1,163 @@
+package consts
+
+import "strings"
+
+// protocolDefaultPorts maps each protocol to its canonical default port.
+var protocolDefaultPorts = map[Protocol]uint16{
+	TCP:        443,
+	TLS:        443,
+	UDP:        53,
+	HTTP:       80,
+	HTTPS:      443,
+	ICMP:       0,
+	GRPC:       50051,
+	GRPCS:      443,
+	WS:         80,
+	WSS:        443,
+	DNS:        53,
+	DOT:        853,
+	DOH:        443,
+	REDIS:      6379,
+	REDISS:     6380,
+	SSH:        22,
+	POSTGRES:   5432,
+	MYSQL:      3306,
+	MSSQL:      1433,
+	ORACLE:     1521,
+	MONGODB:    27017,
+	MONGODBS:   27017,
+	CASSANDRA:  9042,
+	CASSANDRAS: 9042,
+	SAPHANA:    30015,
+	MEMCACHED:  11211,
+	MEMCACHEDS: 11211,
+	SMTP:       25,
+	SMTPS:      465,
+	IMAP:       143,
+	IMAPS:      993,
+	POP3:       110,
+	POP3S:      995,
+	LDAP:       389,
+	LDAPS:      636,
+	O365:       443,
+	S3:         443,
+	AZUREBLOB:  443,
+	GCS:        443,
+	KAFKA:      9092,
+	KAFKAS:     9093,
+	RABBITMQ:   5672,
+	AMQP:       5672,
+	AMQPS:      5671,
+	SMB:        445,
+	RSYNC:      873,
+	FTP:        21,
+	FTPS:       990,
+}
+
+// protocolAliases maps common user strings and URI schemes to canonical Protocols.
+var protocolAliases = map[string]Protocol{
+	"tcp":         TCP,
+	"tls":         TLS,
+	"tcps":        TLS,
+	"ssl":         TLS,
+	"udp":         UDP,
+	"http":        HTTP,
+	"https":       HTTPS,
+	"icmp":        ICMP,
+	"ping":        ICMP,
+	"grpc":        GRPC,
+	"grpcs":       GRPCS,
+	"ws":          WS,
+	"wss":         WSS,
+	"websocket":   WS,
+	"websockets":  WSS,
+	"dns":         DNS,
+	"dot":         DOT,
+	"doh":         DOH,
+	"redis":       REDIS,
+	"rediss":      REDISS,
+	"ssh":         SSH,
+	"sftp":        SSH,
+	"postgres":    POSTGRES,
+	"postgresql":  POSTGRES,
+	"psql":        POSTGRES,
+	"mysql":       MYSQL,
+	"mariadb":     MYSQL,
+	"mssql":       MSSQL,
+	"sqlserver":   MSSQL,
+	"oracle":      ORACLE,
+	"tns":         ORACLE,
+	"mongodb":     MONGODB,
+	"mongo":       MONGODB,
+	"mongodbs":    MONGODBS,
+	"mongodb+ssl": MONGODBS,
+	"mongo+ssl":   MONGODBS,
+	"cassandra":   CASSANDRA,
+	"cassandras":  CASSANDRAS,
+	"scylla":      CASSANDRA,
+	"cql":         CASSANDRA,
+	"cqls":        CASSANDRAS,
+	"saphana":     SAPHANA,
+	"hana":        SAPHANA,
+	"memcached":   MEMCACHED,
+	"memcache":    MEMCACHED,
+	"memcacheds":  MEMCACHEDS,
+	"memcaches":   MEMCACHEDS,
+	"smtp":        SMTP,
+	"smtps":       SMTPS,
+	"imap":        IMAP,
+	"imaps":       IMAPS,
+	"pop3":        POP3,
+	"pop3s":       POP3S,
+	"ldap":        LDAP,
+	"ldaps":       LDAPS,
+	"o365":        O365,
+	"m365":        O365,
+	"office365":   O365,
+	"o365mbx":     O365,
+	"graph":       O365,
+	"s3":          S3,
+	"awss3":       S3,
+	"azureblob":   AZUREBLOB,
+	"blob":        AZUREBLOB,
+	"adls":        AZUREBLOB,
+	"gcs":         GCS,
+	"gcpbucket":   GCS,
+	"gcpstorage":  GCS,
+	"kafka":       KAFKA,
+	"kafkas":      KAFKAS,
+	"rabbitmq":    RABBITMQ,
+	"amqp":        RABBITMQ,
+	"amqps":       AMQPS,
+	"smb":         SMB,
+	"cifs":        SMB,
+	"rsync":       RSYNC,
+	"ftp":         FTP,
+	"ftps":        FTPS,
+}
+
+// GetDefaultPort returns the standard default port for a protocol.
+func GetDefaultPort(p Protocol) uint16 {
+	if port, ok := protocolDefaultPorts[p]; ok {
+		return port
+	}
+	return 443
+}
+
+// NormalizeProtocol resolves any user-supplied string into a canonical Protocol and its default port.
+func NormalizeProtocol(input string) (Protocol, uint16, bool) {
+	norm := strings.ToLower(strings.TrimSpace(input))
+	if p, ok := protocolAliases[norm]; ok {
+		return p, GetDefaultPort(p), true
+	}
+	return TCP, 443, false
+}
+
+// AllProtocols returns a slice of all supported protocols.
+func AllProtocols() []Protocol {
+	protos := make([]Protocol, 0, len(protocolDefaultPorts))
+	for p := range protocolDefaultPorts {
+		protos = append(protos, p)
+	}
+	return protos
+}

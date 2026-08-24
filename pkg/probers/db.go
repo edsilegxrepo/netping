@@ -95,7 +95,8 @@ func (d *DBing) dial(ctx context.Context) (net.Conn, string, string, error) {
 
 	if d.UseTLS && d.Type != PostgreSQL && d.Type != MySQL { // PostgreSQL & MySQL do in-band SSL negotiation
 		tlsConfig := &tls.Config{
-			ServerName:         targetHost,
+			ServerName: targetHost,
+			// #nosec G402 -- diagnostic database TLS prober measuring latency
 			InsecureSkipVerify: true,
 		}
 		tlsDialer := &tls.Dialer{NetDialer: d.Dialer, Config: tlsConfig}
@@ -186,11 +187,13 @@ func (d *DBing) probePostgres(ctx context.Context, conn net.Conn, targetHost str
 		return nil, fmt.Errorf("postgres response read failed: %w", err)
 	}
 
-	var activeConn net.Conn = conn
-	if reply[0] == 'S' {
+	activeConn := conn
+	switch reply[0] {
+	case 'S':
 		// SSL Supported: perform TLS handshake to extract TLS version and cipher suite
 		tlsConn := tls.Client(conn, &tls.Config{
-			ServerName:         targetHost,
+			ServerName: targetHost,
+			// #nosec G402 -- diagnostic Postgres SSL prober measuring handshake latency
 			InsecureSkipVerify: true,
 		})
 		if err := tlsConn.HandshakeContext(ctx); err == nil {
@@ -200,9 +203,9 @@ func (d *DBing) probePostgres(ctx context.Context, conn net.Conn, targetHost str
 		} else {
 			diags = append(diags, "SSL: Supported")
 		}
-	} else if reply[0] == 'N' {
+	case 'N':
 		diags = append(diags, "SSL: Not Supported")
-	} else {
+	default:
 		return nil, fmt.Errorf("unexpected postgres handshake response: 0x%x (%q)", reply[0], reply[0])
 	}
 
@@ -215,7 +218,9 @@ func (d *DBing) probePostgres(ctx context.Context, conn net.Conn, targetHost str
 	sm.WriteByte(0x00) // Terminator
 
 	smBytes := sm.Bytes()
+	// #nosec G115 -- Postgres startup message length bounded
 	pktLen := uint32(len(smBytes) + 4)
+	// #nosec G115 -- byte masking for 32-bit big-endian length prefix
 	fullSM := append([]byte{byte(pktLen >> 24), byte(pktLen >> 16), byte(pktLen >> 8), byte(pktLen)}, smBytes...)
 
 	if _, err := activeConn.Write(fullSM); err == nil {
@@ -546,8 +551,10 @@ func (d *DBing) probeOracle(conn net.Conn) ([]string, error) {
 		svc = "XE"
 	}
 	connectStr := fmt.Sprintf("(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=%s)(CID=(PROGRAM=netping)(HOST=localhost)(USER=netping))))", svc)
+	// #nosec G115 -- bounded Oracle connect packet length
 	cDataLen := uint16(len(connectStr))
 	cDataOffset := uint16(58)
+	// #nosec G115 -- bounded Oracle connect packet length
 	totalPktLen := uint16(58 + len(connectStr))
 
 	tnsConnect := make([]byte, totalPktLen)
@@ -739,6 +746,7 @@ func (d *DBing) probeMongoDB(conn net.Conn) ([]string, error) {
 
 			connID := extractBSONInt32(body, "connectionId")
 			if connID < 0 {
+				// #nosec G115 -- MongoDB connectionId fits in standard integer range
 				connID = int32(extractBSONInt64(body, "connectionId"))
 			}
 			if connID > 0 {
@@ -774,9 +782,9 @@ func (d *DBing) probeCassandra(conn net.Conn) ([]string, error) {
 
 	// CQL Native Protocol v4 STARTUP frame (22 bytes)
 	cqlStartup := []byte{
-		0x04,                   // Version 4 (Request)
-		0x00,                   // Flags
-		0x00, 0x01,             // Stream ID 1
+		0x04,       // Version 4 (Request)
+		0x00,       // Flags
+		0x00, 0x01, // Stream ID 1
 		0x01,                   // Opcode 1 (STARTUP)
 		0x00, 0x00, 0x00, 0x16, // Length 22
 		0x00, 0x01, // Map size: 1 key-value
@@ -885,7 +893,7 @@ func (d *DBing) probeSAPHANA(conn net.Conn) ([]string, error) {
 			instanceInfo = fmt.Sprintf("Instance: %02d (Tenant SQL)", instNum)
 		case 17:
 			instanceInfo = fmt.Sprintf("Instance: %02d (Tenant SQL)", instNum)
-		case 01:
+		case 0o1:
 			instanceInfo = fmt.Sprintf("Instance: %02d (Nameserver)", instNum)
 		default:
 			instanceInfo = fmt.Sprintf("Instance: %02d", instNum)
@@ -895,9 +903,10 @@ func (d *DBing) probeSAPHANA(conn net.Conn) ([]string, error) {
 	// Send Authenticate / Initial Connect segment to discover supported auth & DB details
 	userBytes := []byte("SYSTEM")
 	var pData bytes.Buffer
-	binary.Write(&pData, binary.LittleEndian, uint16(1)) // Field count: 1
-	pData.WriteByte(byte(len(userBytes)))                // Field size: 6
-	pData.Write(userBytes)                               // Field data: "SYSTEM"
+	_ = binary.Write(&pData, binary.LittleEndian, uint16(1)) // Field count: 1
+	// #nosec G115 -- static 6-byte user buffer
+	pData.WriteByte(byte(len(userBytes))) // Field size: 6
+	pData.Write(userBytes)                // Field data: "SYSTEM"
 
 	payloadBytes := pData.Bytes()
 	padLen := (8 - (len(payloadBytes) % 8)) % 8
@@ -906,14 +915,17 @@ func (d *DBing) probeSAPHANA(conn net.Conn) ([]string, error) {
 	}
 
 	partHeader := make([]byte, 16)
-	partHeader[0] = 33                                                        // Part Kind 33 (AUTHENTICATION)
-	binary.LittleEndian.PutUint16(partHeader[2:4], 1)                        // Argument count 1
+	partHeader[0] = 33                                // Part Kind 33 (AUTHENTICATION)
+	binary.LittleEndian.PutUint16(partHeader[2:4], 1) // Argument count 1
+	// #nosec G115 -- static authentication packet payload length
 	binary.LittleEndian.PutUint32(partHeader[8:12], uint32(len(payloadBytes))) // Payload size
+	// #nosec G115 -- static authentication packet payload length
 	binary.LittleEndian.PutUint32(partHeader[12:16], uint32(len(payloadBytes)))
 
 	partFull := append(partHeader, payloadBytes...)
 
 	segmentHeader := make([]byte, 24)
+	// #nosec G115 -- bounded SAP HANA segment length
 	segLen := uint32(24 + len(partFull))
 	binary.LittleEndian.PutUint32(segmentHeader[0:4], segLen)
 	binary.LittleEndian.PutUint16(segmentHeader[8:10], 1)  // Part count 1
@@ -927,7 +939,9 @@ func (d *DBing) probeSAPHANA(conn net.Conn) ([]string, error) {
 	for i := 0; i < 8; i++ {
 		msgHeader[i] = 0xff // Session ID: -1
 	}
+	// #nosec G115 -- bounded SAP HANA message length
 	binary.LittleEndian.PutUint32(msgHeader[12:16], uint32(len(segmentFull)))
+	// #nosec G115 -- bounded SAP HANA message length
 	binary.LittleEndian.PutUint32(msgHeader[16:20], uint32(len(segmentFull)))
 	binary.LittleEndian.PutUint16(msgHeader[20:22], 1)
 
@@ -1040,6 +1054,7 @@ func extractBSONInt32(data []byte, key string) int32 {
 	if len(payload) < 4 {
 		return -1
 	}
+	// #nosec G115 -- BSON 32-bit integer binary extraction
 	return int32(binary.LittleEndian.Uint32(payload[0:4]))
 }
 
@@ -1048,6 +1063,7 @@ func extractBSONInt64(data []byte, key string) int64 {
 	if len(payload) < 8 {
 		return -1
 	}
+	// #nosec G115 -- BSON 64-bit integer binary extraction
 	return int64(binary.LittleEndian.Uint64(payload[0:8]))
 }
 

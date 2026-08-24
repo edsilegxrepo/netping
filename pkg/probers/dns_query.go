@@ -80,7 +80,8 @@ func NewDNSQueryProber(opts DNSQueryOptions) *DNSQueryProber {
 		tr := &http.Transport{
 			DisableKeepAlives: true,
 			TLSClientConfig: &tls.Config{
-				ServerName:         opts.Nameserver,
+				ServerName: opts.Nameserver,
+				// #nosec G402 -- diagnostic DoH prober measuring endpoint latency
 				InsecureSkipVerify: true,
 			},
 			DialContext: d.DialContext,
@@ -123,9 +124,10 @@ func buildDNSQuery(domain string) []byte {
 	// Domain labels (e.g. google.com -> 6google3com0)
 	parts := strings.Split(domain, ".")
 	for _, part := range parts {
-		if len(part) == 0 {
+		if len(part) == 0 || len(part) > 63 {
 			continue
 		}
+		// #nosec G115 -- DNS label length strictly bounded to <= 63 bytes
 		buf.WriteByte(byte(len(part)))
 		buf.WriteString(part)
 	}
@@ -398,7 +400,8 @@ func (d *DNSQueryProber) Ping(ctx context.Context) ProbeResult {
 	if d.isDoT {
 		// DoT (RFC 7858 - DNS over TLS)
 		tlsConfig := &tls.Config{
-			ServerName:         target,
+			ServerName: target,
+			// #nosec G402 -- diagnostic DoT prober measuring endpoint latency
 			InsecureSkipVerify: true,
 		}
 		tlsDialer := &tls.Dialer{
@@ -424,6 +427,7 @@ func (d *DNSQueryProber) Ping(ctx context.Context) ProbeResult {
 
 		// 2-byte length prefix for TCP/DoT
 		lenBuf := make([]byte, 2)
+		// #nosec G115 -- DNS wire query size bounded to standard UDP/TCP buffer
 		binary.BigEndian.PutUint16(lenBuf, uint16(len(queryBytes)))
 
 		if _, err := conn.Write(append(lenBuf, queryBytes...)); err != nil {

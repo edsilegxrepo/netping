@@ -68,7 +68,8 @@ func NewO365ing(opts O365Options) *O365ing {
 	tr := &http.Transport{
 		DisableKeepAlives: true,
 		TLSClientConfig: &tls.Config{
-			ServerName:         opts.Hostname,
+			ServerName: opts.Hostname,
+			// #nosec G402 -- user-configurable TLS verification flag for endpoint probing
 			InsecureSkipVerify: opts.SkipVerify,
 		},
 		DialContext: dialContext,

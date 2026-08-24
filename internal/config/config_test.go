@@ -1,3 +1,8 @@
+// Test Strategy (internal/config - Parser & Flags):
+//  1. Flag Registration & Parsing: Validate registered flags, value-requiring flag sets, and positional arg permutations.
+//  2. Target Configuration: Test host:port parsing, URI schemas, protocol overrides, and IPv4/IPv6 address assignments.
+//  3. Operational Mode Validation: Test conflicting flag detection, trigger-mode configuration, and keystore arguments.
+//  4. Defaults & Sanitization: Ensure proper fallback values for intervals, timeouts, and output formats.
 package config
 
 import (
@@ -30,19 +35,19 @@ func TestFlagsRequiringValue(t *testing.T) {
 func TestConfig_Getters(t *testing.T) {
 	ip := netip.MustParseAddr("10.0.0.1")
 	cfg := Config{
-		Hostname:                   "example.com",
-		IP:                         ip,
-		Port:                       8080,
-		Protocol:                   consts.HTTP,
-		UseIPv4:                    true,
-		UseIPv6:                    false,
-		Timeout:                    2 * time.Second,
-		IntervalBetweenProbes:      500 * time.Millisecond,
-		ProbesBeforeQuit:           5,
-		TargetIsIP:                 false,
-		ShowFailuresOnly:           true,
-		ShouldRetryResolve:         true,
-		RetryHostnameLookupAfter:   3,
+		Hostname:                 "example.com",
+		IP:                       ip,
+		Port:                     8080,
+		Protocol:                 consts.HTTP,
+		UseIPv4:                  true,
+		UseIPv6:                  false,
+		Timeout:                  2 * time.Second,
+		IntervalBetweenProbes:    500 * time.Millisecond,
+		ProbesBeforeQuit:         5,
+		TargetIsIP:               false,
+		ShowFailuresOnly:         true,
+		ShouldRetryResolve:       true,
+		RetryHostnameLookupAfter: 3,
 		PrinterConfig: printers.PrinterConfig{
 			WithTimestamp:     true,
 			WithSourceAddress: true,
@@ -99,12 +104,12 @@ func TestPermuteArgs_OnlyPositional(t *testing.T) {
 
 func TestResolveProtocolAndPort_AllProtocols(t *testing.T) {
 	testCases := []struct {
-		protoStr    string
-		portIn      string
-		targetIn    string
-		wantProto   consts.Protocol
-		wantPort    string
-		wantTarget  string
+		protoStr   string
+		portIn     string
+		targetIn   string
+		wantProto  consts.Protocol
+		wantPort   string
+		wantTarget string
 	}{
 		{"http", "", "", consts.HTTP, "80", ""},
 		{"https", "", "", consts.HTTPS, "443", ""},
@@ -184,16 +189,16 @@ func TestParseHostPortAndArgs(t *testing.T) {
 	assert.Equal(t, "example.com", h)
 	assert.Equal(t, uint16(443), p)
 
-	// parseHostPortArgs
-	h, pStr := parseHostPortArgs([]string{"example.com:9000"})
+	// ParseHostPortArgs
+	h, pStr := ParseHostPortArgs([]string{"example.com:9000"})
 	assert.Equal(t, "example.com", h)
 	assert.Equal(t, "9000", pStr)
 
-	h, pStr = parseHostPortArgs([]string{"example.com", "9000"})
+	h, pStr = ParseHostPortArgs([]string{"example.com", "9000"})
 	assert.Equal(t, "example.com", h)
 	assert.Equal(t, "9000", pStr)
 
-	h, pStr = parseHostPortArgs([]string{})
+	h, pStr = ParseHostPortArgs([]string{})
 	assert.Empty(t, h)
 	assert.Empty(t, pStr)
 }
@@ -219,11 +224,11 @@ func TestPortValidation(t *testing.T) {
 
 func TestConfig_AllGetters(t *testing.T) {
 	cfg := Config{
-		ShowFailuresOnly: true,
-		ShowDashboard:    true,
-		QuietMode:        true,
-		ShowSparkline:    true,
-		Retries:          3,
+		ShowFailuresOnly:    true,
+		ShowDashboard:       true,
+		QuietMode:           true,
+		ShowSparkline:       true,
+		Retries:             3,
 		InitialRetryBackoff: 10 * time.Millisecond,
 		MaxRetryBackoff:     50 * time.Millisecond,
 		RetryJitter:         true,

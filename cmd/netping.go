@@ -1,4 +1,20 @@
-// netping.go - Multi-protocol network latency and diagnostics prober.
+// Package main is the entry point for netping — a high-performance, multi-protocol network
+// latency prober, protocol diagnostics engine, TUI dashboard, and REST trigger listener daemon.
+//
+// Objectives:
+//   - Parse CLI arguments and dispatch execution across operational modes.
+//   - Manage process lifecycles, signal trapping (SIGINT/SIGTERM), and diagnostic exit codes.
+//   - Coordinate concurrent multi-target probing loops, TUI event loops, and web servers.
+//
+// Core Components:
+//   - main: Process entry point and operational mode dispatcher.
+//   - runSingleTargetProbing / runMultiTargetProbing: Main probe execution engines.
+//   - buildPingerForTarget: Factory wrapper constructing protocol pingers.
+//
+// Data Flow:
+//
+//	CLI Flags -> config.ProcessUserInput() -> Mode Dispatch (Subscriber/Trigger/CLI/TUI)
+//	-> Probing Loop -> Stats & Broadcaster -> Output Rendering -> Process Exit.
 package main
 
 import (
@@ -52,493 +68,78 @@ func monitorSummaryRequest(ctx context.Context, p printers.Printer, s *stats.Sta
 	}
 }
 
+// buildPingerForTarget constructs an initialized Pinger instance for a single target
+// configuration using the centralized probers.BuildPinger factory with all user options applied.
 func buildPingerForTarget(tCfg config.TargetConfig, cfg config.Config, dialer *net.Dialer) probers.Pinger {
 	svc := tCfg.ServiceName
 	if svc == "" {
 		svc = cfg.ServiceName
 	}
-	switch tCfg.Protocol {
-	case consts.HTTP, consts.HTTPS:
-		return probers.NewHTTPing(probers.HTTPOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Protocol: tCfg.Protocol,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.UDP:
-		return probers.NewUDPing(probers.UDPOptions{
-			IP:         tCfg.IP,
-			Port:       tCfg.Port,
-			Timeout:    cfg.Timeout,
-			Dialer:     dialer,
-			SendData:   cfg.SendData,
-			ExpectData: cfg.ExpectData,
-		})
-	case consts.ICMP:
-		return probers.NewICMPing(probers.ICMPOptions{
-			IP:      tCfg.IP,
-			Timeout: cfg.Timeout,
-			UseIPv6: cfg.UseIPv6,
-		})
-	case consts.GRPC:
-		return probers.NewGRPCing(probers.GRPCOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.WS:
-		return probers.NewWSing(probers.WSOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   false,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.WSS:
-		return probers.NewWSing(probers.WSOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.DNS:
-		return probers.NewDNSQueryProber(probers.DNSQueryOptions{
-			Nameserver: tCfg.Host,
-			IP:         tCfg.IP,
-			Port:       tCfg.Port,
-			Domains:    cfg.DNSHosts,
-			Domain:     tCfg.Host,
-			IsDoH:      false,
-			Timeout:    cfg.Timeout,
-			Dialer:     dialer,
-		})
-	case consts.DOH:
-		return probers.NewDNSQueryProber(probers.DNSQueryOptions{
-			Nameserver: tCfg.Host,
-			IP:         tCfg.IP,
-			Port:       tCfg.Port,
-			Domains:    cfg.DNSHosts,
-			Domain:     tCfg.Host,
-			IsDoH:      true,
-			Timeout:    cfg.Timeout,
-			Dialer:     dialer,
-		})
-	case consts.REDIS:
-		return probers.NewRedising(probers.RedisOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.SSH:
-		return probers.NewSSHing(probers.SSHOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.POSTGRES:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.PostgreSQL,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.MYSQL:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.MySQL,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.MSSQL:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.MSSQL,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.ORACLE:
-		return probers.NewDBing(probers.DBOptions{
-			Type:        probers.Oracle,
-			Hostname:    tCfg.Host,
-			IP:          tCfg.IP,
-			Port:        tCfg.Port,
-			ServiceName: svc,
-			Timeout:     cfg.Timeout,
-			Dialer:      dialer,
-		})
-	case consts.MONGODB:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.MongoDB,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.MONGODBS:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.MongoDB,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.CASSANDRA:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.Cassandra,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.CASSANDRAS:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.Cassandra,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.SAPHANA:
-		return probers.NewDBing(probers.DBOptions{
-			Type:     probers.SAPHANA,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.MEMCACHED:
-		return probers.NewMemcacheding(probers.MemcachedOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.SMTP:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailSMTP,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   false,
-			StartTLS: cfg.StartTLS,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.SMTPS:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailSMTP,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			StartTLS: false,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.IMAP:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailIMAP,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   false,
-			StartTLS: cfg.StartTLS,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.IMAPS:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailIMAP,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			StartTLS: false,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.TLS:
-		return probers.NewTLSing(probers.TLSOptions{
-			Hostname:  tCfg.Host,
-			IP:        tCfg.IP,
-			Port:      tCfg.Port,
-			Timeout:   cfg.Timeout,
-			Dialer:    dialer,
-			FastClose: cfg.FastClose,
-		})
-	case consts.GRPCS:
-		return probers.NewGRPCing(probers.GRPCOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.DOT:
-		return probers.NewDNSQueryProber(probers.DNSQueryOptions{
-			Nameserver: tCfg.Host,
-			IP:         tCfg.IP,
-			Port:       tCfg.Port,
-			Domains:    cfg.DNSHosts,
-			Domain:     tCfg.Host,
-			IsDoT:      true,
-			Timeout:    cfg.Timeout,
-			Dialer:     dialer,
-		})
-	case consts.REDISS:
-		return probers.NewRedising(probers.RedisOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.MEMCACHEDS:
-		return probers.NewMemcacheding(probers.MemcachedOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.POP3:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailPOP3,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   false,
-			StartTLS: cfg.StartTLS,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.POP3S:
-		return probers.NewMailing(probers.MailOptions{
-			Protocol: probers.MailPOP3,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			StartTLS: false,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.LDAP:
-		return probers.NewLDAPing(probers.LDAPOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   false,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.LDAPS:
-		return probers.NewLDAPing(probers.LDAPOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.O365:
-		return probers.NewO365ing(probers.O365Options{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.S3:
-		return probers.NewStorageing(probers.StorageOptions{
-			Type:     probers.StorageS3,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.AZUREBLOB:
-		return probers.NewStorageing(probers.StorageOptions{
-			Type:     probers.StorageAzureBlob,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.GCS:
-		return probers.NewStorageing(probers.StorageOptions{
-			Type:     probers.StorageGCS,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.KAFKA:
-		return probers.NewQueueing(probers.QueueOptions{
-			Protocol: probers.QueueKafka,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   false,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.KAFKAS:
-		return probers.NewQueueing(probers.QueueOptions{
-			Protocol: probers.QueueKafka,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.RABBITMQ, consts.AMQP:
-		return probers.NewQueueing(probers.QueueOptions{
-			Protocol: probers.QueueRabbitMQ,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   false,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.AMQPS:
-		return probers.NewQueueing(probers.QueueOptions{
-			Protocol: probers.QueueRabbitMQ,
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.SMB:
-		return probers.NewSMBing(probers.SMBOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.RSYNC:
-		return probers.NewRsyncing(probers.RsyncOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.FTP:
-		return probers.NewFTPing(probers.FTPOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   false,
-			StartTLS: cfg.StartTLS,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.FTPS:
-		return probers.NewFTPing(probers.FTPOptions{
-			Hostname: tCfg.Host,
-			IP:       tCfg.IP,
-			Port:     tCfg.Port,
-			UseTLS:   true,
-			StartTLS: false,
-			Timeout:  cfg.Timeout,
-			Dialer:   dialer,
-		})
-	case consts.TCP:
-		fallthrough
-	default:
-		return probers.NewTcping(probers.TCPOptions{
-			Hostname:   tCfg.Host,
-			IP:         tCfg.IP,
-			Port:       tCfg.Port,
-			Timeout:    cfg.Timeout,
-			Dialer:     dialer,
-			SendData:   cfg.SendData,
-			ExpectData: cfg.ExpectData,
-			FastClose:  cfg.FastClose,
-		})
-	}
+	return probers.BuildPinger(probers.FactoryOptions{
+		Protocol:    tCfg.Protocol,
+		Hostname:    tCfg.Host,
+		IP:          tCfg.IP,
+		Port:        tCfg.Port,
+		Timeout:     cfg.Timeout,
+		Dialer:      dialer,
+		UseIPv4:     cfg.UseIPv4,
+		UseIPv6:     cfg.UseIPv6,
+		SendData:    cfg.SendData,
+		ExpectData:  cfg.ExpectData,
+		ServiceName: svc,
+		DNSHosts:    cfg.DNSHosts,
+		StartTLS:    cfg.StartTLS,
+		FastClose:   cfg.FastClose,
+	})
 }
 
 func main() {
+	// Mode 1: Detached internal asynchronous exporter process (avoids GC/disk I/O pauses in parent)
 	if len(os.Args) >= 3 && os.Args[1] == "--internal-async-save" {
-		filePath := os.Args[2]
+		filePath := filepath.Clean(os.Args[2])
 		dir := filepath.Dir(filePath)
 		if dir != "" && dir != "." {
-			_ = os.MkdirAll(dir, 0755)
+			_ = os.MkdirAll(dir, 0o750)
 		}
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
-			os.Exit(1)
+			os.Exit(consts.ExitStorageError)
 		}
-		if err := os.WriteFile(filePath, data, 0644); err != nil {
-			os.Exit(1)
+		if err := os.WriteFile(filePath, data, 0o600); err != nil {
+			os.Exit(consts.ExitStorageError)
 		}
-		os.Exit(0)
+		os.Exit(consts.ExitSuccess)
 	}
 
+	// Parse command line flags, environment variables, and target endpoints
 	cfg := config.ProcessUserInput()
 
+	// Mode 2: API Key Generation (--generate-api-key <storePath>)
 	if cfg.GenerateAPIKeyPath != "" {
 		rawKey, hashStr, err := auth.GenerateAPIKey()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating API key: %v\n", err)
-			os.Exit(1)
+			os.Exit(consts.ExitGeneralError)
 		}
 		if err := auth.SaveKeyToStorePath(cfg.GenerateAPIKeyPath, rawKey, hashStr); err != nil {
 			fmt.Fprintf(os.Stderr, "Error saving API key to %q: %v\n", cfg.GenerateAPIKeyPath, err)
-			os.Exit(1)
+			os.Exit(consts.ExitStorageError)
 		}
 		fmt.Printf("\n\033[1;32m✓\033[0m \033[1mAPI Key generated successfully!\033[0m\n\n")
 		fmt.Printf("  \033[1;33mAPI Key (Save now - cannot be recovered):\033[0m\n")
 		fmt.Printf("  \033[1;36m%s\033[0m\n\n", rawKey)
 		fmt.Printf("  \033[1;30mArgon2id Hash saved to:\033[0m %s\n\n", cfg.GenerateAPIKeyPath)
-		os.Exit(0)
+		os.Exit(consts.ExitSuccess)
 	}
 
+	// Mode 3: Trigger Listener Daemon (--trigger-mode with zero initial targets)
 	if cfg.TriggerMode && len(cfg.TargetConfigs) == 0 {
 		var validator auth.KeyValidator
 		if cfg.APIKeyStore != "" || cfg.APIKeyHash != "" {
 			ks, err := auth.NewKeystore(cfg.APIKeyStore, cfg.APIKeyHash)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error initializing keystore: %v\n", err)
-				os.Exit(1)
+				os.Exit(consts.ExitUsageError)
 			}
 			validator = ks
 		}
@@ -569,7 +170,7 @@ func main() {
 
 		if err := webServer.Start(probeCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting trigger listener: %v\n", err)
-			os.Exit(1)
+			os.Exit(consts.ExitGeneralError)
 		}
 
 		authStatus := "Argon2id Key Required"
@@ -589,13 +190,13 @@ func main() {
 
 		<-probeCtx.Done()
 		fmt.Println("\nTrigger listener gracefully shut down.")
-		os.Exit(0)
+		os.Exit(consts.ExitSuccess)
 	}
 
 	printer, err := printers.NewPrinter(cfg.PrinterConfig)
 	if err != nil {
 		fmt.Printf("Failed to create printer: %s\n", err)
-		os.Exit(1)
+		os.Exit(consts.ExitStorageError)
 	}
 	defer func() {
 		if c, ok := printer.(interface{ Done() }); ok {
@@ -606,6 +207,7 @@ func main() {
 	probeCtx, cancel := app.SetupSignalHandler(context.Background())
 	defer cancel()
 
+	// Mode 4: Layer-4 Hop-by-Hop Traceroute Discovery (--traceroute)
 	if cfg.TracerouteMode {
 		for i, tCfg := range cfg.TargetConfigs {
 			if i > 0 {
@@ -655,6 +257,7 @@ func main() {
 		localAddr = cfg.NetworkInterface.Dialer.LocalAddr
 	}
 
+	// Mode 5: Multi-Target Fleet Probing (multiple targets specified)
 	if len(cfg.TargetConfigs) > 1 {
 		workers := make([]probers.TargetWorker, 0, len(cfg.TargetConfigs))
 		for _, tCfg := range cfg.TargetConfigs {
@@ -867,6 +470,7 @@ func main() {
 		return
 	}
 
+	// Mode 6: Single-Target Probing (standard mode)
 	pinger := buildPingerForTarget(cfg.TargetConfigs[0], cfg, dialer)
 
 	stat := stats.NewStatistics(stats.Options{

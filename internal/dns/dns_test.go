@@ -1,3 +1,7 @@
+// Test Strategy (internal/dns):
+//  1. Nameserver Formatting: Test custom DNS server address normalization (host, IP:port, default port).
+//  2. Address Family Filtering: Validate IPv4-only, IPv6-only, and dual-stack address extraction.
+//  3. Retries & Dynamic Changes: Test retry loops under simulated network failures and verify IP mutation tracking.
 package dns
 
 import (
@@ -216,4 +220,3 @@ func TestUnmapAddresses(t *testing.T) {
 		t.Errorf("expected %v, got %v", ip4, unmapped)
 	}
 }
-

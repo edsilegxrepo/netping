@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.6.0 - 2026-08-24
+
+- **REST Trigger API & Daemon Operating Mode**:
+  - **On-Demand Dynamic Probe Triggering**: Added `POST /api/v1/trigger` enabling remote systems to execute network diagnostic probes on demand across all 49 supported application layer protocols.
+  - **Rich Trigger Payload Options**: Complete support for count-limited iterations (`count`), interval pacing (`interval`), custom payload send/expect matching (`send_data`/`expect_data`), fast teardown (`fast_close`), SLA latency thresholds (`max_latency_ms`), retry backoff loops, and Layer-4 traceroute discovery (`traceroute`).
+  - **Dual Operating Modes**: Added idle trigger listener daemon (`--trigger-mode`, `--listen <addr>`, `--trigger-concurrency <n>`) alongside existing CLI subscriber mode (`--web`), starting cleanly with zero initial targets.
+  - **Dynamic Fleet Registry Synchronization**: Real-time integration of dynamically triggered probe targets into the Web UI dashboard, historical event queries (`/api/v1/probes`), and standing metrics (`/api/v1/metrics`, `/api/v1/targets`).
+- **Argon2id Authentication & Keystore Management**:
+  - **CLI Key Generation**: Added `--generate-api-key <path>` to generate high-entropy 256-bit API keys (`np_live_...`) with OWASP-standard Argon2id hashing (`m=65536, t=3, p=4`).
+  - **Zero-Downtime Hot-Reloading Keystore**: Added JSON keystore persistence with file permission hardening (`0600`) and live modification detection without daemon restarts.
+  - **Dual-Header Authentication Middleware**: Full support for `X-API-Key` and `Authorization: Bearer <key>` authentication schemes, structured 401 JSON error responses, and CORS preflight (`OPTIONS`) handling.
+  - **In-Memory Security Hygiene**: Cryptographic memory wiping via `auth.ZeroBytes` and constant-time key validation (`subtle.ConstantTimeCompare`) against timing attacks.
+- **Testing & Verification**:
+  - Comprehensive unit test suites across `pkg/auth`, `pkg/engine`, `pkg/web`, `internal/config`, and `cmd`.
+  - 8-stage end-to-end lifecycle testing covering key generation, idle daemon startup, REST authentication, probe triggering, SSE streaming, and dashboard visualization.
+  - 100% data-race free under `go test -race ./...`.
+
 ## v3.5.2 - 2026-08-23
 
 - **Interactive Web Dashboard**:

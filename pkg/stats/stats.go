@@ -134,6 +134,8 @@ func (s *Statistics) ProtocolStr() string {
 }
 
 func (s *Statistics) RTTStr() string {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
 	return fmt.Sprintf("%.3f", s.LatestRTT)
 }
 

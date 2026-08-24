@@ -16,7 +16,9 @@ import (
 	"github.com/edsilegx/netping/internal/app"
 	"github.com/edsilegx/netping/internal/config"
 	"github.com/edsilegx/netping/internal/printers"
+	"github.com/edsilegx/netping/pkg/auth"
 	"github.com/edsilegx/netping/pkg/consts"
+	"github.com/edsilegx/netping/pkg/engine"
 	"github.com/edsilegx/netping/pkg/metrics"
 	"github.com/edsilegx/netping/pkg/probers"
 	"github.com/edsilegx/netping/pkg/stats"
@@ -513,6 +515,83 @@ func main() {
 
 	cfg := config.ProcessUserInput()
 
+	if cfg.GenerateAPIKeyPath != "" {
+		rawKey, hashStr, err := auth.GenerateAPIKey()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating API key: %v\n", err)
+			os.Exit(1)
+		}
+		if err := auth.SaveKeyToStorePath(cfg.GenerateAPIKeyPath, rawKey, hashStr); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving API key to %q: %v\n", cfg.GenerateAPIKeyPath, err)
+			os.Exit(1)
+		}
+		fmt.Printf("\n\033[1;32m✓\033[0m \033[1mAPI Key generated successfully!\033[0m\n\n")
+		fmt.Printf("  \033[1;33mAPI Key (Save now - cannot be recovered):\033[0m\n")
+		fmt.Printf("  \033[1;36m%s\033[0m\n\n", rawKey)
+		fmt.Printf("  \033[1;30mArgon2id Hash saved to:\033[0m %s\n\n", cfg.GenerateAPIKeyPath)
+		os.Exit(0)
+	}
+
+	if cfg.TriggerMode && len(cfg.TargetConfigs) == 0 {
+		var validator auth.KeyValidator
+		if cfg.APIKeyStore != "" || cfg.APIKeyHash != "" {
+			ks, err := auth.NewKeystore(cfg.APIKeyStore, cfg.APIKeyHash)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error initializing keystore: %v\n", err)
+				os.Exit(1)
+			}
+			validator = ks
+		}
+
+		broadcaster := web.NewBroadcaster()
+		if cfg.HistoryLimit > 0 {
+			broadcaster.SetMaxHistory(int(cfg.HistoryLimit))
+		}
+
+		registry := engine.NewDynamicTargetRegistry()
+		dynamicEng := engine.NewDynamicEngine(broadcaster, registry, cfg.TriggerConcurrency)
+
+		webAddr := cfg.WebAddr
+		if webAddr == "" {
+			webAddr = ":3000"
+		}
+
+		webServer := web.NewServer(webAddr, nil, broadcaster)
+		webServer.SetTargetsSupplier(registry.GetFleetTargets)
+		if validator != nil {
+			webServer.SetKeyValidator(validator)
+		}
+		webServer.SetDynamicExecutor(dynamicEng)
+		webServer.SetDynamicFleetManager(registry)
+
+		probeCtx, cancel := app.SetupSignalHandler(context.Background())
+		defer cancel()
+
+		if err := webServer.Start(probeCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting trigger listener: %v\n", err)
+			os.Exit(1)
+		}
+
+		authStatus := "Argon2id Key Required"
+		if validator == nil {
+			authStatus = "Public (No Key Set)"
+		}
+
+		fmt.Printf("╔════════════════════════════════════════════════════════════════╗\n")
+		fmt.Printf("║  \033[1;36mNETPING TRIGGER MODE LISTENER\033[0m                                 ║\n")
+		fmt.Printf("╠════════════════════════════════════════════════════════════════╣\n")
+		fmt.Printf("║  \033[1mWeb Dashboard / Stream:\033[0m http://%-36s ║\n", webAddr)
+		fmt.Printf("║  \033[1mTrigger REST Endpoint:\033[0m  POST /api/v1/trigger                  ║\n")
+		fmt.Printf("║  \033[1mAuthentication:\033[0m         %-36s ║\n", authStatus)
+		fmt.Printf("║  \033[1mMax Concurrency:\033[0m        %-36s ║\n", fmt.Sprintf("%d workers", cfg.TriggerConcurrency))
+		fmt.Printf("╚════════════════════════════════════════════════════════════════╝\n")
+		fmt.Printf("Waiting for dynamic probe triggers (Press Ctrl+C to stop)...\n")
+
+		<-probeCtx.Done()
+		fmt.Println("\nTrigger listener gracefully shut down.")
+		os.Exit(0)
+	}
+
 	printer, err := printers.NewPrinter(cfg.PrinterConfig)
 	if err != nil {
 		fmt.Printf("Failed to create printer: %s\n", err)
@@ -629,6 +708,16 @@ func main() {
 			}
 			webServer := web.NewServer(webAddr, nil, broadcaster)
 			webServer.SetTargetsSupplier(fleetSupplier)
+			if cfg.APIKeyStore != "" || cfg.APIKeyHash != "" {
+				if ks, err := auth.NewKeystore(cfg.APIKeyStore, cfg.APIKeyHash); err == nil {
+					webServer.SetKeyValidator(ks)
+				}
+			}
+			dynReg := engine.NewDynamicTargetRegistry()
+			dynamicEng := engine.NewDynamicEngine(broadcaster, dynReg, cfg.TriggerConcurrency)
+			webServer.SetDynamicExecutor(dynamicEng)
+			webServer.SetDynamicFleetManager(dynReg)
+
 			if err := webServer.Start(probeCtx); err != nil {
 				fmt.Fprintf(os.Stderr, "Error starting web server: %v\n", err)
 			}
@@ -815,6 +904,16 @@ func main() {
 			broadcaster.SetMaxHistory(int(cfg.HistoryLimit))
 		}
 		webServer := web.NewServer(webAddr, stat, broadcaster)
+		if cfg.APIKeyStore != "" || cfg.APIKeyHash != "" {
+			if ks, err := auth.NewKeystore(cfg.APIKeyStore, cfg.APIKeyHash); err == nil {
+				webServer.SetKeyValidator(ks)
+			}
+		}
+		dynReg := engine.NewDynamicTargetRegistry()
+		dynamicEng := engine.NewDynamicEngine(broadcaster, dynReg, cfg.TriggerConcurrency)
+		webServer.SetDynamicExecutor(dynamicEng)
+		webServer.SetDynamicFleetManager(dynReg)
+
 		if err := webServer.Start(probeCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting web server: %v\n", err)
 		}

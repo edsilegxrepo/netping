@@ -443,6 +443,27 @@ func TestParseConfig_MultiTarget_URIs(t *testing.T) {
 	assert.True(t, cfg.ShowDiags)
 }
 
+func TestParseConfig_GenerateAPIKeyFlag(t *testing.T) {
+	fs := flag.NewFlagSet("keygen", flag.ContinueOnError)
+	cfg, err := ParseConfig(fs, []string{
+		"--generate-api-key", "/tmp/keys.json",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "/tmp/keys.json", cfg.GenerateAPIKeyPath)
+}
 
-
-
+func TestParseConfig_TriggerModeFlags(t *testing.T) {
+	fs := flag.NewFlagSet("trigger", flag.ContinueOnError)
+	cfg, err := ParseConfig(fs, []string{
+		"--trigger-mode",
+		"--listen", ":3000",
+		"--api-key-store", "C:/keys/keystore.json",
+		"--trigger-concurrency", "250",
+	})
+	assert.NoError(t, err)
+	assert.True(t, cfg.TriggerMode)
+	assert.Equal(t, ":3000", cfg.WebAddr)
+	assert.Equal(t, "C:/keys/keystore.json", cfg.APIKeyStore)
+	assert.Equal(t, 250, cfg.TriggerConcurrency)
+	assert.Empty(t, cfg.Targets)
+}

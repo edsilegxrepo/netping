@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -235,4 +236,64 @@ func TestWebServer_REST_Endpoints(t *testing.T) {
 	assert.Equal(t, http.StatusOK, wSpec.Code)
 	assert.Contains(t, wSpec.Body.String(), `"openapi":"3.0.3"`)
 	assert.Contains(t, wSpec.Body.String(), `"/api/v1/metrics"`)
+
+	// Test GET /api/v1/config/history
+	reqHistGet := httptest.NewRequest(http.MethodGet, "/api/v1/config/history", nil)
+	wHistGet := httptest.NewRecorder()
+	server.handleHistoryConfig(wHistGet, reqHistGet)
+	assert.Equal(t, http.StatusOK, wHistGet.Code)
+	assert.Contains(t, wHistGet.Body.String(), `"history_limit"`)
+
+	// Test POST /api/v1/config/history
+	reqHistPost := httptest.NewRequest(http.MethodPost, "/api/v1/config/history", strings.NewReader(`{"limit": 5000}`))
+	wHistPost := httptest.NewRecorder()
+	server.handleHistoryConfig(wHistPost, reqHistPost)
+	assert.Equal(t, http.StatusOK, wHistPost.Code)
+	assert.Contains(t, wHistPost.Body.String(), `"history_limit":5000`)
+	assert.Equal(t, 5000, broadcaster.GetMaxHistory())
+
+	// Test POST /api/v1/config/history validation bounds (min 100, max 5,000,000)
+	reqHistClampLow := httptest.NewRequest(http.MethodPost, "/api/v1/config/history", strings.NewReader(`{"limit": 10}`))
+	wHistClampLow := httptest.NewRecorder()
+	server.handleHistoryConfig(wHistClampLow, reqHistClampLow)
+	assert.Equal(t, http.StatusBadRequest, wHistClampLow.Code)
+	assert.Contains(t, wHistClampLow.Body.String(), "at least 100")
+
+	reqHistClampHigh := httptest.NewRequest(http.MethodPost, "/api/v1/config/history", strings.NewReader(`{"limit": 99999999}`))
+	wHistClampHigh := httptest.NewRecorder()
+	server.handleHistoryConfig(wHistClampHigh, reqHistClampHigh)
+	assert.Equal(t, http.StatusBadRequest, wHistClampHigh.Code)
+	assert.Contains(t, wHistClampHigh.Body.String(), "cannot exceed 5,000,000")
+
+	// Test GET /docs and /docs/
+	reqDocsAlias := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	wDocsAlias := httptest.NewRecorder()
+	server.handleAPIDocs(wDocsAlias, reqDocsAlias)
+	assert.Equal(t, http.StatusOK, wDocsAlias.Code)
+	assert.Contains(t, wDocsAlias.Body.String(), "SwaggerUIBundle")
+}
+
+func TestBroadcaster_SetMaxHistory_Trimming(t *testing.T) {
+	b := NewBroadcaster()
+	b.SetMaxHistory(5)
+
+	for i := 1; i <= 10; i++ {
+		b.Broadcast(ProbeEvent{
+			Sequence: uint(i),
+			Success:  true,
+			RTT:      float64(i),
+		})
+	}
+
+	hist := b.GetHistory()
+	assert.Equal(t, 5, len(hist))
+	assert.Equal(t, uint(6), hist[0].Sequence)
+	assert.Equal(t, uint(10), hist[4].Sequence)
+
+	// Dynamically shrink buffer to 2 and verify automatic head trimming
+	b.SetMaxHistory(2)
+	histShrunk := b.GetHistory()
+	assert.Equal(t, 2, len(histShrunk))
+	assert.Equal(t, uint(9), histShrunk[0].Sequence)
+	assert.Equal(t, uint(10), histShrunk[1].Sequence)
 }

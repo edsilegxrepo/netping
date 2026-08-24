@@ -485,8 +485,6 @@ func TestLive_DB_SAPHANA_Port39013(t *testing.T) {
 func TestLive_CLI_FlagCombinations_E2E(t *testing.T) {
 	tempDir := t.TempDir()
 	csvPath := filepath.Join(tempDir, "e2e.csv")
-	dbPath := filepath.Join(tempDir, "e2e.db")
-	tsvPath := filepath.Join(tempDir, "e2e.tsv")
 
 	// Combination 1: Reporting & Formatting flags with count limit
 	t.Run("Reporting_Formatting_Flags", func(t *testing.T) {
@@ -494,24 +492,21 @@ func TestLive_CLI_FlagCombinations_E2E(t *testing.T) {
 		cfg, err := config.ParseConfig(fs, []string{
 			"--host", "1.1.1.1",
 			"--port", "443",
-			"-c", "2",
-			"-t", "2.5",
-			"-i", "0.2",
-			"--csv", csvPath,
-			"--db", dbPath,
-			"--tsv", tsvPath,
-			"-j",
+			"--count", "2",
+			"--timeout", "2.5",
+			"--interval", "0.2",
+			"--output-format", "json",
+			"--output-file", csvPath,
 			"--no-color",
-			"-D",
+			"--timestamp",
 			"--show-source-address",
 		})
 		require.NoError(t, err)
 		assert.Equal(t, uint(2), cfg.ProbesBeforeQuit)
 		assert.Equal(t, 2500*time.Millisecond, cfg.Timeout)
 		assert.Equal(t, 200*time.Millisecond, cfg.IntervalBetweenProbes)
-		assert.Equal(t, csvPath, cfg.PrinterConfig.OutputCSVPath)
-		assert.Equal(t, dbPath, cfg.PrinterConfig.OutputDBPath)
-		assert.Equal(t, tsvPath, cfg.PrinterConfig.OutputTSVPath)
+		assert.Equal(t, "json", cfg.PrinterConfig.OutputFormat)
+		assert.Equal(t, csvPath, cfg.PrinterConfig.OutputFile)
 		assert.True(t, cfg.PrinterConfig.WithTimestamp)
 		assert.True(t, cfg.PrinterConfig.WithSourceAddress)
 		assert.True(t, cfg.PrinterConfig.NoColor)
@@ -530,7 +525,7 @@ func TestLive_CLI_FlagCombinations_E2E(t *testing.T) {
 			"--retry-jitter",
 			"--max-latency", "250.0",
 			"--max-consecutive-fails", "2",
-			"-q",
+			"--quiet",
 		})
 		require.NoError(t, err)
 		assert.Equal(t, consts.POSTGRES, cfg.Protocol)
@@ -553,7 +548,7 @@ func TestLive_CLI_FlagCombinations_E2E(t *testing.T) {
 			"--protocol", "dns",
 			"--dns-host", "google.com,cloudflare.com,github.com",
 			"--dns-server", "1.1.1.1:53",
-			"-r", "5",
+			"--retry-resolve", "5",
 		})
 		require.NoError(t, err)
 		assert.Equal(t, consts.DNS, cfg.Protocol)
@@ -640,8 +635,8 @@ func TestLive_CLI_FlagCombinations_E2E(t *testing.T) {
 		fs := flag.NewFlagSet("test_multi", flag.ContinueOnError)
 		cfg, err := config.ParseConfig(fs, []string{
 			"--uri", "1.1.1.1:443,8.8.8.8:53,9.9.9.9:53",
-			"-4",
-			"-c", "1",
+			"--ipv4",
+			"--count", "1",
 			"--concurrency", "4",
 		})
 		require.NoError(t, err)

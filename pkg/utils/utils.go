@@ -88,7 +88,14 @@ func CalculatePercentile(samples []float32, percentile float64) float32 {
 	}
 	sorted := slices.Clone(samples)
 	slices.Sort(sorted)
+	return CalculatePercentileSorted(sorted, percentile)
+}
 
+// CalculatePercentileSorted computes the p-th percentile (0 <= p <= 100) from an already sorted slice.
+func CalculatePercentileSorted(sorted []float32, percentile float64) float32 {
+	if len(sorted) == 0 {
+		return 0
+	}
 	if percentile <= 0 {
 		return sorted[0]
 	}
@@ -106,6 +113,15 @@ func CalculatePercentile(samples []float32, percentile float64) float32 {
 	}
 
 	return sorted[lowerIndex]*(1.0-weight) + sorted[upperIndex]*weight
+}
+
+// CalculatePercentilesSorted computes multiple percentiles in a single call from an already sorted slice without re-cloning or re-sorting.
+func CalculatePercentilesSorted(sorted []float32, percentiles ...float64) []float32 {
+	res := make([]float32, len(percentiles))
+	for i, p := range percentiles {
+		res[i] = CalculatePercentileSorted(sorted, p)
+	}
+	return res
 }
 
 // CalculateJitter computes the average packet jitter (RFC 3550 statistical variance).

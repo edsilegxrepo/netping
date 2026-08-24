@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"time"
 
 	"github.com/edsilegx/netping/pkg/stats"
@@ -103,6 +104,9 @@ func NewProber(pinger Pinger, printer Printer, stat *stats.Statistics, opts Opti
 
 // Probe runs the continuous or count-limited probing loop.
 func (p *Prober) Probe(ctx context.Context) (*stats.Statistics, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	var probeCount uint
 
 	defer p.Ticker.Stop()
@@ -203,19 +207,11 @@ func (p *Prober) Probe(ctx context.Context) (*stats.Statistics, error) {
 					return p.Statistics, nil
 				}
 			} else {
+				p.Statistics.RecordSuccess(rttMs, pingTime)
 				p.Statistics.Mu.Lock()
 				if res.LocalAddr != nil {
 					p.Statistics.LocalAddr = res.LocalAddr
 				}
-
-				p.Statistics.RTT = append(p.Statistics.RTT, rttMs)
-				p.Statistics.LatestRTT = rttMs
-				p.Statistics.HasResults = true
-				p.Statistics.Successful++
-				p.Statistics.TotalSuccessfulProbes++
-				p.Statistics.OngoingSuccessfulProbes++
-				p.Statistics.OngoingUnsuccessfulProbes = 0
-				p.Statistics.LastSuccessfulProbe = pingTime
 				p.Statistics.LatestDiagnostics = res.Diagnostics
 				p.Statistics.LatestDNSTime = res.DNSTime
 				p.Statistics.LatestTCPTime = res.TCPTime

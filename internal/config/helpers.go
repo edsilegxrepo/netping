@@ -526,6 +526,7 @@ func usage() {
 	fmt.Println("  --web                      Start embedded real-time web dashboard (default 127.0.0.1:3000).")
 	fmt.Println("  --web-addr <addr>          Custom listen address for web dashboard (e.g. :3000).")
 	fmt.Println("  --metrics-addr <addr>      Enable Prometheus metrics exporter on given address (e.g. :9100).")
+	fmt.Println("  --history-limit <n>        Maximum in-memory historical probe events retained (default: 1000000, max: 5000000).")
 	fmt.Println("  --sparkline                Render live terminal latency sparklines.")
 	fmt.Println()
 	fmt.Println("OUTPUT & REPORTING:")

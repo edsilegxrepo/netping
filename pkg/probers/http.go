@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptrace"
@@ -60,9 +61,16 @@ func NewHTTPing(opts HTTPOptions) *HTTPing {
 
 	url := fmt.Sprintf("%s://%s:%d/", scheme, target, port)
 
-	dialContext := (&net.Dialer{Timeout: opts.Timeout}).DialContext
-	if opts.Dialer != nil {
-		dialContext = opts.Dialer.DialContext
+	dialer := opts.Dialer
+	if dialer == nil {
+		dialer = &net.Dialer{Timeout: opts.Timeout}
+	}
+
+	dialContext := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if opts.IP.IsValid() {
+			addr = net.JoinHostPort(opts.IP.String(), fmt.Sprintf("%d", port))
+		}
+		return dialer.DialContext(ctx, network, addr)
 	}
 
 	tr := &http.Transport{
@@ -96,10 +104,16 @@ func NewHTTPing(opts HTTPOptions) *HTTPing {
 
 // Ping executes an HTTP/HTTPS probe with httptrace timing collection.
 func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.url, nil)
+	method := http.MethodHead
+	if h.sendData != "" {
+		method = http.MethodPost
+	}
+	req, err := http.NewRequestWithContext(ctx, method, h.url, nil)
 	if err != nil {
 		return ProbeResult{Err: err}
 	}
+	req.Header.Set("User-Agent", "netping/1.0")
+	req.Header.Set("Accept", "*/*")
 
 	var (
 		start          = time.Now()
@@ -156,6 +170,16 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 
 	resp, err := h.client.Do(req)
 	totalRTT := time.Since(start)
+	if !firstByte.IsZero() {
+		if !dnsStart.IsZero() {
+			totalRTT = firstByte.Sub(dnsStart)
+		} else if !connStart.IsZero() {
+			totalRTT = firstByte.Sub(connStart)
+		}
+	} else if !connDone.IsZero() && !connStart.IsZero() {
+		totalRTT = connDone.Sub(connStart)
+	}
+
 	if err != nil {
 		return ProbeResult{
 			LocalAddr: localAddr,
@@ -164,6 +188,7 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 		}
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 
 	if resp.TLS != nil {
 		if tlsVersion == 0 {

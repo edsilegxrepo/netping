@@ -152,3 +152,87 @@ func (m *mockResponseWriter) Write(b []byte) (int, error) {
 func (m *mockResponseWriter) WriteHeader(statusCode int) {
 	m.statusCode = statusCode
 }
+
+func TestWebServer_REST_Endpoints(t *testing.T) {
+	st := stats.NewStatistics(stats.Options{
+		Hostname: "example.com",
+		IP:       netip.MustParseAddr("93.184.216.34"),
+		Port:     443,
+	})
+	st.RecordSuccess(15.5, time.Now())
+	st.RecordSuccess(25.5, time.Now())
+
+	broadcaster := NewBroadcaster()
+	broadcaster.Broadcast(ProbeEvent{
+		Sequence: 1,
+		Success:  true,
+		RTT:      15.5,
+		Target:   "example.com:443",
+	})
+	broadcaster.Broadcast(ProbeEvent{
+		Sequence: 2,
+		Success:  true,
+		RTT:      25.5,
+		Target:   "example.com:443",
+	})
+
+	server := NewServer("127.0.0.1:0", st, broadcaster)
+
+	// Test GET /api/v1/health
+	reqHealth := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	wHealth := httptest.NewRecorder()
+	server.handleHealth(wHealth, reqHealth)
+	assert.Equal(t, http.StatusOK, wHealth.Code)
+	assert.Contains(t, wHealth.Body.String(), "healthy")
+
+	// Test GET /api/v1/metrics
+	reqMetrics := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
+	wMetrics := httptest.NewRecorder()
+	server.handleMetrics(wMetrics, reqMetrics)
+	assert.Equal(t, http.StatusOK, wMetrics.Code)
+	assert.Contains(t, wMetrics.Body.String(), "example.com")
+
+	// Test GET /api/v1/targets
+	reqTargets := httptest.NewRequest(http.MethodGet, "/api/v1/targets", nil)
+	wTargets := httptest.NewRecorder()
+	server.handleTargets(wTargets, reqTargets)
+	assert.Equal(t, http.StatusOK, wTargets.Code)
+	assert.Contains(t, wTargets.Body.String(), "example.com")
+
+	// Test GET /api/v1/probes
+	reqProbes := httptest.NewRequest(http.MethodGet, "/api/v1/probes?limit=10", nil)
+	wProbes := httptest.NewRecorder()
+	server.handleProbes(wProbes, reqProbes)
+	assert.Equal(t, http.StatusOK, wProbes.Code)
+	assert.Contains(t, wProbes.Body.String(), `"total":2`)
+
+	// Test GET /api/v1/export (JSON format streaming)
+	reqExport := httptest.NewRequest(http.MethodGet, "/api/v1/export?format=json", nil)
+	wExport := httptest.NewRecorder()
+	server.handleExport(wExport, reqExport)
+	assert.Equal(t, http.StatusOK, wExport.Code)
+	assert.Equal(t, "application/json", wExport.Header().Get("Content-Type"))
+	assert.Contains(t, wExport.Body.String(), `"target":"example.com:443"`)
+
+	// Test GET /api (Swagger UI HTML)
+	reqDocs := httptest.NewRequest(http.MethodGet, "/api", nil)
+	wDocs := httptest.NewRecorder()
+	server.handleAPIDocs(wDocs, reqDocs)
+	assert.Equal(t, http.StatusOK, wDocs.Code)
+	assert.Contains(t, wDocs.Body.String(), "SwaggerUIBundle")
+
+	// Test GET /api/ (Swagger UI HTML with trailing slash)
+	reqDocsSlash := httptest.NewRequest(http.MethodGet, "/api/", nil)
+	wDocsSlash := httptest.NewRecorder()
+	server.handleAPIDocs(wDocsSlash, reqDocsSlash)
+	assert.Equal(t, http.StatusOK, wDocsSlash.Code)
+	assert.Contains(t, wDocsSlash.Body.String(), "SwaggerUIBundle")
+
+	// Test GET /api/openapi.json (OpenAPI 3.0 JSON spec)
+	reqSpec := httptest.NewRequest(http.MethodGet, "/api/openapi.json", nil)
+	wSpec := httptest.NewRecorder()
+	server.handleOpenAPISpec(wSpec, reqSpec)
+	assert.Equal(t, http.StatusOK, wSpec.Code)
+	assert.Contains(t, wSpec.Body.String(), `"openapi":"3.0.3"`)
+	assert.Contains(t, wSpec.Body.String(), `"/api/v1/metrics"`)
+}

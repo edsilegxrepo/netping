@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -162,6 +163,8 @@ func (m *MultiProber) Run(ctx context.Context) {
 	for _, w := range m.workers {
 		wg.Add(1)
 		go func(worker TargetWorker) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
 			defer wg.Done()
 			var seq uint
 
@@ -222,21 +225,15 @@ func (m *MultiProber) Run(ctx context.Context) {
 				}
 
 				now := time.Now()
-				worker.Stats.Mu.Lock()
 				if !isFailure {
-					worker.Stats.TotalSuccessfulProbes++
-					worker.Stats.OngoingSuccessfulProbes++
-					worker.Stats.OngoingUnsuccessfulProbes = 0
-					worker.Stats.LatestRTT = rttMs
-					worker.Stats.RTT = append(worker.Stats.RTT, rttMs)
-					worker.Stats.LastSuccessfulProbe = now
+					worker.Stats.RecordSuccess(rttMs, now)
 				} else {
-					worker.Stats.TotalUnsuccessfulProbes++
-					worker.Stats.OngoingUnsuccessfulProbes++
-					worker.Stats.OngoingSuccessfulProbes = 0
-					worker.Stats.LastUnsuccessfulProbe = now
+					errMsg := ""
+					if res.Err != nil {
+						errMsg = res.Err.Error()
+					}
+					worker.Stats.RecordFailure(errMsg, now)
 				}
-				worker.Stats.Mu.Unlock()
 
 				plainBadge := formatTargetBadge(worker)
 				pad := ""

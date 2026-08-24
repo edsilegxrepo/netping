@@ -1,11 +1,15 @@
 package printers
 
 import (
+	"bufio"
+	"bytes"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -41,6 +45,13 @@ var (
 )
 
 func sanitizeExportField(str string) string {
+	if str == "" {
+		return ""
+	}
+	// Fast-path bypass for clean strings (avoids regex and replacer allocations)
+	if !strings.ContainsAny(str, "\x1b\x9b│─┌┐└┘├┤┬┴┼●×▶…\t\r\n") {
+		return str
+	}
 	cleaned := ansi.Strip(str)
 	cleaned = ansiRegex.ReplaceAllString(cleaned, "")
 	cleaned = escapeReplacer.Replace(cleaned)
@@ -140,47 +151,149 @@ func GenerateDefaultExportPath(isFleet bool, format ExportFormat) string {
 	return fmt.Sprintf("./%s%s%s", prefix, ts, ext)
 }
 
-// ExportSingleTarget exports single-target probe metrics and history to file, sanitizing all ANSI and box-drawing characters.
-func ExportSingleTarget(target string, port uint16, protocol string, st *stats.Statistics, history []SingleProbeExportRecord, format ExportFormat, filePath string) error {
-	dir := filepath.Dir(filePath)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
+// SaveFileAsync saves data to disk asynchronously in an isolated background process on Windows.
+func SaveFileAsync(filePath string, data []byte) error {
+	exe, err := os.Executable()
+	if err != nil || strings.HasSuffix(exe, ".test") || strings.HasSuffix(exe, ".test.exe") {
+		dir := filepath.Dir(filePath)
+		if dir != "" && dir != "." {
+			_ = os.MkdirAll(dir, 0755)
 		}
+		return os.WriteFile(filePath, data, 0644)
 	}
 
+	cmd := exec.Command(exe, "--internal-async-save", filePath)
+	cmd.Stdin = bytes.NewReader(data)
+	setDetachedProcess(cmd)
+	return cmd.Start()
+}
+
+// ExportSingleTarget exports single-target probe metrics and history to file, sanitizing all ANSI and box-drawing characters.
+func ExportSingleTarget(target string, port uint16, protocol string, st *stats.Statistics, history []SingleProbeExportRecord, format ExportFormat, filePath string) error {
+	if format == FormatSQLite3 {
+		return exportSingleTargetSQLite(target, port, protocol, st, history, filePath)
+	}
+
+	var buf bytes.Buffer
+	if err := ExportSingleTargetToWriter(&buf, target, port, protocol, st, history, format); err != nil {
+		return err
+	}
+	return SaveFileAsync(filePath, buf.Bytes())
+}
+
+func exportSingleTargetSQLite(target string, port uint16, protocol string, st *stats.Statistics, history []SingleProbeExportRecord, filePath string) error {
 	cleanTarget := sanitizeExportField(target)
 	cleanProtocol := sanitizeExportField(protocol)
 
-	st.Mu.RLock()
-	total := st.TotalSuccessfulProbes + st.TotalUnsuccessfulProbes
-	succ := st.TotalSuccessfulProbes
-	fail := st.TotalUnsuccessfulProbes
-	loss := float64(0)
-	if total > 0 {
-		loss = float64(fail) / float64(total) * 100.0
-	}
-	rttRes := calcMinAvgMaxRttTime(st.RTT)
-	duration := ""
-	if !st.StartTime.IsZero() {
-		duration = time.Since(st.StartTime).Round(time.Second).String()
-	}
-	ipStr := sanitizeExportField(st.IP.String())
-	st.Mu.RUnlock()
+	var total, succ, fail uint
+	var loss float64
+	var rttRes stats.RTTResult
+	var duration, ipStr string
 
-	cleanHistory := make([]SingleProbeExportRecord, len(history))
-	for i, p := range history {
-		cleanHistory[i] = SingleProbeExportRecord{
-			Timestamp:   p.Timestamp,
-			Seq:         p.Seq,
-			Target:      sanitizeExportField(p.Target),
-			Protocol:    sanitizeExportField(p.Protocol),
-			IP:          sanitizeExportField(p.IP),
-			IsSuccess:   p.IsSuccess,
-			RTTMs:       p.RTTMs,
-			Diagnostics: sanitizeExportField(p.Diagnostics),
-			Error:       sanitizeExportField(p.Error),
+	if st != nil {
+		snap := st.Snapshot()
+		total = snap.TotalSent
+		succ = snap.TotalSuccess
+		fail = snap.TotalFailed
+		loss = snap.PacketLoss
+		rttRes = stats.RTTResult{
+			Min:     snap.MinRTT,
+			Average: snap.AvgRTT,
+			Max:     snap.MaxRTT,
+			Jitter:  snap.Jitter,
 		}
+		duration = snap.UptimeDuration
+		ipStr = sanitizeExportField(snap.IP)
+	}
+
+	_ = os.Remove(filePath)
+	db, err := sql.Open("sqlite", filePath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	_, _ = db.Exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
+
+	createTable := `
+	CREATE TABLE summary (
+		target TEXT,
+		port INTEGER,
+		protocol TEXT,
+		ip TEXT,
+		total_probes INTEGER,
+		successful_probes INTEGER,
+		failed_probes INTEGER,
+		loss_percent REAL,
+		min_rtt_ms REAL,
+		avg_rtt_ms REAL,
+		max_rtt_ms REAL,
+		duration TEXT,
+		exported_at TEXT
+	);
+	CREATE TABLE probes (
+		timestamp TEXT,
+		seq INTEGER,
+		target TEXT,
+		port INTEGER,
+		protocol TEXT,
+		ip TEXT,
+		is_success INTEGER,
+		rtt_ms REAL,
+		diagnostics TEXT,
+		error TEXT
+	);`
+	if _, err := db.Exec(createTable); err != nil {
+		return err
+	}
+
+	_, _ = db.Exec(`INSERT INTO summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		cleanTarget, port, cleanProtocol, ipStr, total, succ, fail, loss, rttRes.Min, rttRes.Average, rttRes.Max, duration, time.Now().Format(time.RFC3339))
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`INSERT INTO probes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, p := range history {
+		isSucc := 0
+		if p.IsSuccess {
+			isSucc = 1
+		}
+		_, _ = stmt.Exec(p.Timestamp.Format(time.RFC3339), p.Seq, cleanTarget, port, cleanProtocol, p.IP, isSucc, p.RTTMs, sanitizeExportField(p.Diagnostics), sanitizeExportField(p.Error))
+	}
+	return tx.Commit()
+}
+
+// ExportSingleTargetToWriter streams single-target probe metrics and history directly to an io.Writer.
+func ExportSingleTargetToWriter(w io.Writer, target string, port uint16, protocol string, st *stats.Statistics, history []SingleProbeExportRecord, format ExportFormat) error {
+	cleanTarget := sanitizeExportField(target)
+	cleanProtocol := sanitizeExportField(protocol)
+
+	var total, succ, fail uint
+	var loss float64
+	var rttRes stats.RTTResult
+	var duration, ipStr string
+
+	if st != nil {
+		snap := st.Snapshot()
+		total = snap.TotalSent
+		succ = snap.TotalSuccess
+		fail = snap.TotalFailed
+		loss = snap.PacketLoss
+		rttRes = stats.RTTResult{
+			Min:     snap.MinRTT,
+			Average: snap.AvgRTT,
+			Max:     snap.MaxRTT,
+			Jitter:  snap.Jitter,
+		}
+		duration = snap.UptimeDuration
+		ipStr = sanitizeExportField(snap.IP)
 	}
 
 	data := SingleTargetExportData{
@@ -197,46 +310,34 @@ func ExportSingleTarget(target string, port uint16, protocol string, st *stats.S
 		MinRTTMs:        rttRes.Min,
 		AvgRTTMs:        rttRes.Average,
 		MaxRTTMs:        rttRes.Max,
-		Probes:          cleanHistory,
+		Probes:          history,
 	}
 
 	switch format {
 	case FormatJSON:
-		b, err := json.Marshal(data)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(filePath, b, 0644)
+		return json.NewEncoder(w).Encode(data)
 
 	case FormatPrettyJSON:
-		b, err := json.MarshalIndent(data, "", "  ")
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(filePath, b, 0644)
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(data)
 
 	case FormatCSV, FormatTSV:
 		delimiter := ','
 		if format == FormatTSV {
 			delimiter = '\t'
 		}
-		f, err := os.Create(filePath)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
+		cw := csv.NewWriter(w)
+		cw.Comma = delimiter
+		defer cw.Flush()
 
-		w := csv.NewWriter(f)
-		w.Comma = delimiter
-		defer w.Flush()
-
-		_ = w.Write([]string{"Timestamp", "Seq", "Target", "Port", "Protocol", "IP", "Status", "RTT_ms", "Diagnostics", "Error"})
-		for _, p := range cleanHistory {
+		_ = cw.Write([]string{"Timestamp", "Seq", "Target", "Port", "Protocol", "IP", "Status", "RTT_ms", "Diagnostics", "Error"})
+		for _, p := range history {
 			status := "SUCCESS"
 			if !p.IsSuccess {
 				status = "FAILED"
 			}
-			_ = w.Write([]string{
+			_ = cw.Write([]string{
 				p.Timestamp.Format(time.RFC3339),
 				fmt.Sprintf("%d", p.Seq),
 				cleanTarget,
@@ -249,95 +350,34 @@ func ExportSingleTarget(target string, port uint16, protocol string, st *stats.S
 				p.Error,
 			})
 		}
-		w.Flush()
-		return nil
-
-	case FormatSQLite3:
-		_ = os.Remove(filePath)
-		db, err := sql.Open("sqlite", filePath)
-		if err != nil {
-			return err
-		}
-		defer db.Close()
-
-		createTable := `
-		CREATE TABLE summary (
-			target TEXT,
-			port INTEGER,
-			protocol TEXT,
-			ip TEXT,
-			total_probes INTEGER,
-			successful_probes INTEGER,
-			failed_probes INTEGER,
-			loss_percent REAL,
-			min_rtt_ms REAL,
-			avg_rtt_ms REAL,
-			max_rtt_ms REAL,
-			duration TEXT,
-			exported_at TEXT
-		);
-		CREATE TABLE probes (
-			timestamp TEXT,
-			seq INTEGER,
-			target TEXT,
-			port INTEGER,
-			protocol TEXT,
-			ip TEXT,
-			is_success INTEGER,
-			rtt_ms REAL,
-			diagnostics TEXT,
-			error TEXT
-		);`
-		if _, err := db.Exec(createTable); err != nil {
-			return err
-		}
-
-		_, _ = db.Exec(`INSERT INTO summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			cleanTarget, port, cleanProtocol, ipStr, total, succ, fail, loss, rttRes.Min, rttRes.Average, rttRes.Max, duration, time.Now().Format(time.RFC3339))
-
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-		stmt, err := tx.Prepare(`INSERT INTO probes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-		if err != nil {
-			return err
-		}
-		defer stmt.Close()
-
-		for _, p := range cleanHistory {
-			isSucc := 0
-			if p.IsSuccess {
-				isSucc = 1
-			}
-			_, _ = stmt.Exec(p.Timestamp.Format(time.RFC3339), p.Seq, cleanTarget, port, cleanProtocol, p.IP, isSucc, p.RTTMs, p.Diagnostics, p.Error)
-		}
-		return tx.Commit()
+		cw.Flush()
+		return cw.Error()
 
 	case FormatPlainText:
-		var sb strings.Builder
-		sb.WriteString("================================================================================\n")
-		sb.WriteString("                           NETPING PROBE REPORT                                 \n")
-		sb.WriteString("================================================================================\n\n")
-		sb.WriteString(fmt.Sprintf("Target:         %s:%d\n", cleanTarget, port))
-		sb.WriteString(fmt.Sprintf("Protocol:       %s\n", cleanProtocol))
-		sb.WriteString(fmt.Sprintf("IP:             %s\n", ipStr))
-		sb.WriteString(fmt.Sprintf("Exported At:    %s\n", time.Now().Format(time.RFC1123)))
-		sb.WriteString(fmt.Sprintf("Total Duration: %s\n\n", duration))
+		bw := bufio.NewWriter(w)
+		defer bw.Flush()
+		bw.WriteString("================================================================================\n")
+		bw.WriteString("                           NETPING PROBE REPORT                                 \n")
+		bw.WriteString("================================================================================\n\n")
+		bw.WriteString(fmt.Sprintf("Target:         %s:%d\n", cleanTarget, port))
+		bw.WriteString(fmt.Sprintf("Protocol:       %s\n", cleanProtocol))
+		bw.WriteString(fmt.Sprintf("IP:             %s\n", ipStr))
+		bw.WriteString(fmt.Sprintf("Exported At:    %s\n", time.Now().Format(time.RFC1123)))
+		bw.WriteString(fmt.Sprintf("Total Duration: %s\n\n", duration))
 
-		sb.WriteString("SUMMARY STATISTICS:\n")
-		sb.WriteString(fmt.Sprintf("  Probes Sent:     %d\n", total))
-		sb.WriteString(fmt.Sprintf("  Probes Recv:     %d\n", succ))
-		sb.WriteString(fmt.Sprintf("  Probes Failed:   %d\n", fail))
-		sb.WriteString(fmt.Sprintf("  Packet Loss:     %.1f%%\n", loss))
-		sb.WriteString(fmt.Sprintf("  Min Latency:     %.2f ms\n", rttRes.Min))
-		sb.WriteString(fmt.Sprintf("  Avg Latency:     %.2f ms\n", rttRes.Average))
-		sb.WriteString(fmt.Sprintf("  Max Latency:     %.2f ms\n\n", rttRes.Max))
+		bw.WriteString("SUMMARY STATISTICS:\n")
+		bw.WriteString(fmt.Sprintf("  Probes Sent:     %d\n", total))
+		bw.WriteString(fmt.Sprintf("  Probes Recv:     %d\n", succ))
+		bw.WriteString(fmt.Sprintf("  Probes Failed:   %d\n", fail))
+		bw.WriteString(fmt.Sprintf("  Packet Loss:     %.1f%%\n", loss))
+		bw.WriteString(fmt.Sprintf("  Min Latency:     %.2f ms\n", rttRes.Min))
+		bw.WriteString(fmt.Sprintf("  Avg Latency:     %.2f ms\n", rttRes.Average))
+		bw.WriteString(fmt.Sprintf("  Max Latency:     %.2f ms\n\n", rttRes.Max))
 
-		sb.WriteString("PROBE EVENT HISTORY:\n")
-		sb.WriteString(fmt.Sprintf("%-20s %-6s %-10s %-12s %-16s %s\n", "TIMESTAMP", "SEQ", "STATUS", "RTT (ms)", "IP", "DETAILS"))
-		sb.WriteString(strings.Repeat("-", 80) + "\n")
-		for _, p := range cleanHistory {
+		bw.WriteString("PROBE EVENT HISTORY:\n")
+		bw.WriteString(fmt.Sprintf("%-20s %-6s %-10s %-12s %-16s %s\n", "TIMESTAMP", "SEQ", "STATUS", "RTT (ms)", "IP", "DETAILS"))
+		bw.WriteString(strings.Repeat("-", 80) + "\n")
+		for _, p := range history {
 			status := "SUCCESS"
 			if !p.IsSuccess {
 				status = "FAILED"
@@ -346,7 +386,7 @@ func ExportSingleTarget(target string, port uint16, protocol string, st *stats.S
 			if p.Error != "" {
 				details = "Error: " + p.Error
 			}
-			sb.WriteString(fmt.Sprintf("%-20s %-6d %-10s %-12.2f %-16s %s\n",
+			bw.WriteString(fmt.Sprintf("%-20s %-6d %-10s %-12.2f %-16s %s\n",
 				p.Timestamp.Format("2006-01-02 15:04:05"),
 				p.Seq,
 				status,
@@ -355,34 +395,47 @@ func ExportSingleTarget(target string, port uint16, protocol string, st *stats.S
 				details,
 			))
 		}
-		return os.WriteFile(filePath, []byte(sb.String()), 0644)
+		return bw.Flush()
 	}
-
 	return nil
 }
 
 // ExportMultiTarget exports multi-target fleet metrics and structured probe events to file, sanitizing all ANSI and box-drawing characters.
 func ExportMultiTarget(targets []FleetTarget, startTime time.Time, history []SingleProbeExportRecord, format ExportFormat, filePath string) error {
-	dir := filepath.Dir(filePath)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
+	if format == FormatSQLite3 {
+		return exportMultiTargetSQLite(targets, startTime, history, filePath)
 	}
 
+	var buf bytes.Buffer
+	if err := ExportMultiTargetToWriter(&buf, targets, startTime, history, format); err != nil {
+		return err
+	}
+	return SaveFileAsync(filePath, buf.Bytes())
+}
+
+func exportMultiTargetSQLite(targets []FleetTarget, startTime time.Time, history []SingleProbeExportRecord, filePath string) error {
 	var summaries []FleetTargetExportSummary
 	for _, t := range targets {
-		t.Stats.Mu.RLock()
-		total := t.Stats.TotalSuccessfulProbes + t.Stats.TotalUnsuccessfulProbes
-		succ := t.Stats.TotalSuccessfulProbes
-		loss := float64(0)
-		if total > 0 {
-			loss = float64(t.Stats.TotalUnsuccessfulProbes) / float64(total) * 100.0
+		var total, succ uint
+		var loss float64
+		var latest float32
+		var rttRes stats.RTTResult
+		var ipStr string
+
+		if t.Stats != nil {
+			snap := t.Stats.Snapshot()
+			total = snap.TotalSent
+			succ = snap.TotalSuccess
+			loss = snap.PacketLoss
+			latest = snap.LatestRTT
+			rttRes = stats.RTTResult{
+				Min:     snap.MinRTT,
+				Average: snap.AvgRTT,
+				Max:     snap.MaxRTT,
+				Jitter:  snap.Jitter,
+			}
+			ipStr = sanitizeExportField(snap.IP)
 		}
-		latest := t.Stats.LatestRTT
-		rttRes := calcMinAvgMaxRttTime(t.Stats.RTT)
-		ipStr := sanitizeExportField(t.Stats.IP.String())
-		t.Stats.Mu.RUnlock()
 
 		protoDisplay := strings.ToUpper(t.Protocol)
 		if protoDisplay == "" {
@@ -402,19 +455,114 @@ func ExportMultiTarget(targets []FleetTarget, startTime time.Time, history []Sin
 		})
 	}
 
-	cleanHistory := make([]SingleProbeExportRecord, len(history))
-	for i, p := range history {
-		cleanHistory[i] = SingleProbeExportRecord{
-			Timestamp:   p.Timestamp,
-			Seq:         p.Seq,
-			Target:      sanitizeExportField(p.Target),
-			Protocol:    sanitizeExportField(p.Protocol),
-			IP:          sanitizeExportField(p.IP),
-			IsSuccess:   p.IsSuccess,
-			RTTMs:       p.RTTMs,
-			Diagnostics: sanitizeExportField(p.Diagnostics),
-			Error:       sanitizeExportField(p.Error),
+	_ = os.Remove(filePath)
+	db, err := sql.Open("sqlite", filePath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	_, _ = db.Exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
+
+	createTable := `
+	CREATE TABLE fleet_summary (
+		target TEXT,
+		protocol TEXT,
+		ip TEXT,
+		sent INTEGER,
+		recv INTEGER,
+		loss_percent REAL,
+		last_rtt_ms REAL,
+		avg_rtt_ms REAL,
+		max_rtt_ms REAL,
+		duration TEXT,
+		exported_at TEXT
+	);
+	CREATE TABLE probes (
+		timestamp TEXT,
+		seq INTEGER,
+		target TEXT,
+		protocol TEXT,
+		ip TEXT,
+		is_success INTEGER,
+		rtt_ms REAL,
+		diagnostics TEXT,
+		error TEXT
+	);`
+	if _, err := db.Exec(createTable); err != nil {
+		return err
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`INSERT INTO fleet_summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	elapsed := time.Since(startTime).Round(time.Second).String()
+	for _, s := range summaries {
+		_, _ = stmt.Exec(s.Target, s.Protocol, s.IP, s.Sent, s.Recv, s.LossPercent, s.LastRTTMs, s.AvgRTTMs, s.MaxRTTMs, elapsed, time.Now().Format(time.RFC3339))
+	}
+
+	probeStmt, err := tx.Prepare(`INSERT INTO probes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err == nil {
+		defer probeStmt.Close()
+		for _, p := range history {
+			isSucc := 0
+			if p.IsSuccess {
+				isSucc = 1
+			}
+			_, _ = probeStmt.Exec(p.Timestamp.Format(time.RFC3339), p.Seq, sanitizeExportField(p.Target), sanitizeExportField(p.Protocol), sanitizeExportField(p.IP), isSucc, p.RTTMs, sanitizeExportField(p.Diagnostics), sanitizeExportField(p.Error))
 		}
+	}
+	return tx.Commit()
+}
+
+// ExportMultiTargetToWriter streams multi-target fleet metrics and structured probe events directly to an io.Writer.
+func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime time.Time, history []SingleProbeExportRecord, format ExportFormat) error {
+	var summaries []FleetTargetExportSummary
+	for _, t := range targets {
+		var total, succ uint
+		var loss float64
+		var latest float32
+		var rttRes stats.RTTResult
+		var ipStr string
+
+		if t.Stats != nil {
+			snap := t.Stats.Snapshot()
+			total = snap.TotalSent
+			succ = snap.TotalSuccess
+			loss = snap.PacketLoss
+			latest = snap.LatestRTT
+			rttRes = stats.RTTResult{
+				Min:     snap.MinRTT,
+				Average: snap.AvgRTT,
+				Max:     snap.MaxRTT,
+				Jitter:  snap.Jitter,
+			}
+			ipStr = sanitizeExportField(snap.IP)
+		}
+
+		protoDisplay := strings.ToUpper(t.Protocol)
+		if protoDisplay == "" {
+			protoDisplay = "TCP"
+		}
+
+		summaries = append(summaries, FleetTargetExportSummary{
+			Target:      sanitizeExportField(t.Target),
+			Protocol:    sanitizeExportField(protoDisplay),
+			IP:          ipStr,
+			Sent:        total,
+			Recv:        succ,
+			LossPercent: loss,
+			LastRTTMs:   float64(latest),
+			AvgRTTMs:    rttRes.Average,
+			MaxRTTMs:    rttRes.Max,
+		})
 	}
 
 	elapsed := time.Since(startTime).Round(time.Second).String()
@@ -423,44 +571,31 @@ func ExportMultiTarget(targets []FleetTarget, startTime time.Time, history []Sin
 		Duration:        elapsed,
 		TargetCount:     len(targets),
 		Targets:         summaries,
-		Probes:          cleanHistory,
+		Probes:          history,
 	}
 
 	switch format {
 	case FormatJSON:
-		b, err := json.Marshal(data)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(filePath, b, 0644)
+		return json.NewEncoder(w).Encode(data)
 
 	case FormatPrettyJSON:
-		b, err := json.MarshalIndent(data, "", "  ")
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(filePath, b, 0644)
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(data)
 
 	case FormatCSV, FormatTSV:
 		delimiter := ','
 		if format == FormatTSV {
 			delimiter = '\t'
 		}
-		f, err := os.Create(filePath)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
+		cw := csv.NewWriter(w)
+		cw.Comma = delimiter
+		defer cw.Flush()
 
-		w := csv.NewWriter(f)
-		w.Comma = delimiter
-		defer w.Flush()
-
-		// Write Section 1: Fleet Targets Summary
-		_ = w.Write([]string{"# FLEET TARGET SUMMARY"})
-		_ = w.Write([]string{"Target", "Protocol", "IP", "Sent", "Recv", "LossPercent", "LastRTTMs", "AvgRTTMs", "MaxRTTMs"})
+		_ = cw.Write([]string{"# FLEET TARGET SUMMARY"})
+		_ = cw.Write([]string{"Target", "Protocol", "IP", "Sent", "Recv", "LossPercent", "LastRTTMs", "AvgRTTMs", "MaxRTTMs"})
 		for _, s := range summaries {
-			_ = w.Write([]string{
+			_ = cw.Write([]string{
 				s.Target,
 				s.Protocol,
 				s.IP,
@@ -473,17 +608,16 @@ func ExportMultiTarget(targets []FleetTarget, startTime time.Time, history []Sin
 			})
 		}
 
-		// Write Section 2: Probes History
-		if len(cleanHistory) > 0 {
-			_ = w.Write([]string{})
-			_ = w.Write([]string{"# PROBE EVENTS"})
-			_ = w.Write([]string{"Timestamp", "Seq", "Target", "Protocol", "IP", "Status", "RTT_ms", "Diagnostics", "Error"})
-			for _, p := range cleanHistory {
+		if len(history) > 0 {
+			_ = cw.Write([]string{})
+			_ = cw.Write([]string{"# PROBE EVENTS"})
+			_ = cw.Write([]string{"Timestamp", "Seq", "Target", "Protocol", "IP", "Status", "RTT_ms", "Diagnostics", "Error"})
+			for _, p := range history {
 				status := "SUCCESS"
 				if !p.IsSuccess {
 					status = "FAILED"
 				}
-				_ = w.Write([]string{
+				_ = cw.Write([]string{
 					p.Timestamp.Format(time.RFC3339),
 					fmt.Sprintf("%d", p.Seq),
 					p.Target,
@@ -496,97 +630,34 @@ func ExportMultiTarget(targets []FleetTarget, startTime time.Time, history []Sin
 				})
 			}
 		}
-		w.Flush()
-		return nil
-
-	case FormatSQLite3:
-		_ = os.Remove(filePath)
-		db, err := sql.Open("sqlite", filePath)
-		if err != nil {
-			return err
-		}
-		defer db.Close()
-
-		createTable := `
-		CREATE TABLE fleet_summary (
-			target TEXT,
-			protocol TEXT,
-			ip TEXT,
-			sent INTEGER,
-			recv INTEGER,
-			loss_percent REAL,
-			last_rtt_ms REAL,
-			avg_rtt_ms REAL,
-			max_rtt_ms REAL,
-			duration TEXT,
-			exported_at TEXT
-		);
-		CREATE TABLE probes (
-			timestamp TEXT,
-			seq INTEGER,
-			target TEXT,
-			protocol TEXT,
-			ip TEXT,
-			is_success INTEGER,
-			rtt_ms REAL,
-			diagnostics TEXT,
-			error TEXT
-		);`
-		if _, err := db.Exec(createTable); err != nil {
-			return err
-		}
-
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-		stmt, err := tx.Prepare(`INSERT INTO fleet_summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-		if err != nil {
-			return err
-		}
-		defer stmt.Close()
-
-		for _, s := range summaries {
-			_, _ = stmt.Exec(s.Target, s.Protocol, s.IP, s.Sent, s.Recv, s.LossPercent, s.LastRTTMs, s.AvgRTTMs, s.MaxRTTMs, elapsed, time.Now().Format(time.RFC3339))
-		}
-
-		probeStmt, err := tx.Prepare(`INSERT INTO probes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-		if err == nil {
-			defer probeStmt.Close()
-			for _, p := range cleanHistory {
-				isSucc := 0
-				if p.IsSuccess {
-					isSucc = 1
-				}
-				_, _ = probeStmt.Exec(p.Timestamp.Format(time.RFC3339), p.Seq, p.Target, p.Protocol, p.IP, isSucc, p.RTTMs, p.Diagnostics, p.Error)
-			}
-		}
-		return tx.Commit()
+		cw.Flush()
+		return cw.Error()
 
 	case FormatPlainText:
-		var sb strings.Builder
-		sb.WriteString("================================================================================\n")
-		sb.WriteString("                        NETPING FLEET PROBE REPORT                              \n")
-		sb.WriteString("================================================================================\n\n")
-		sb.WriteString(fmt.Sprintf("Exported At:    %s\n", time.Now().Format(time.RFC1123)))
-		sb.WriteString(fmt.Sprintf("Total Duration: %s\n", elapsed))
-		sb.WriteString(fmt.Sprintf("Total Targets:  %d\n\n", len(targets)))
+		bw := bufio.NewWriter(w)
+		defer bw.Flush()
+		bw.WriteString("================================================================================\n")
+		bw.WriteString("                        NETPING FLEET PROBE REPORT                              \n")
+		bw.WriteString("================================================================================\n\n")
+		bw.WriteString(fmt.Sprintf("Exported At:    %s\n", time.Now().Format(time.RFC1123)))
+		bw.WriteString(fmt.Sprintf("Total Duration: %s\n", elapsed))
+		bw.WriteString(fmt.Sprintf("Total Targets:  %d\n\n", len(targets)))
 
-		sb.WriteString("FLEET TARGET SUMMARY:\n")
-		sb.WriteString(fmt.Sprintf("%-28s %-10s %-16s %-6s %-6s %-8s %-10s %-10s %-10s\n",
+		bw.WriteString("FLEET TARGET SUMMARY:\n")
+		bw.WriteString(fmt.Sprintf("%-28s %-10s %-16s %-6s %-6s %-8s %-10s %-10s %-10s\n",
 			"TARGET", "PROTOCOL", "IP", "SENT", "RECV", "LOSS%", "LAST(ms)", "AVG(ms)", "MAX(ms)"))
-		sb.WriteString(strings.Repeat("-", 110) + "\n")
+		bw.WriteString(strings.Repeat("-", 110) + "\n")
 		for _, s := range summaries {
-			sb.WriteString(fmt.Sprintf("%-28s %-10s %-16s %-6d %-6d %-7.1f%% %-10.2f %-10.2f %-10.2f\n",
-				s.Target, s.Protocol, s.IP, s.Sent, s.Recv, s.LossPercent, s.LastRTTMs, s.AvgRTTMs, s.MaxRTTMs))
+			bw.WriteString(fmt.Sprintf("%-28s %-10s %-16s %-6d %-6d %-8s %-10.2f %-10.2f %-10.2f\n",
+				s.Target, s.Protocol, s.IP, s.Sent, s.Recv, fmt.Sprintf("%.1f%%", s.LossPercent), s.LastRTTMs, s.AvgRTTMs, s.MaxRTTMs))
 		}
 
-		if len(cleanHistory) > 0 {
-			sb.WriteString("\nPROBE EVENT HISTORY:\n")
-			sb.WriteString(fmt.Sprintf("%-20s %-6s %-24s %-8s %-16s %-10s %-10s %s\n",
+		if len(history) > 0 {
+			bw.WriteString("\nPROBE EVENT HISTORY:\n")
+			bw.WriteString(fmt.Sprintf("%-20s %-6s %-24s %-8s %-16s %-10s %-10s %s\n",
 				"TIMESTAMP", "SEQ", "TARGET", "PROTO", "IP", "STATUS", "RTT(ms)", "DETAILS"))
-			sb.WriteString(strings.Repeat("-", 110) + "\n")
-			for _, p := range cleanHistory {
+			bw.WriteString(strings.Repeat("-", 110) + "\n")
+			for _, p := range history {
 				status := "SUCCESS"
 				if !p.IsSuccess {
 					status = "FAILED"
@@ -595,7 +666,7 @@ func ExportMultiTarget(targets []FleetTarget, startTime time.Time, history []Sin
 				if p.Error != "" {
 					details = "Error: " + p.Error
 				}
-				sb.WriteString(fmt.Sprintf("%-20s %-6d %-24s %-8s %-16s %-10s %-10.2f %s\n",
+				bw.WriteString(fmt.Sprintf("%-20s %-6d %-24s %-8s %-16s %-10s %-10.2f %s\n",
 					p.Timestamp.Format("2006-01-02 15:04:05"),
 					p.Seq,
 					p.Target,
@@ -607,8 +678,7 @@ func ExportMultiTarget(targets []FleetTarget, startTime time.Time, history []Sin
 				))
 			}
 		}
-		return os.WriteFile(filePath, []byte(sb.String()), 0644)
+		return bw.Flush()
 	}
-
 	return nil
 }

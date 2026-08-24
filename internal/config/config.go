@@ -174,6 +174,7 @@ type Config struct {
 	StartTLS                   bool
 	DNSHosts                   []string
 	ServiceName                string
+	HistoryLimit               uint
 }
 
 func (c Config) GetHostname() string {
@@ -274,6 +275,7 @@ type flagOptions struct {
 	port                              *string
 	uri                               *string
 	concurrency                       *uint
+	historyLimit                      *uint
 }
 
 func registerFlags(fs *flag.FlagSet) flagOptions {
@@ -363,6 +365,7 @@ func registerFlags(fs *flag.FlagSet) flagOptions {
 		dnsHost:             fs.String("dns-host", "", "Host(s) to query in DNS mode (comma-separated, e.g. google.com,cloudflare.com)."),
 		serviceName:         fs.String("service", "", "Service name / SID for Oracle database connections (e.g. ORCL, FREE, XE, ORCLPDB1)."),
 		oracleService:       fs.String("oracle-service", "", "Oracle database service name (e.g. ORCL, FREE, XE, ORCLPDB1)."),
+		historyLimit:        fs.Uint("history-limit", 1000000, "Maximum in-memory historical probe events retained (default: 1000000, max: 5000000)."),
 	}
 }
 
@@ -602,6 +605,7 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		StartTLS:                   *opts.startTLS,
 		DNSHosts:                   dnsHosts,
 		ServiceName:                serviceName,
+		HistoryLimit:               *opts.historyLimit,
 	}
 
 	return cfg, nil

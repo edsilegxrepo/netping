@@ -30,23 +30,35 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      padding: 1.5rem;
+      padding: 0 1.5rem 1.5rem 1.5rem;
       background-image: radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.05) 0%, transparent 75%);
     }
 
-    /* Top Navigation Header */
+    /* Sticky Header Wrapper with Solid Opaque Background */
+    .header-wrapper {
+      position: sticky;
+      top: 0;
+      z-index: 500;
+      background-color: var(--bg-main);
+      padding: 1.25rem 0 1.25rem 0;
+      margin: 0;
+    }
+
     header {
+      position: relative;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 1rem 1.5rem;
+      padding: 0.85rem 1.5rem;
       background: var(--bg-card);
       border: 1px solid var(--border-color);
       border-radius: 12px;
-      backdrop-filter: blur(12px);
-      margin-bottom: 1.5rem;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      margin-bottom: 0;
       flex-wrap: wrap;
       gap: 1rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     }
 
     .brand-section {
@@ -298,8 +310,26 @@
 
     canvas#rttChart {
       width: 100%;
-      height: 240px;
       display: block;
+      cursor: crosshair;
+    }
+
+    .chart-tooltip {
+      position: absolute;
+      display: none;
+      pointer-events: none;
+      background: rgba(17, 24, 39, 0.95);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      border-radius: 8px;
+      padding: 0.55rem 0.85rem;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 16px rgba(56, 189, 248, 0.18);
+      backdrop-filter: blur(10px);
+      z-index: 100;
+      font-size: 0.75rem;
+      color: #F3F4F6;
+      min-width: 170px;
+      font-family: var(--font-mono);
+      line-height: 1.45;
     }
 
     /* Table Section */
@@ -324,6 +354,57 @@
     .table-title {
       font-size: 0.875rem;
       font-weight: 700;
+    }
+
+    .stream-filter-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .stream-filter-input {
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      padding: 0.35rem 1.6rem 0.35rem 1.9rem;
+      font-size: 0.75rem;
+      color: var(--text-main);
+      width: 220px;
+      font-family: var(--font-mono);
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .stream-filter-input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+      width: 270px;
+    }
+
+    .stream-filter-icon {
+      position: absolute;
+      left: 0.6rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .stream-filter-clear {
+      position: absolute;
+      right: 0.45rem;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 0.1rem 0.25rem;
+      display: none;
+      border-radius: 4px;
+    }
+
+    .stream-filter-clear:hover {
+      color: #FFFFFF;
+      background: rgba(255, 255, 255, 0.1);
     }
 
     .log-table-wrapper {
@@ -424,6 +505,129 @@
     .btn-save:hover {
       background: rgba(16, 185, 129, 0.25);
       border-color: var(--accent-emerald);
+    }
+
+    .btn-api {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.35);
+      color: var(--accent-emerald);
+      text-decoration: none;
+    }
+
+    .btn-api:hover {
+      background: rgba(16, 185, 129, 0.25);
+      border-color: var(--accent-emerald);
+      color: #34D399;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+    }
+
+    .btn-reset {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #F87171;
+    }
+
+    .btn-reset:hover {
+      background: rgba(239, 68, 68, 0.22);
+      border-color: #EF4444;
+      color: #FCA5A5;
+    }
+
+    /* Enterprise Dropdown Menu */
+    .dropdown-menu-container {
+      position: relative;
+      display: inline-block;
+    }
+
+    .btn-menu {
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: var(--accent-cyan);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.95rem;
+      font-weight: 600;
+      font-size: 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-menu:hover {
+      background: rgba(56, 189, 248, 0.22);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+    }
+
+    .dropdown-menu-content {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      background: #111827;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 10px;
+      min-width: 270px;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.9), 0 0 25px rgba(56, 189, 248, 0.2);
+      backdrop-filter: blur(16px);
+      z-index: 9999;
+      padding: 0.45rem 0;
+      animation: menuPop 0.15s ease-out;
+    }
+
+    @keyframes menuPop {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .dropdown-menu-header {
+      padding: 0.4rem 0.95rem;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      width: 100%;
+      padding: 0.55rem 0.95rem;
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      font-size: 0.8rem;
+      font-weight: 500;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .dropdown-item:hover {
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--accent-cyan);
+    }
+
+    .dropdown-item:disabled,
+    .dropdown-item.disabled {
+      opacity: 0.35;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
+
+    .dropdown-item-danger:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: #FCA5A5;
+    }
+
+    .dropdown-menu-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.08);
+      margin: 0.35rem 0;
     }
 
     /* Export Modal Styles */
@@ -612,47 +816,105 @@
 </head>
 <body>
 
-  <!-- Top Title Bar -->
-  <header>
-    <div class="brand-section">
-      <span class="brand-logo">netping</span>
-      <div id="singleBrandBadges" style="display: flex; align-items: center; gap: 0.5rem;">
-        <span id="targetBadge" class="badge-count">--</span>
-        <span id="protoBadge" class="protocol-tag">--</span>
+  <!-- Top Sticky Title Bar Wrapper -->
+  <div class="header-wrapper">
+    <header>
+      <div class="brand-section">
+        <span class="brand-logo">netping</span>
+        <div id="singleBrandBadges" style="display: flex; align-items: center; gap: 0.5rem;">
+          <span id="targetBadge" class="badge-count">--</span>
+          <span id="protoBadge" class="protocol-tag">--</span>
+        </div>
+        <div id="fleetBrandBadges" style="display: none; align-items: center; gap: 0.5rem;">
+          <span id="fleetTargetCountBadge" class="badge-count">Targets: 0</span>
+        </div>
       </div>
-      <div id="fleetBrandBadges" style="display: none; align-items: center; gap: 0.5rem;">
-        <span id="fleetTargetCountBadge" class="badge-count">Targets: 0</span>
-      </div>
-    </div>
 
-    <!-- Fleet Aggregate Stats (Auto-enabled when >= 2 targets) -->
-    <div id="fleetAggregateBar" class="fleet-aggregate-bar" style="display: none;">
-      <div class="agg-item">
-        <span>Fleet Loss:</span>
-        <span id="aggFleetLoss" class="agg-val" style="color: var(--accent-emerald);">0.0%</span>
+      <!-- Fleet Aggregate Stats (Auto-enabled when >= 2 targets) -->
+      <div id="fleetAggregateBar" class="fleet-aggregate-bar" style="display: none;">
+        <div class="agg-item">
+          <span>Fleet Loss:</span>
+          <span id="aggFleetLoss" class="agg-val" style="color: var(--accent-emerald);">0.0%</span>
+        </div>
+        <div class="agg-item">
+          <span>Fleet Avg:</span>
+          <span id="aggFleetAvg" class="agg-val">-- ms</span>
+        </div>
+        <div class="agg-item">
+          <span>Total Probes:</span>
+          <span id="aggFleetProbes" class="agg-val">0</span>
+        </div>
+        <div class="agg-item">
+          <span>Uptime:</span>
+          <span id="aggFleetUptime" class="agg-val">00:00:00</span>
+        </div>
       </div>
-      <div class="agg-item">
-        <span>Fleet Avg:</span>
-        <span id="aggFleetAvg" class="agg-val">-- ms</span>
-      </div>
-      <div class="agg-item">
-        <span>Total Probes:</span>
-        <span id="aggFleetProbes" class="agg-val">0</span>
-      </div>
-      <div class="agg-item">
-        <span>Uptime:</span>
-        <span id="aggFleetUptime" class="agg-val">00:00:00</span>
-      </div>
-    </div>
 
-    <div class="header-actions">
-      <button class="btn btn-primary" onclick="openExportModal()" title="Shortcut: Press 'S'">💾 Export Data <span style="opacity: 0.6; font-size: 0.7rem;">[S]</span></button>
-      <div class="status-indicator">
-        <div class="status-dot"></div>
-        <span id="statusText">LIVE MONITORING</span>
+      <div class="header-actions">
+        <!-- Enterprise Action Menu Dropdown -->
+        <div class="dropdown-menu-container">
+          <button class="btn-menu" id="btnActionMenu" onclick="toggleActionMenu(event)">
+            <span>⚡ Controls & View</span>
+            <span style="font-size: 0.65rem; opacity: 0.7;">▼</span>
+          </button>
+          <div class="dropdown-menu-content" id="actionMenuDropdown">
+            <div class="dropdown-menu-header">Dashboard Viewport</div>
+            <button class="dropdown-item" id="menuItemMaxChart" onclick="toggleViewMode('maxChart')">
+              <span id="menuIconMaxChart">📈</span>
+              <span id="menuTextMaxChart">Maximize Waveform View</span>
+            </button>
+            <button class="dropdown-item" id="menuItemMaxStream" onclick="toggleViewMode('maxStream')">
+              <span id="menuIconMaxStream">📋</span>
+              <span id="menuTextMaxStream">Maximize Event Stream</span>
+            </button>
+
+            <div class="dropdown-menu-divider"></div>
+            <div class="dropdown-menu-header">Waveform Controls</div>
+            <button class="dropdown-item" id="menuItemChartType" onclick="toggleChartType()">
+              <span id="menuIconChartType">📊</span>
+              <span id="menuTextChartType">Switch to Discrete Bar Mode</span>
+            </button>
+            <button class="dropdown-item" id="menuItemResetZoom" onclick="resetChartZoom(); closeActionMenu();" disabled>
+              <span>🔍</span>
+              <span id="menuTextResetZoom">Reset Chart Zoom</span>
+            </button>
+            <button class="dropdown-item" id="menuItemExportPng" onclick="exportChartPNG()">
+              <span>📸</span>
+              <span>Export Waveform as PNG</span>
+            </button>
+
+            <div class="dropdown-menu-divider"></div>
+            <div class="dropdown-menu-header">Event Stream & Specs</div>
+            <button class="dropdown-item" id="menuItemClearLog" onclick="clearLogs(); closeActionMenu();">
+              <span>🧹</span>
+              <span>Clear Event Stream Log</span>
+            </button>
+            <button class="dropdown-item" onclick="openApiSpecsModal()">
+              <span>⚡</span>
+              <span>Interactive API Specs</span>
+            </button>
+
+            <div class="dropdown-menu-divider"></div>
+            <div class="dropdown-menu-header">Telemetry Session</div>
+            <button class="dropdown-item" onclick="openExportModal(); closeActionMenu();">
+              <span>💾</span>
+              <span style="flex: 1;">Export Telemetry Report</span>
+              <span style="opacity: 0.5; font-size: 0.7rem;">[S]</span>
+            </button>
+            <button class="dropdown-item dropdown-item-danger" onclick="resetDashboardData(); closeActionMenu();">
+              <span>🔄</span>
+              <span>Reset Telemetry Session</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="status-indicator">
+          <div class="status-dot"></div>
+          <span id="statusText">LIVE MONITORING</span>
+        </div>
       </div>
-    </div>
-  </header>
+    </header>
+  </div>
 
   <!-- SINGLE TARGET KPI CARDS (Auto-visible when 1 target) -->
   <div id="singleKpiGrid" class="kpi-grid">
@@ -708,24 +970,36 @@
     </table>
   </div>
 
-  <!-- Real-Time Waveform Chart with Dynamic Legend -->
+  <!-- Real-Time Waveform Chart with Dynamic Legend & Zoom Controls -->
   <div class="chart-container">
     <div class="chart-header">
       <div class="chart-title">
         <span>Real-Time Latency Waveform</span>
       </div>
-      <div id="chartLegend" class="chart-legend">
-        <span style="font-size: 0.75rem; color: var(--text-muted);">Window: Last 50 Probes</span>
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <button id="btnResetZoom" class="btn" style="display: none; font-size: 0.75rem; padding: 0.2rem 0.65rem; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: var(--accent-cyan);" onclick="resetChartZoom()" title="Click or Double-Click to Reset Zoom">🔍 Reset Zoom</button>
+        <div id="chartLegend" class="chart-legend">
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Window: Last 50 Probes</span>
+        </div>
       </div>
     </div>
-    <canvas id="rttChart"></canvas>
+    <div style="position: relative; width: 100%;">
+      <canvas id="rttChart"></canvas>
+      <div id="chartTooltip" class="chart-tooltip"></div>
+    </div>
   </div>
 
   <!-- Interleaved Live Probe Event Stream -->
   <div class="table-container">
     <div class="table-header">
       <div class="table-title">Live Probe Event Stream</div>
-      <div style="display: flex; gap: 0.5rem;">
+      <div style="display: flex; gap: 0.65rem; align-items: center; flex-wrap: wrap;">
+        <div class="stream-filter-container">
+          <span class="stream-filter-icon">🔍</span>
+          <input type="text" id="streamFilterInput" class="stream-filter-input" placeholder="Filter by any field..." oninput="handleStreamFilter()" />
+          <button id="streamFilterClear" class="stream-filter-clear" onclick="clearStreamFilter()" title="Clear filter">✕</button>
+        </div>
+        <button class="btn btn-api" onclick="openApiSpecsModal()" title="View Interactive REST API Specs & OpenAPI Documentation">⚡ API Specs</button>
         <button class="btn btn-primary" onclick="openExportModal()">💾 Export</button>
         <button class="btn" onclick="clearLogs()">Clear Log</button>
       </div>
@@ -746,6 +1020,24 @@
         </thead>
         <tbody id="logTableBody"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Interactive API Specs Popup Modal -->
+  <div id="apiSpecsModal" class="modal-backdrop" style="display: none;" onclick="closeApiSpecsModal()">
+    <div class="modal-card" style="max-width: 1200px; width: 92vw; height: 86vh; display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="padding: 0.85rem 1.25rem;">
+        <div class="modal-title">
+          <span>⚡ netping REST API & OpenAPI Specifications</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <a href="/docs" target="_blank" class="btn btn-api" onclick="closeApiSpecsModal()" style="font-size: 0.75rem; padding: 0.25rem 0.65rem;" title="Open in dedicated browser tab">Open in New Tab ↗</a>
+          <button class="modal-close" onclick="closeApiSpecsModal()">✕</button>
+        </div>
+      </div>
+      <div style="flex: 1; position: relative; background: #0B0F19; border-radius: 0 0 14px 14px; overflow: hidden;">
+        <iframe src="/docs" style="width: 100%; height: 100%; border: none;"></iframe>
+      </div>
     </div>
   </div>
 
@@ -853,10 +1145,44 @@
       document.getElementById('aggFleetUptime').innerText = timeStr;
     }, 1000);
 
-    function resizeCanvas() {
-      canvas.width = canvas.parentElement.clientWidth - 40;
-      canvas.height = 240;
+    function applyViewportLayout() {
+      const chartSection = document.querySelector('.chart-container');
+      const tableSection = document.querySelector('.table-container');
+      const logScroll = document.getElementById('logScroll');
+
+      if (activeLayoutMode === 'maxChart') {
+        chartSection.style.display = 'block';
+        tableSection.style.display = 'none';
+        const canvasRect = canvas.getBoundingClientRect();
+        const availableHeight = window.innerHeight - canvasRect.top - 45;
+        const targetHeight = Math.max(260, availableHeight);
+        canvas.width = canvas.parentElement.clientWidth - 40;
+        canvas.height = targetHeight;
+        canvas.style.height = `${targetHeight}px`;
+      } else if (activeLayoutMode === 'maxStream') {
+        chartSection.style.display = 'none';
+        tableSection.style.display = 'block';
+        const logRect = logScroll.getBoundingClientRect();
+        const availableHeight = window.innerHeight - logRect.top - 45;
+        if (logScroll) {
+          logScroll.style.maxHeight = `${Math.max(180, availableHeight)}px`;
+        }
+      } else {
+        // Standard View
+        chartSection.style.display = 'block';
+        tableSection.style.display = 'block';
+        canvas.width = canvas.parentElement.clientWidth - 40;
+        canvas.height = 240;
+        canvas.style.height = '240px';
+        if (logScroll) {
+          logScroll.style.maxHeight = '420px';
+        }
+      }
       drawChart();
+    }
+
+    function resizeCanvas() {
+      applyViewportLayout();
     }
     window.addEventListener('resize', resizeCanvas);
     setTimeout(resizeCanvas, 50);
@@ -967,27 +1293,157 @@
       }
     }
 
+    // Hover, Zoom & View State Tracking
+    let hoverState = null; // { x, y, colIdx }
+    let isSelecting = false;
+    let selectStartX = null;
+    let selectCurrentX = null;
+    let zoomRange = null; // { startIdx, endIdx }
+    let activeLayoutMode = 'standard'; // 'standard', 'maxChart', 'maxStream'
+    let chartVisualizationMode = 'lines'; // 'lines', 'bars'
+    const tooltipEl = document.getElementById('chartTooltip');
+    const btnResetZoom = document.getElementById('btnResetZoom');
+
+    function updateActionMenuStates() {
+      const isChartHidden = activeLayoutMode === 'maxStream';
+      const isStreamHidden = activeLayoutMode === 'maxChart';
+      const isZoomed = zoomRange !== null;
+
+      const itemChartType = document.getElementById('menuItemChartType');
+      if (itemChartType) {
+        itemChartType.disabled = isChartHidden;
+      }
+
+      const itemResetZoom = document.getElementById('menuItemResetZoom');
+      if (itemResetZoom) {
+        itemResetZoom.disabled = isChartHidden || !isZoomed;
+      }
+
+      const itemExportPng = document.getElementById('menuItemExportPng');
+      if (itemExportPng) {
+        itemExportPng.disabled = isChartHidden;
+      }
+
+      const itemClearLog = document.getElementById('menuItemClearLog');
+      if (itemClearLog) {
+        itemClearLog.disabled = isStreamHidden;
+      }
+    }
+
+    function toggleActionMenu(e) {
+      if (e) e.stopPropagation();
+      const menu = document.getElementById('actionMenuDropdown');
+      if (menu) {
+        updateActionMenuStates();
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+      }
+    }
+
+    function closeActionMenu() {
+      const menu = document.getElementById('actionMenuDropdown');
+      if (menu) menu.style.display = 'none';
+    }
+
+    window.addEventListener('click', (e) => {
+      if (!e.target.closest('.dropdown-menu-container')) {
+        closeActionMenu();
+      }
+    });
+
+    function toggleViewMode(targetMode) {
+      if (activeLayoutMode === targetMode) {
+        activeLayoutMode = 'standard';
+      } else {
+        activeLayoutMode = targetMode;
+      }
+
+      const menuTextChart = document.getElementById('menuTextMaxChart');
+      const menuIconChart = document.getElementById('menuIconMaxChart');
+      const menuTextStream = document.getElementById('menuTextMaxStream');
+      const menuIconStream = document.getElementById('menuIconMaxStream');
+
+      if (activeLayoutMode === 'maxChart') {
+        if (menuTextChart) menuTextChart.innerText = 'Restore Standard Layout';
+        if (menuIconChart) menuIconChart.innerText = '🔲';
+        if (menuTextStream) menuTextStream.innerText = 'Maximize Event Stream';
+        if (menuIconStream) menuIconStream.innerText = '📋';
+      } else if (activeLayoutMode === 'maxStream') {
+        if (menuTextChart) menuTextChart.innerText = 'Maximize Waveform View';
+        if (menuIconChart) menuIconChart.innerText = '📈';
+        if (menuTextStream) menuTextStream.innerText = 'Restore Standard Layout';
+        if (menuIconStream) menuIconStream.innerText = '🔲';
+      } else {
+        if (menuTextChart) menuTextChart.innerText = 'Maximize Waveform View';
+        if (menuIconChart) menuIconChart.innerText = '📈';
+        if (menuTextStream) menuTextStream.innerText = 'Maximize Event Stream';
+        if (menuIconStream) menuIconStream.innerText = '📋';
+      }
+
+      applyViewportLayout();
+      updateActionMenuStates();
+      closeActionMenu();
+    }
+
+    function toggleChartType() {
+      const menuText = document.getElementById('menuTextChartType');
+      const menuIcon = document.getElementById('menuIconChartType');
+
+      if (chartVisualizationMode === 'lines') {
+        chartVisualizationMode = 'bars';
+        if (menuText) menuText.innerText = 'Switch to Continuous Waveform';
+        if (menuIcon) menuIcon.innerText = '📈';
+      } else {
+        chartVisualizationMode = 'lines';
+        if (menuText) menuText.innerText = 'Switch to Discrete Bar Mode';
+        if (menuIcon) menuIcon.innerText = '📊';
+      }
+      drawChart();
+      updateActionMenuStates();
+      closeActionMenu();
+    }
+
+    function resetChartZoom() {
+      zoomRange = null;
+      if (btnResetZoom) btnResetZoom.style.display = 'none';
+      updateActionMenuStates();
+      drawChart();
+    }
+
     function drawChart() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const w = canvas.width;
       const h = canvas.height;
       const padLeft = 58;
-      const padBottom = 25;
+      const padBottom = 32;
       const chartW = w - padLeft - 10;
       const chartH = h - padBottom - 10;
 
-      // Find max RTT across all targets
+      // Determine active window / zoom slice
+      let viewStart = 0;
+      let viewEnd = maxDataPoints - 1;
+      if (zoomRange) {
+        viewStart = zoomRange.startIdx;
+        viewEnd = zoomRange.endIdx;
+      }
+      const viewPoints = Math.max(2, viewEnd - viewStart + 1);
+
+      // Find max RTT across all targets within view window
       let globalMaxRTT = 10;
       for (const [_, t] of targetsMap) {
-        for (const item of t.history) {
-          if (item.success && item.rtt > globalMaxRTT) {
-            globalMaxRTT = item.rtt;
+        const offset = maxDataPoints - t.history.length;
+        for (let i = 0; i < t.history.length; i++) {
+          const globalIdx = offset + i;
+          if (globalIdx >= viewStart && globalIdx <= viewEnd) {
+            const item = t.history[i];
+            if (item.success && item.rtt > globalMaxRTT) {
+              globalMaxRTT = item.rtt;
+            }
           }
         }
       }
       globalMaxRTT *= 1.25;
 
-      // Draw Grid lines
+      // Draw Y-Axis Grid lines & labels
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
       ctx.lineWidth = 1;
       for (let i = 0; i <= 4; i++) {
@@ -998,10 +1454,46 @@
         ctx.stroke();
 
         ctx.fillStyle = '#9CA3AF';
-        ctx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
         ctx.textAlign = 'right';
         const labelVal = (globalMaxRTT - (globalMaxRTT / 4) * i).toFixed(0);
         ctx.fillText(`${labelVal}ms`, padLeft - 8, y + 4);
+      }
+
+      // Collect available timestamps across series for X-axis time scale
+      const numTicks = 5;
+      for (let stepIdx = 0; stepIdx < numTicks; stepIdx++) {
+        const targetFraction = stepIdx / (numTicks - 1);
+        const tickColIdx = Math.round(viewStart + targetFraction * (viewPoints - 1));
+        const tickX = padLeft + targetFraction * chartW;
+
+        // Find timestamp from any target with a probe at tickColIdx
+        let tickTime = '';
+        for (const [_, t] of targetsMap) {
+          const offset = maxDataPoints - t.history.length;
+          const histIdx = tickColIdx - offset;
+          if (histIdx >= 0 && histIdx < t.history.length) {
+            tickTime = t.history[histIdx].timestamp;
+            if (tickTime) break;
+          }
+        }
+
+        // Draw vertical grid line for time tick
+        ctx.beginPath();
+        ctx.setLineDash([2, 4]);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+        ctx.moveTo(tickX, 10);
+        ctx.lineTo(tickX, 10 + chartH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw time label
+        if (tickTime) {
+          ctx.fillStyle = '#9CA3AF';
+          ctx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+          ctx.textAlign = stepIdx === 0 ? 'left' : (stepIdx === numTicks - 1 ? 'right' : 'center');
+          ctx.fillText(tickTime, tickX, 10 + chartH + 20);
+        }
       }
 
       // Update Legend
@@ -1019,62 +1511,371 @@
         }
       }
 
-      // Draw Series for each target
-      for (const [_, t] of targetsMap) {
-        if (t.history.length === 0) continue;
+      // Draw Series: Bar Mode or Continuous Line Waveform
+      const step = chartW / (viewPoints - 1);
+      const pointsToHighlight = [];
+      const targetEntries = Array.from(targetsMap.entries());
+      const numTargets = Math.max(1, targetEntries.length);
 
-        const step = chartW / (maxDataPoints - 1);
-        const offset = maxDataPoints - t.history.length;
+      if (chartVisualizationMode === 'bars') {
+        const slotWidth = step * 0.82;
+        const subBarWidth = Math.max(2, (slotWidth / numTargets) - 1);
 
-        ctx.beginPath();
-        let first = true;
-        for (let i = 0; i < t.history.length; i++) {
-          const item = t.history[i];
-          const x = padLeft + (offset + i) * step;
-          const val = item.success ? item.rtt : 0;
-          const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+        targetEntries.forEach(([_, t], tIdx) => {
+          if (t.history.length === 0) return;
+          const offset = maxDataPoints - t.history.length;
 
-          if (first) {
-            ctx.moveTo(x, y);
-            first = false;
-          } else {
-            ctx.lineTo(x, y);
+          for (let i = 0; i < t.history.length; i++) {
+            const globalIdx = offset + i;
+            if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+            const item = t.history[i];
+            const colCenterX = padLeft + (globalIdx - viewStart) * step;
+            const barX = colCenterX - (slotWidth / 2) + tIdx * (subBarWidth + 1);
+            const val = item.success ? item.rtt : 0;
+            const barH = Math.max(2, (val / globalMaxRTT) * chartH);
+            const barY = 10 + chartH - barH;
+
+            ctx.fillStyle = item.success ? t.color : '#EF4444';
+            ctx.fillRect(barX, barY, subBarWidth, barH);
+
+            if (hoverState && hoverState.colIdx === globalIdx) {
+              pointsToHighlight.push({ x: barX + subBarWidth / 2, y: barY, color: t.color, item, targetName: t.target });
+            }
           }
-        }
-
-        ctx.strokeStyle = t.color;
-        ctx.lineWidth = 2.2;
-        ctx.stroke();
-
-        // Area Gradient only in single target mode
-        if (targetsMap.size === 1) {
-          ctx.lineTo(padLeft + (offset + t.history.length - 1) * step, 10 + chartH);
-          ctx.lineTo(padLeft + offset * step, 10 + chartH);
-          ctx.closePath();
-          const grad = ctx.createLinearGradient(0, 0, 0, h);
-          grad.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
-          grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
-          ctx.fillStyle = grad;
-          ctx.fill();
-        }
-
-        // Draw points
-        for (let i = 0; i < t.history.length; i++) {
-          const item = t.history[i];
-          const x = padLeft + (offset + i) * step;
-          const val = item.success ? item.rtt : 0;
-          const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+        });
+      } else {
+        // Continuous Line Waveform Mode
+        for (const [_, t] of targetsMap) {
+          if (t.history.length === 0) continue;
+          const offset = maxDataPoints - t.history.length;
 
           ctx.beginPath();
-          ctx.arc(x, y, item.success ? 3 : 4, 0, Math.PI * 2);
-          ctx.fillStyle = item.success ? t.color : '#EF4444';
+          let first = true;
+          for (let i = 0; i < t.history.length; i++) {
+            const globalIdx = offset + i;
+            if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+            const item = t.history[i];
+            const x = padLeft + (globalIdx - viewStart) * step;
+            const val = item.success ? item.rtt : 0;
+            const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+
+            if (first) {
+              ctx.moveTo(x, y);
+              first = false;
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+
+          ctx.strokeStyle = t.color;
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          // Area gradient in single target mode
+          if (targetsMap.size === 1) {
+            const visibleHist = t.history.filter((_, idx) => (offset + idx >= viewStart && offset + idx <= viewEnd));
+            if (visibleHist.length > 0) {
+              const firstIdx = offset + t.history.indexOf(visibleHist[0]);
+              const lastIdx = offset + t.history.indexOf(visibleHist[visibleHist.length - 1]);
+              const startX = padLeft + (firstIdx - viewStart) * step;
+              const endX = padLeft + (lastIdx - viewStart) * step;
+
+              ctx.lineTo(endX, 10 + chartH);
+              ctx.lineTo(startX, 10 + chartH);
+              ctx.closePath();
+              const grad = ctx.createLinearGradient(0, 0, 0, h);
+              grad.addColorStop(0, 'rgba(56, 189, 248, 0.22)');
+              grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+              ctx.fillStyle = grad;
+              ctx.fill();
+            }
+          }
+
+          // Draw individual data points
+          for (let i = 0; i < t.history.length; i++) {
+            const globalIdx = offset + i;
+            if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+            const item = t.history[i];
+            const x = padLeft + (globalIdx - viewStart) * step;
+            const val = item.success ? item.rtt : 0;
+            const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+
+            ctx.beginPath();
+            ctx.arc(x, y, item.success ? 3.5 : 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = item.success ? t.color : '#EF4444';
+            ctx.fill();
+
+            // If hovered, record point to draw highlight
+            if (hoverState && hoverState.colIdx === globalIdx) {
+              pointsToHighlight.push({ x, y, color: t.color, item, targetName: t.target });
+            }
+          }
+        }
+      }
+
+      // Draw Crosshair and Highlight Hovered Points
+      if (hoverState && hoverState.x >= padLeft && hoverState.x <= w - 10) {
+        const crosshairX = padLeft + (hoverState.colIdx - viewStart) * step;
+        ctx.beginPath();
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.lineWidth = 1;
+        ctx.moveTo(crosshairX, 10);
+        ctx.lineTo(crosshairX, 10 + chartH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Render glowing circles on hovered data points
+        for (const pt of pointsToHighlight) {
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 7, 0, Math.PI * 2);
+          ctx.fillStyle = pt.color;
+          ctx.shadowColor = pt.color;
+          ctx.shadowBlur = 12;
           ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#FFFFFF';
+          ctx.stroke();
+        }
+
+        // Render Tooltip Card
+        if (pointsToHighlight.length > 0) {
+          const firstPt = pointsToHighlight[0];
+          let tooltipHTML = `<div style="font-weight:700; color:var(--accent-cyan); border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px; margin-bottom:4px; display:flex; justify-content:space-between; gap:8px;"><span>Seq #${firstPt.item.sequence}</span><span>${firstPt.item.timestamp}</span></div>`;
+          for (const pt of pointsToHighlight) {
+            const rttStr = pt.item.success ? `${pt.item.rtt.toFixed(2)} ms` : '<span style="color:var(--accent-rose)">FAILED</span>';
+            const diagStr = pt.item.diagnostics ? ` <span style="opacity:0.65">(${pt.item.diagnostics})</span>` : '';
+            tooltipHTML += `
+              <div style="display:flex; align-items:center; gap:6px; margin-top:3px;">
+                <span class="color-dot" style="background-color:${pt.color};"></span>
+                <span style="font-weight:600;">${pt.targetName}:</span>
+                <span style="color:${pt.item.success ? 'var(--text-main)' : 'var(--accent-rose)'}; font-weight:700;">${rttStr}</span>
+                ${diagStr}
+              </div>
+            `;
+          }
+          tooltipEl.innerHTML = tooltipHTML;
+          tooltipEl.style.display = 'block';
+
+          let tooltipLeft = hoverState.x + 15;
+          let tooltipTop = hoverState.y - 20;
+          if (tooltipLeft + 210 > w) {
+            tooltipLeft = hoverState.x - 220;
+          }
+          if (tooltipTop < 10) tooltipTop = 10;
+          if (tooltipTop + 100 > h) tooltipTop = h - 100;
+          tooltipEl.style.left = `${tooltipLeft}px`;
+          tooltipEl.style.top = `${tooltipTop}px`;
+        } else {
+          tooltipEl.style.display = 'none';
+        }
+      } else {
+        if (tooltipEl) tooltipEl.style.display = 'none';
+      }
+
+      // Draw Drag Selection Box (Zoom In)
+      if (isSelecting && selectStartX !== null && selectCurrentX !== null) {
+        const minX = Math.max(padLeft, Math.min(selectStartX, selectCurrentX));
+        const maxX = Math.min(w - 10, Math.max(selectStartX, selectCurrentX));
+        const selW = maxX - minX;
+
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+        ctx.fillRect(minX, 10, selW, chartH);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(minX, 10, selW, chartH);
+      }
+    }
+
+    // Canvas Interactive Event Listeners (Hover, Zoom, Pan)
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const padLeft = 58;
+      const padBottom = 32;
+      const chartW = canvas.width - padLeft - 10;
+
+      let viewStart = 0;
+      let viewEnd = maxDataPoints - 1;
+      if (zoomRange) {
+        viewStart = zoomRange.startIdx;
+        viewEnd = zoomRange.endIdx;
+      }
+      const viewPoints = Math.max(2, viewEnd - viewStart + 1);
+
+      if (isSelecting) {
+        selectCurrentX = x;
+        drawChart();
+      } else if (x >= padLeft && x <= canvas.width - 10 && y >= 10 && y <= canvas.height - padBottom) {
+        const colFraction = (x - padLeft) / chartW;
+        const colIdx = Math.round(viewStart + colFraction * (viewPoints - 1));
+        hoverState = { x, y, colIdx };
+        drawChart();
+      } else {
+        hoverState = null;
+        if (tooltipEl) tooltipEl.style.display = 'none';
+        drawChart();
+      }
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { // Left click drag
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        if (x >= 58 && x <= canvas.width - 10) {
+          isSelecting = true;
+          selectStartX = x;
+          selectCurrentX = x;
+        }
+      }
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+      if (isSelecting) {
+        const rect = canvas.getBoundingClientRect();
+        const endX = e.clientX - rect.left;
+        const padLeft = 58;
+        const chartW = canvas.width - padLeft - 10;
+
+        let viewStart = 0;
+        let viewEnd = maxDataPoints - 1;
+        if (zoomRange) {
+          viewStart = zoomRange.startIdx;
+          viewEnd = zoomRange.endIdx;
+        }
+        const viewPoints = Math.max(2, viewEnd - viewStart + 1);
+
+        if (Math.abs(endX - selectStartX) > 20) {
+          const minX = Math.max(padLeft, Math.min(selectStartX, endX));
+          const maxX = Math.min(canvas.width - 10, Math.max(selectStartX, endX));
+
+          const startFrac = (minX - padLeft) / chartW;
+          const endFrac = (maxX - padLeft) / chartW;
+
+          const newStartIdx = Math.max(0, Math.round(viewStart + startFrac * (viewPoints - 1)));
+          const newEndIdx = Math.min(maxDataPoints - 1, Math.round(viewStart + endFrac * (viewPoints - 1)));
+
+          if (newEndIdx - newStartIdx >= 3) {
+            zoomRange = { startIdx: newStartIdx, endIdx: newEndIdx };
+            if (btnResetZoom) btnResetZoom.style.display = 'inline-flex';
+          }
+        }
+        isSelecting = false;
+        selectStartX = null;
+        selectCurrentX = null;
+        updateActionMenuStates();
+        drawChart();
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      hoverState = null;
+      isSelecting = false;
+      selectStartX = null;
+      selectCurrentX = null;
+      if (tooltipEl) tooltipEl.style.display = 'none';
+      drawChart();
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const padLeft = 58;
+      const chartW = canvas.width - padLeft - 10;
+
+      let viewStart = 0;
+      let viewEnd = maxDataPoints - 1;
+      if (zoomRange) {
+        viewStart = zoomRange.startIdx;
+        viewEnd = zoomRange.endIdx;
+      }
+      const viewPoints = Math.max(2, viewEnd - viewStart + 1);
+      const centerFrac = Math.max(0, Math.min(1, (x - padLeft) / chartW));
+      const centerIdx = viewStart + centerFrac * (viewPoints - 1);
+
+      const zoomFactor = e.deltaY < 0 ? 0.75 : 1.35;
+      const newSpan = Math.max(4, Math.min(maxDataPoints, Math.round(viewPoints * zoomFactor)));
+
+      const newStart = Math.max(0, Math.round(centerIdx - centerFrac * (newSpan - 1)));
+      const newEnd = Math.min(maxDataPoints - 1, newStart + newSpan - 1);
+
+      if (newEnd - newStart < maxDataPoints - 1) {
+        zoomRange = { startIdx: newStart, endIdx: newEnd };
+        if (btnResetZoom) btnResetZoom.style.display = 'inline-flex';
+      } else {
+        resetChartZoom();
+      }
+      updateActionMenuStates();
+      drawChart();
+    }, { passive: false });
+
+    canvas.addEventListener('dblclick', resetChartZoom);
+
+    let currentFilterQuery = '';
+
+    function handleStreamFilter() {
+      const input = document.getElementById('streamFilterInput');
+      const clearBtn = document.getElementById('streamFilterClear');
+      currentFilterQuery = input ? input.value.trim().toLowerCase() : '';
+      if (clearBtn) {
+        clearBtn.style.display = currentFilterQuery ? 'block' : 'none';
+      }
+
+      const rows = tableBody.querySelectorAll('tr');
+      for (const row of rows) {
+        if (!currentFilterQuery) {
+          row.style.display = '';
+        } else {
+          const rowText = row.innerText.toLowerCase();
+          row.style.display = rowText.includes(currentFilterQuery) ? '' : 'none';
         }
       }
     }
 
+    function clearStreamFilter() {
+      const input = document.getElementById('streamFilterInput');
+      if (input) input.value = '';
+      handleStreamFilter();
+    }
+
     function clearLogs() {
       tableBody.innerHTML = '';
+    }
+
+    async function resetDashboardData() {
+      for (const [_, t] of targetsMap) {
+        t.history = [];
+        t.sent = 0;
+        t.recv = 0;
+        t.failed = 0;
+        t.latestRTT = 0;
+        t.minRTT = 0;
+        t.maxRTT = 0;
+        t.avgRTT = 0;
+        t.lossPercent = 0;
+      }
+      tableBody.innerHTML = '';
+      if (fleetTableBody) fleetTableBody.innerHTML = '';
+      document.getElementById('kpiCurrentRTT').innerText = '-- ms';
+      document.getElementById('kpiJitter').innerText = 'Jitter: -- ms';
+      document.getElementById('kpiLoss').innerText = '0.0%';
+      document.getElementById('kpiLossCounts').innerText = '0 lost / 0 sent';
+      document.getElementById('kpiAvgRTT').innerText = '-- ms';
+      document.getElementById('kpiMinMax').innerText = 'Min: -- | Max: --';
+      document.getElementById('kpiP95').innerText = '-- ms';
+      document.getElementById('kpiP99').innerText = 'P99: -- ms';
+      startTime = Date.now();
+      drawChart();
+      try {
+        await fetch('/api/v1/reset', { method: 'POST' });
+      } catch (e) {}
+      showToast('✔ Dashboard chart & probe data reset');
     }
 
     // Modal and Export Functions
@@ -1126,16 +1927,22 @@
 
     function downloadExportClient() {
       const fmtKey = formatKeys[currentFormat];
-      window.location.href = `/api/export?format=${fmtKey}`;
+      const url = `/api/v1/export?format=${fmtKey}`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = getDefaultFilename(currentFormat).replace('./', '');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       closeExportModal();
-      showToast(`✔ Initiated download for ${formatKeys[currentFormat].toUpperCase()} export`);
+      showToast(`✔ Initiated ${formatKeys[currentFormat].toUpperCase()} download`);
     }
 
     async function saveExportOnHost() {
       const fmtKey = formatKeys[currentFormat];
       const path = document.getElementById('exportFilePath').value;
       try {
-        const resp = await fetch('/api/export', {
+        const resp = await fetch('/api/v1/export', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ format: fmtKey, path: path })
@@ -1152,21 +1959,411 @@
       }
     }
 
+    function renderChartOnContext(targetCtx, w, h) {
+      const padLeft = 58;
+      const padBottom = 32;
+      const chartW = w - padLeft - 10;
+      const chartH = h - padBottom - 10;
+
+      let viewStart = 0;
+      let viewEnd = maxDataPoints - 1;
+      if (zoomRange) {
+        viewStart = zoomRange.startIdx;
+        viewEnd = zoomRange.endIdx;
+      }
+      const viewPoints = Math.max(2, viewEnd - viewStart + 1);
+
+      let globalMaxRTT = 10;
+      for (const [_, t] of targetsMap) {
+        const offset = maxDataPoints - t.history.length;
+        for (let i = 0; i < t.history.length; i++) {
+          const globalIdx = offset + i;
+          if (globalIdx >= viewStart && globalIdx <= viewEnd) {
+            const item = t.history[i];
+            if (item.success && item.rtt > globalMaxRTT) {
+              globalMaxRTT = item.rtt;
+            }
+          }
+        }
+      }
+      globalMaxRTT *= 1.25;
+
+      targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+      targetCtx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = 10 + (chartH / 4) * i;
+        targetCtx.beginPath();
+        targetCtx.moveTo(padLeft, y);
+        targetCtx.lineTo(w - 10, y);
+        targetCtx.stroke();
+
+        targetCtx.fillStyle = '#9CA3AF';
+        targetCtx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        targetCtx.textAlign = 'right';
+        const labelVal = (globalMaxRTT - (globalMaxRTT / 4) * i).toFixed(0);
+        targetCtx.fillText(`${labelVal}ms`, padLeft - 8, y + 4);
+      }
+
+      const numTicks = 5;
+      for (let stepIdx = 0; stepIdx < numTicks; stepIdx++) {
+        const targetFraction = stepIdx / (numTicks - 1);
+        const tickColIdx = Math.round(viewStart + targetFraction * (viewPoints - 1));
+        const tickX = padLeft + targetFraction * chartW;
+
+        let tickTime = '';
+        for (const [_, t] of targetsMap) {
+          const offset = maxDataPoints - t.history.length;
+          const histIdx = tickColIdx - offset;
+          if (histIdx >= 0 && histIdx < t.history.length) {
+            tickTime = t.history[histIdx].timestamp;
+            if (tickTime) break;
+          }
+        }
+
+        targetCtx.beginPath();
+        targetCtx.setLineDash([2, 4]);
+        targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+        targetCtx.moveTo(tickX, 10);
+        targetCtx.lineTo(tickX, 10 + chartH);
+        targetCtx.stroke();
+        targetCtx.setLineDash([]);
+
+        if (tickTime) {
+          targetCtx.fillStyle = '#9CA3AF';
+          targetCtx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+          targetCtx.textAlign = stepIdx === 0 ? 'left' : (stepIdx === numTicks - 1 ? 'right' : 'center');
+          targetCtx.fillText(tickTime, tickX, 10 + chartH + 20);
+        }
+      }
+
+      const step = chartW / (viewPoints - 1);
+      const targetEntries = Array.from(targetsMap.entries());
+      const numTargets = Math.max(1, targetEntries.length);
+
+      if (chartVisualizationMode === 'bars') {
+        const slotWidth = step * 0.82;
+        const subBarWidth = Math.max(2, (slotWidth / numTargets) - 1);
+
+        targetEntries.forEach(([_, t], tIdx) => {
+          if (t.history.length === 0) return;
+          const offset = maxDataPoints - t.history.length;
+
+          for (let i = 0; i < t.history.length; i++) {
+            const globalIdx = offset + i;
+            if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+            const item = t.history[i];
+            const colCenterX = padLeft + (globalIdx - viewStart) * step;
+            const barX = colCenterX - (slotWidth / 2) + tIdx * (subBarWidth + 1);
+            const val = item.success ? item.rtt : 0;
+            const barH = Math.max(2, (val / globalMaxRTT) * chartH);
+            const barY = 10 + chartH - barH;
+
+            targetCtx.fillStyle = item.success ? t.color : '#EF4444';
+            targetCtx.fillRect(barX, barY, subBarWidth, barH);
+          }
+        });
+      } else {
+        for (const [_, t] of targetsMap) {
+          if (t.history.length === 0) continue;
+          const offset = maxDataPoints - t.history.length;
+
+          targetCtx.beginPath();
+          let first = true;
+          for (let i = 0; i < t.history.length; i++) {
+            const globalIdx = offset + i;
+            if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+            const item = t.history[i];
+            const x = padLeft + (globalIdx - viewStart) * step;
+            const val = item.success ? item.rtt : 0;
+            const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+
+            if (first) {
+              targetCtx.moveTo(x, y);
+              first = false;
+            } else {
+              targetCtx.lineTo(x, y);
+            }
+          }
+
+          targetCtx.strokeStyle = t.color;
+          targetCtx.lineWidth = 2.2;
+          targetCtx.stroke();
+
+          if (targetsMap.size === 1) {
+            const visibleHist = t.history.filter((_, idx) => (offset + idx >= viewStart && offset + idx <= viewEnd));
+            if (visibleHist.length > 0) {
+              const firstIdx = offset + t.history.indexOf(visibleHist[0]);
+              const lastIdx = offset + t.history.indexOf(visibleHist[visibleHist.length - 1]);
+              const startX = padLeft + (firstIdx - viewStart) * step;
+              const endX = padLeft + (lastIdx - viewStart) * step;
+
+              targetCtx.lineTo(endX, 10 + chartH);
+              targetCtx.lineTo(startX, 10 + chartH);
+              targetCtx.closePath();
+              const grad = targetCtx.createLinearGradient(0, 0, 0, h);
+              grad.addColorStop(0, 'rgba(56, 189, 248, 0.22)');
+              grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+              targetCtx.fillStyle = grad;
+              targetCtx.fill();
+            }
+          }
+
+          for (let i = 0; i < t.history.length; i++) {
+            const globalIdx = offset + i;
+            if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+            const item = t.history[i];
+            const x = padLeft + (globalIdx - viewStart) * step;
+            const val = item.success ? item.rtt : 0;
+            const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+
+            targetCtx.beginPath();
+            targetCtx.arc(x, y, item.success ? 3.5 : 4.5, 0, Math.PI * 2);
+            targetCtx.fillStyle = item.success ? t.color : '#EF4444';
+            targetCtx.fill();
+          }
+        }
+      }
+    }
+
+    function exportChartPNG() {
+      const exportW = Math.max(canvas.width, 1040);
+      const isFleet = targetsMap.size > 1;
+      const tableRowsCount = isFleet ? targetsMap.size : 1;
+      const tableHeight = isFleet ? (36 + tableRowsCount * 26 + 10) : 60;
+      const chartHeaderH = 34;
+      const chartExportH = 460; // Always render at full maximized height
+      const totalH = 50 + tableHeight + chartHeaderH + chartExportH + 24;
+
+      const offscreen = document.createElement('canvas');
+      offscreen.width = exportW;
+      offscreen.height = totalH;
+      const octx = offscreen.getContext('2d');
+
+      // 1. Draw solid dark background
+      octx.fillStyle = '#0B0F19';
+      octx.fillRect(0, 0, exportW, totalH);
+
+      // Top Title Bar Card
+      octx.fillStyle = '#111827';
+      octx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      octx.lineWidth = 1;
+      octx.beginPath();
+      if (octx.roundRect) {
+        octx.roundRect(14, 12, exportW - 28, totalH - 24, 12);
+      } else {
+        octx.rect(14, 12, exportW - 28, totalH - 24);
+      }
+      octx.fill();
+      octx.stroke();
+
+      // Title & Timestamp
+      octx.fillStyle = '#38BDF8';
+      octx.font = '700 15px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+      octx.textAlign = 'left';
+      octx.fillText('netping Telemetry Report', 30, 36);
+
+      const now = new Date();
+      const timeStr = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+      octx.fillStyle = '#9CA3AF';
+      octx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+      octx.textAlign = 'right';
+      octx.fillText(timeStr, exportW - 30, 36);
+
+      let currentY = 56;
+
+      // 2. Render Fleet Summary Table or Single KPI Bar
+      if (isFleet) {
+        octx.fillStyle = 'rgba(31, 41, 55, 0.7)';
+        octx.fillRect(24, currentY, exportW - 48, 26);
+
+        octx.fillStyle = '#9CA3AF';
+        octx.font = '600 10.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        octx.textAlign = 'left';
+
+        const colX = {
+          target: 34,
+          proto: 280,
+          ip: 360,
+          sent: 540,
+          recv: 610,
+          loss: 680,
+          last: 760,
+          avg: 845,
+          max: 930
+        };
+
+        octx.fillText('TARGET', colX.target, currentY + 17);
+        octx.fillText('PROTOCOL', colX.proto, currentY + 17);
+        octx.fillText('RESOLVED IP', colX.ip, currentY + 17);
+        octx.fillText('SENT', colX.sent, currentY + 17);
+        octx.fillText('RECV', colX.recv, currentY + 17);
+        octx.fillText('LOSS %', colX.loss, currentY + 17);
+        octx.fillText('LAST (MS)', colX.last, currentY + 17);
+        octx.fillText('AVG (MS)', colX.avg, currentY + 17);
+        octx.fillText('MAX (MS)', colX.max, currentY + 17);
+
+        currentY += 26;
+
+        for (const [name, t] of targetsMap) {
+          octx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+          octx.fillRect(24, currentY, exportW - 48, 25);
+
+          // Dot
+          octx.beginPath();
+          octx.arc(colX.target + 4, currentY + 12, 4, 0, Math.PI * 2);
+          octx.fillStyle = t.color;
+          octx.fill();
+
+          // Target Name
+          octx.fillStyle = '#F3F4F6';
+          octx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+          octx.fillText(name, colX.target + 14, currentY + 16);
+
+          // Protocol
+          octx.fillStyle = '#38BDF8';
+          octx.fillText(t.protocol, colX.proto, currentY + 16);
+
+          // IP
+          octx.fillStyle = '#9CA3AF';
+          octx.fillText(t.ip, colX.ip, currentY + 16);
+
+          // Sent / Recv
+          octx.fillStyle = '#F3F4F6';
+          octx.fillText(String(t.sent), colX.sent, currentY + 16);
+          octx.fillStyle = '#10B981';
+          octx.fillText(String(t.recv), colX.recv, currentY + 16);
+
+          // Loss
+          const lossColor = t.lossPercent > 0 ? '#EF4444' : '#10B981';
+          octx.fillStyle = lossColor;
+          octx.fillText(`${t.lossPercent.toFixed(1)}%`, colX.loss, currentY + 16);
+
+          // Latencies
+          octx.fillStyle = '#38BDF8';
+          octx.fillText(t.latestRTT.toFixed(2), colX.last, currentY + 16);
+          octx.fillStyle = '#F3F4F6';
+          octx.fillText(t.avgRTT.toFixed(2), colX.avg, currentY + 16);
+          octx.fillText(t.maxRTT.toFixed(2), colX.max, currentY + 16);
+
+          currentY += 26;
+        }
+        currentY += 10;
+      } else {
+        const firstTarget = targetsMap.values().next().value;
+        if (firstTarget) {
+          octx.fillStyle = 'rgba(31, 41, 55, 0.5)';
+          octx.beginPath();
+          if (octx.roundRect) {
+            octx.roundRect(24, currentY, exportW - 48, 50, 6);
+          } else {
+            octx.rect(24, currentY, exportW - 48, 50);
+          }
+          octx.fill();
+
+          octx.fillStyle = '#38BDF8';
+          octx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+          octx.fillText(`Target: ${firstTarget.target} (${firstTarget.protocol})`, 36, currentY + 22);
+
+          octx.fillStyle = '#F3F4F6';
+          octx.fillText(`Last: ${firstTarget.latestRTT.toFixed(2)} ms   Avg: ${firstTarget.avgRTT.toFixed(2)} ms   Max: ${firstTarget.maxRTT.toFixed(2)} ms`, 36, currentY + 40);
+
+          octx.textAlign = 'right';
+          const lossCol = firstTarget.lossPercent > 0 ? '#EF4444' : '#10B981';
+          octx.fillStyle = lossCol;
+          octx.fillText(`Loss: ${firstTarget.lossPercent.toFixed(1)}% (${firstTarget.failed} lost / ${firstTarget.sent} sent)`, exportW - 36, currentY + 30);
+          octx.textAlign = 'left';
+        }
+        currentY += 60;
+      }
+
+      // Divider Line
+      octx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      octx.beginPath();
+      octx.moveTo(24, currentY);
+      octx.lineTo(exportW - 24, currentY);
+      octx.stroke();
+      currentY += 12;
+
+      // 3. Chart Section Title & Legend
+      octx.fillStyle = '#F3F4F6';
+      octx.font = '700 12.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+      octx.fillText('Real-Time Latency Waveform', 30, currentY + 12);
+
+      let legendX = 240;
+      for (const [name, t] of targetsMap) {
+        if (legendX + 160 < exportW - 20) {
+          octx.beginPath();
+          octx.arc(legendX, currentY + 8, 3.5, 0, Math.PI * 2);
+          octx.fillStyle = t.color;
+          octx.fill();
+
+          octx.fillStyle = '#9CA3AF';
+          octx.font = '500 10.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+          octx.fillText(name, legendX + 8, currentY + 12);
+          legendX += (name.length * 7.5 + 40);
+        }
+      }
+      currentY += 22;
+
+      // 4. Render High-Resolution 460px Chart directly into offscreen context
+      const tempChartCanvas = document.createElement('canvas');
+      tempChartCanvas.width = exportW - 40;
+      tempChartCanvas.height = chartExportH;
+      const tctx = tempChartCanvas.getContext('2d');
+      renderChartOnContext(tctx, exportW - 40, chartExportH);
+
+      octx.drawImage(tempChartCanvas, 20, currentY);
+
+      // 5. Trigger download
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `netping-telemetry-snapshot-${timestamp}.png`;
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = offscreen.toDataURL('image/png');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showToast(`✔ Exported ${filename}`);
+      closeActionMenu();
+    }
+
+    function openApiSpecsModal() {
+      const modal = document.getElementById('apiSpecsModal');
+      if (modal) modal.style.display = 'flex';
+      closeActionMenu();
+    }
+
+    function closeApiSpecsModal() {
+      const modal = document.getElementById('apiSpecsModal');
+      if (modal) modal.style.display = 'none';
+    }
+
     // Keyboard navigation
     window.addEventListener('keydown', (e) => {
       const modal = document.getElementById('exportModal');
-      const isOpen = modal.style.display === 'flex';
+      const isExportOpen = modal && modal.style.display === 'flex';
+      const apiModal = document.getElementById('apiSpecsModal');
+      const isApiOpen = apiModal && apiModal.style.display === 'flex';
 
-      if (e.key === 's' || e.key === 'S') {
-        if (!isOpen && document.activeElement.tagName !== 'INPUT') {
-          e.preventDefault();
-          openExportModal();
-        }
-      } else if (isOpen) {
-        if (e.key === 'Escape') {
+      if (e.key === 'Escape') {
+        if (isExportOpen) {
           e.preventDefault();
           closeExportModal();
-        } else if (e.key >= '1' && e.key <= '6' && document.activeElement.tagName !== 'INPUT') {
+        }
+        if (isApiOpen) {
+          e.preventDefault();
+          closeApiSpecsModal();
+        }
+        closeActionMenu();
+      } else if ((e.key === 's' || e.key === 'S') && !isExportOpen && !isApiOpen && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        openExportModal();
+      } else if (isExportOpen) {
+        if (e.key >= '1' && e.key <= '6' && document.activeElement.tagName !== 'INPUT') {
           e.preventDefault();
           selectFormat(parseInt(e.key));
         } else if (e.key === 'Enter' && document.activeElement.tagName !== 'INPUT') {
@@ -1176,8 +2373,36 @@
       }
     });
 
+    // Load initial metrics snapshot via REST API
+    async function loadInitialMetrics() {
+      try {
+        const resp = await fetch('/api/v1/metrics');
+        if (!resp.ok) return;
+        const m = await resp.json();
+        if (m.targets && m.targets.length > 0) {
+          for (const t of m.targets) {
+            const tgtName = t.hostname ? `${t.hostname}:${t.port}` : `${t.ip}:${t.port}`;
+            const tState = getTargetColor(tgtName);
+            tState.protocol = t.protocol || tState.protocol;
+            tState.ip = t.ip || tState.ip;
+            tState.sent = t.total_sent;
+            tState.recv = t.total_success;
+            tState.failed = t.total_failed;
+            tState.latestRTT = t.latest_rtt;
+            tState.minRTT = t.min_rtt;
+            tState.maxRTT = t.max_rtt;
+            tState.avgRTT = t.avg_rtt;
+            tState.lossPercent = t.packet_loss;
+          }
+          checkFleetMode();
+          drawChart();
+        }
+      } catch (e) {}
+    }
+    loadInitialMetrics();
+
     // Connect to Server-Sent Events (SSE) stream
-    const evtSource = new EventSource('/api/stream');
+    const evtSource = new EventSource('/api/v1/stream');
 
     evtSource.onmessage = function(e) {
       const data = JSON.parse(e.data);
@@ -1251,6 +2476,13 @@
         <td style="color:var(--text-muted);">${endpoint}</td>
         <td>${diag}</td>
       `;
+
+      if (currentFilterQuery) {
+        const rowText = tr.innerText.toLowerCase();
+        if (!rowText.includes(currentFilterQuery)) {
+          tr.style.display = 'none';
+        }
+      }
 
       tableBody.insertBefore(tr, tableBody.firstChild);
       if (tableBody.children.length > 100) {

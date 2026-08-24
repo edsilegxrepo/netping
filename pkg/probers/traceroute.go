@@ -140,9 +140,3 @@ func probeTTL(ctx context.Context, targetAddr string, ttl int, timeout time.Dura
 	// On TCP RST / Connection Refused from destination, destination host is reached
 	return rtt, nil, true, nil
 }
-
-// setSocketTTL sets the IP TTL option on the raw socket file descriptor.
-func setSocketTTL(fd uintptr, ttl int) error {
-	// IPPROTO_IP = 0, IP_TTL = 4 (standard across Windows/Linux/Darwin)
-	return syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_IP, 4, ttl)
-}

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -89,6 +90,11 @@ type multiProbeMsg struct {
 
 type tickMsg time.Time
 
+type exportResultMsg struct {
+	err  error
+	path string
+}
+
 type modalState int
 
 const (
@@ -145,6 +151,7 @@ type singleDashboardModel struct {
 	port           uint16
 	protocol       string
 	stats          stats.Statistics
+	rawStats       *stats.Statistics
 	recentRTTs     []float64
 	recentProbes   []string
 	probeHistory   []SingleProbeExportRecord
@@ -175,6 +182,7 @@ func newSingleDashboardModel(target string, port uint16, protocol string, initia
 		target:       target,
 		port:         port,
 		protocol:     protocol,
+		rawStats:     initialStats,
 		stats:        st,
 		recentRTTs:   make([]float64, 0, 100),
 		recentProbes: make([]string, 0, 100),
@@ -243,15 +251,20 @@ func (m *singleDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.modalState = modalNone
 				return m, nil
 			case tea.KeyEnter:
-				err := ExportSingleTarget(m.target, m.port, m.protocol, &m.stats, m.probeHistory, ExportFormat(m.selectedFormat), m.inputPath)
-				if err != nil {
-					m.flashMsg = styleRed.Render(fmt.Sprintf("✖ Export failed: %s", err.Error()))
-				} else {
-					m.flashMsg = styleGreen.Render(fmt.Sprintf("✔ Saved to %s", m.inputPath))
-				}
-				m.flashTime = time.Now()
+				target := m.target
+				port := m.port
+				proto := m.protocol
+				statCopy := m.stats
+				historyCopy := slices.Clone(m.probeHistory)
+				fmtIdx := ExportFormat(m.selectedFormat)
+				destPath := m.inputPath
 				m.modalState = modalNone
-				return m, nil
+				m.flashMsg = styleDim.Render("Saving export...")
+				m.flashTime = time.Now()
+				return m, func() tea.Msg {
+					err := ExportSingleTarget(target, port, proto, &statCopy, historyCopy, fmtIdx, destPath)
+					return exportResultMsg{err: err, path: destPath}
+				}
 			case tea.KeyBackspace:
 				if len(m.inputPath) > 0 {
 					m.inputPath = m.inputPath[:len(m.inputPath)-1]
@@ -279,6 +292,15 @@ func (m *singleDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputPath = GenerateDefaultExportPath(false, ExportFormat(0))
 			return m, nil
 		}
+
+	case exportResultMsg:
+		if msg.err != nil {
+			m.flashMsg = styleRed.Render(fmt.Sprintf("✖ Export failed: %s", msg.err.Error()))
+		} else {
+			m.flashMsg = styleGreen.Render(fmt.Sprintf("✔ Saved to %s", msg.path))
+		}
+		m.flashTime = time.Now()
+		return m, nil
 
 	case tickMsg:
 		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
@@ -635,15 +657,19 @@ func (m *multiDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.modalState = modalNone
 				return m, nil
 			case tea.KeyEnter:
-				err := ExportMultiTarget(m.targets, m.startTime, m.probeHistory, ExportFormat(m.selectedFormat), m.inputPath)
-				if err != nil {
-					m.flashMsg = styleRed.Render(fmt.Sprintf("✖ Export failed: %s", err.Error()))
-				} else {
-					m.flashMsg = styleGreen.Render(fmt.Sprintf("✔ Saved to %s", m.inputPath))
-				}
-				m.flashTime = time.Now()
+				targetsCopy := make([]FleetTarget, len(m.targets))
+				copy(targetsCopy, m.targets)
+				historyCopy := slices.Clone(m.probeHistory)
+				startTime := m.startTime
+				fmtIdx := ExportFormat(m.selectedFormat)
+				destPath := m.inputPath
 				m.modalState = modalNone
-				return m, nil
+				m.flashMsg = styleDim.Render("Saving export...")
+				m.flashTime = time.Now()
+				return m, func() tea.Msg {
+					err := ExportMultiTarget(targetsCopy, startTime, historyCopy, fmtIdx, destPath)
+					return exportResultMsg{err: err, path: destPath}
+				}
 			case tea.KeyBackspace:
 				if len(m.inputPath) > 0 {
 					m.inputPath = m.inputPath[:len(m.inputPath)-1]
@@ -671,6 +697,15 @@ func (m *multiDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputPath = GenerateDefaultExportPath(true, ExportFormat(0))
 			return m, nil
 		}
+
+	case exportResultMsg:
+		if msg.err != nil {
+			m.flashMsg = styleRed.Render(fmt.Sprintf("✖ Export failed: %s", msg.err.Error()))
+		} else {
+			m.flashMsg = styleGreen.Render(fmt.Sprintf("✔ Saved to %s", msg.path))
+		}
+		m.flashTime = time.Now()
+		return m, nil
 
 	case tickMsg:
 		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {

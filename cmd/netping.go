@@ -6,9 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/edsilegx/netping/internal/app"
 	"github.com/edsilegx/netping/internal/config"
@@ -492,6 +495,22 @@ func buildPingerForTarget(tCfg config.TargetConfig, cfg config.Config, dialer *n
 }
 
 func main() {
+	if len(os.Args) >= 3 && os.Args[1] == "--internal-async-save" {
+		filePath := os.Args[2]
+		dir := filepath.Dir(filePath)
+		if dir != "" && dir != "." {
+			_ = os.MkdirAll(dir, 0755)
+		}
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			os.Exit(1)
+		}
+		if err := os.WriteFile(filePath, data, 0644); err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	cfg := config.ProcessUserInput()
 
 	printer, err := printers.NewPrinter(cfg.PrinterConfig)
@@ -591,8 +610,28 @@ func main() {
 				webAddr = "127.0.0.1:3000"
 			}
 			broadcaster = web.NewBroadcaster()
-			webServer := web.NewServer(webAddr, workers[0].Stats, broadcaster)
-			_ = webServer.Start(probeCtx)
+			if cfg.HistoryLimit > 0 {
+				broadcaster.SetMaxHistory(int(cfg.HistoryLimit))
+			}
+			fleetSupplier := func() []printers.FleetTarget {
+				fleet := make([]printers.FleetTarget, len(workers))
+				for i, w := range workers {
+					fleet[i] = printers.FleetTarget{
+						Target:      w.Target,
+						Host:        w.Host,
+						Port:        w.Port,
+						Protocol:    string(w.Protocol),
+						ServiceName: w.ServiceName,
+						Stats:       w.Stats,
+					}
+				}
+				return fleet
+			}
+			webServer := web.NewServer(webAddr, nil, broadcaster)
+			webServer.SetTargetsSupplier(fleetSupplier)
+			if err := webServer.Start(probeCtx); err != nil {
+				fmt.Fprintf(os.Stderr, "Error starting web server: %v\n", err)
+			}
 		}
 
 		var multiDash *printers.MultiDashboardPrinter
@@ -639,26 +678,15 @@ func main() {
 			}
 
 			if cfg.EnableWeb && broadcaster != nil {
-				w.Stats.Mu.RLock()
-				total := w.Stats.TotalSuccessfulProbes + w.Stats.TotalUnsuccessfulProbes
-				loss := float64(0)
-				if total > 0 {
-					loss = float64(w.Stats.TotalUnsuccessfulProbes) / float64(total) * 100.0
-				}
-				rttRes := printers.CalcMinAvgMaxRttTime(w.Stats.RTT)
-				ipStr := w.Stats.IP.String()
-				hostname := w.Stats.Hostname
-				port := w.Stats.Port
-				w.Stats.Mu.RUnlock()
-
+				snap := w.Stats.Snapshot()
 				proto := strings.ToUpper(string(w.Protocol))
 				if proto == "" {
 					proto = "TCP"
 				}
 
-				targetDisplay := fmt.Sprintf("%s:%d", hostname, port)
-				if hostname == "" || hostname == ipStr {
-					targetDisplay = fmt.Sprintf("%s:%d", ipStr, port)
+				targetDisplay := fmt.Sprintf("%s:%d", snap.Hostname, snap.Port)
+				if snap.Hostname == "" || snap.Hostname == snap.IP {
+					targetDisplay = fmt.Sprintf("%s:%d", snap.IP, snap.Port)
 				}
 
 				diagStr := ""
@@ -667,25 +695,25 @@ func main() {
 				}
 
 				broadcaster.Broadcast(web.ProbeEvent{
-					Sequence:     total,
+					RawTime:      time.Now(),
+					Sequence:     snap.TotalSent,
 					Success:      res.Err == nil,
 					RTT:          res.RTT.Seconds() * 1000,
 					Target:       targetDisplay,
-					Hostname:     hostname,
-					IP:           ipStr,
-					Port:         port,
+					Hostname:     snap.Hostname,
+					IP:           snap.IP,
+					Port:         snap.Port,
 					Protocol:     proto,
 					Diagnostics:  diagStr,
 					Error:        utils.ClassifyError(res.Err),
-					TotalSent:    total,
-					TotalSuccess: w.Stats.TotalSuccessfulProbes,
-					TotalFailed:  w.Stats.TotalUnsuccessfulProbes,
-					PacketLoss:   loss,
-					AvgRTT:       float64(rttRes.Average),
-					MinRTT:       float64(rttRes.Min),
-					MaxRTT:       float64(rttRes.Max),
-					P95RTT:       float64(rttRes.P95),
-					P99RTT:       float64(rttRes.P99),
+					TotalSent:    snap.TotalSent,
+					TotalSuccess: snap.TotalSuccess,
+					TotalFailed:  snap.TotalFailed,
+					PacketLoss:   snap.PacketLoss,
+					AvgRTT:       float64(snap.AvgRTT),
+					MinRTT:       float64(snap.MinRTT),
+					MaxRTT:       float64(snap.MaxRTT),
+					Jitter:       float64(snap.Jitter),
 				})
 			}
 		}
@@ -783,30 +811,24 @@ func main() {
 			webAddr = "127.0.0.1:3000"
 		}
 		broadcaster := web.NewBroadcaster()
+		if cfg.HistoryLimit > 0 {
+			broadcaster.SetMaxHistory(int(cfg.HistoryLimit))
+		}
 		webServer := web.NewServer(webAddr, stat, broadcaster)
-		_ = webServer.Start(probeCtx)
+		if err := webServer.Start(probeCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting web server: %v\n", err)
+		}
 
 		onProbe = func(res probers.ProbeResult, s *stats.Statistics) {
-			s.Mu.RLock()
-			total := s.TotalSuccessfulProbes + s.TotalUnsuccessfulProbes
-			loss := float64(0)
-			if total > 0 {
-				loss = float64(s.TotalUnsuccessfulProbes) / float64(total) * 100.0
-			}
-			rttRes := printers.CalcMinAvgMaxRttTime(s.RTT)
-			ipStr := s.IP.String()
-			hostname := s.Hostname
-			port := s.Port
-			s.Mu.RUnlock()
-
+			snap := s.Snapshot()
 			proto := strings.ToUpper(string(cfg.Protocol))
 			if proto == "" {
 				proto = "TCP"
 			}
 
-			targetDisplay := fmt.Sprintf("%s:%d", hostname, port)
-			if hostname == "" || hostname == ipStr {
-				targetDisplay = fmt.Sprintf("%s:%d", ipStr, port)
+			targetDisplay := fmt.Sprintf("%s:%d", snap.Hostname, snap.Port)
+			if snap.Hostname == "" || snap.Hostname == snap.IP {
+				targetDisplay = fmt.Sprintf("%s:%d", snap.IP, snap.Port)
 			}
 
 			diagStr := ""
@@ -815,26 +837,25 @@ func main() {
 			}
 
 			broadcaster.Broadcast(web.ProbeEvent{
-				Sequence:     total,
+				RawTime:      time.Now(),
+				Sequence:     snap.TotalSent,
 				Success:      res.Err == nil,
 				RTT:          res.RTT.Seconds() * 1000,
 				Target:       targetDisplay,
-				Hostname:     hostname,
-				IP:           ipStr,
-				Port:         port,
+				Hostname:     snap.Hostname,
+				IP:           snap.IP,
+				Port:         snap.Port,
 				Protocol:     proto,
 				Diagnostics:  diagStr,
 				Error:        utils.ClassifyError(res.Err),
-				TotalSent:    total,
-				TotalSuccess: s.TotalSuccessfulProbes,
-				TotalFailed:  s.TotalUnsuccessfulProbes,
-				PacketLoss:   loss,
-				AvgRTT:       float64(rttRes.Average),
-				MinRTT:       float64(rttRes.Min),
-				MaxRTT:       float64(rttRes.Max),
-				P95RTT:       float64(rttRes.P95),
-				P99RTT:       float64(rttRes.P99),
-				Jitter:       float64(rttRes.Jitter),
+				TotalSent:    snap.TotalSent,
+				TotalSuccess: snap.TotalSuccess,
+				TotalFailed:  snap.TotalFailed,
+				PacketLoss:   snap.PacketLoss,
+				AvgRTT:       float64(snap.AvgRTT),
+				MinRTT:       float64(snap.MinRTT),
+				MaxRTT:       float64(snap.MaxRTT),
+				Jitter:       float64(snap.Jitter),
 			})
 		}
 	}

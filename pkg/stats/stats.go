@@ -2,6 +2,7 @@ package stats
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"net/netip"
 	"sync"
@@ -43,6 +44,11 @@ type Statistics struct {
 	LongestDown               LongestTime
 	RTT                       []float32
 	LatestRTT                 float32
+	MinRTT                    float32
+	MaxRTT                    float32
+	SumRTT                    float64
+	CountRTT                  uint
+	Jitter                    float32
 	LastFailureReason         string
 	RTTResults                RTTResult
 	HostChanges               []HostnameChange
@@ -162,4 +168,140 @@ func NewLongestTime(startTime time.Time, duration time.Duration) LongestTime {
 type HostnameChange struct {
 	Addr netip.Addr // New IP address associated with the hostname.
 	When time.Time  // Timestamp of when the change occurred.
+}
+
+// Snapshot provides an immutable point-in-time snapshot of target statistics.
+type Snapshot struct {
+	Hostname              string    `json:"hostname"`
+	IP                    string    `json:"ip"`
+	Port                  uint16    `json:"port"`
+	Protocol              string    `json:"protocol"`
+	TotalSent             uint      `json:"total_sent"`
+	TotalSuccess          uint      `json:"total_success"`
+	TotalFailed           uint      `json:"total_failed"`
+	PacketLoss            float64   `json:"packet_loss"`
+	LatestRTT             float32   `json:"latest_rtt"`
+	MinRTT                float32   `json:"min_rtt"`
+	AvgRTT                float32   `json:"avg_rtt"`
+	MaxRTT                float32   `json:"max_rtt"`
+	Jitter                float32   `json:"jitter"`
+	LastSuccessfulProbe   time.Time `json:"last_successful_probe,omitempty"`
+	LastUnsuccessfulProbe time.Time `json:"last_unsuccessful_probe,omitempty"`
+	LastFailureReason     string    `json:"last_failure_reason,omitempty"`
+	UptimeDuration        string    `json:"uptime_duration"`
+	StartTime             time.Time `json:"start_time"`
+}
+
+// RecordSuccess updates statistics for a successful probe in O(1) time.
+func (s *Statistics) RecordSuccess(rtt float32, now time.Time) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.TotalSuccessfulProbes++
+	s.Successful++
+	s.HasResults = true
+	s.OngoingSuccessfulProbes++
+	s.OngoingUnsuccessfulProbes = 0
+	s.LastSuccessfulProbe = now
+
+	if s.CountRTT == 0 {
+		s.MinRTT = rtt
+		s.MaxRTT = rtt
+		s.SumRTT = float64(rtt)
+		s.CountRTT = 1
+		s.Jitter = 0
+	} else {
+		if rtt < s.MinRTT {
+			s.MinRTT = rtt
+		}
+		if rtt > s.MaxRTT {
+			s.MaxRTT = rtt
+		}
+		s.SumRTT += float64(rtt)
+		s.CountRTT++
+		d := math.Abs(float64(rtt - s.LatestRTT))
+		s.Jitter += float32((d - float64(s.Jitter)) / 16.0)
+	}
+	s.LatestRTT = rtt
+	s.RTT = append(s.RTT, rtt)
+	if len(s.RTT) > 5000 {
+		s.RTT = s.RTT[len(s.RTT)-5000:]
+	}
+}
+
+// RecordFailure updates statistics for a failed probe in O(1) time.
+func (s *Statistics) RecordFailure(reason string, now time.Time) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.TotalUnsuccessfulProbes++
+	s.Failed++
+	s.OngoingUnsuccessfulProbes++
+	s.OngoingSuccessfulProbes = 0
+	s.LastUnsuccessfulProbe = now
+	s.LastFailureReason = reason
+	s.LastFailureReason = reason
+}
+
+// Snapshot returns an immutable point-in-time snapshot of the statistics.
+func (s *Statistics) Snapshot() Snapshot {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+
+	total := s.TotalSuccessfulProbes + s.TotalUnsuccessfulProbes
+	loss := float64(0)
+	if total > 0 {
+		loss = float64(s.TotalUnsuccessfulProbes) / float64(total) * 100.0
+	}
+
+	avg := float32(0)
+	if s.CountRTT > 0 {
+		avg = float32(s.SumRTT / float64(s.CountRTT))
+	}
+
+	uptimeStr := ""
+	if !s.StartTime.IsZero() {
+		uptimeStr = time.Since(s.StartTime).Round(time.Second).String()
+	}
+
+	return Snapshot{
+		Hostname:              s.Hostname,
+		IP:                    s.IP.String(),
+		Port:                  s.Port,
+		Protocol:              string(s.Protocol),
+		TotalSent:             total,
+		TotalSuccess:          s.TotalSuccessfulProbes,
+		TotalFailed:           s.TotalUnsuccessfulProbes,
+		PacketLoss:            loss,
+		LatestRTT:             s.LatestRTT,
+		MinRTT:                s.MinRTT,
+		AvgRTT:                avg,
+		MaxRTT:                s.MaxRTT,
+		Jitter:                s.Jitter,
+		LastSuccessfulProbe:   s.LastSuccessfulProbe,
+		LastUnsuccessfulProbe: s.LastUnsuccessfulProbe,
+		LastFailureReason:     s.LastFailureReason,
+		UptimeDuration:        uptimeStr,
+		StartTime:             s.StartTime,
+	}
+}
+
+// Reset clears historical RTT and counter metrics while preserving target identity.
+func (s *Statistics) Reset() {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.RTT = make([]float32, 0, 500)
+	s.MinRTT = 0
+	s.MaxRTT = 0
+	s.SumRTT = 0
+	s.CountRTT = 0
+	s.LatestRTT = 0
+	s.Jitter = 0
+	s.TotalSuccessfulProbes = 0
+	s.TotalUnsuccessfulProbes = 0
+	s.Successful = 0
+	s.Failed = 0
+	s.OngoingSuccessfulProbes = 0
+	s.OngoingUnsuccessfulProbes = 0
+	s.StartTime = time.Now()
 }

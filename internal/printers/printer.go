@@ -142,17 +142,21 @@ func CalcMinAvgMaxRttTime(timeArr []float32) stats.RTTResult {
 	}
 
 	var sum float32
-
 	for _, t := range timeArr {
 		sum += t
 	}
 
-	result.Min = slices.Min(timeArr)
-	result.Max = slices.Max(timeArr)
+	sorted := slices.Clone(timeArr)
+	slices.Sort(sorted)
+
+	result.Min = sorted[0]
+	result.Max = sorted[arrLen-1]
 	result.Average = sum / float32(arrLen)
 	result.Jitter = utils.CalculateJitter(timeArr)
-	result.P95 = utils.CalculatePercentile(timeArr, 95)
-	result.P99 = utils.CalculatePercentile(timeArr, 99)
+
+	pcts := utils.CalculatePercentilesSorted(sorted, 95, 99)
+	result.P95 = pcts[0]
+	result.P99 = pcts[1]
 	result.HasResults = true
 
 	return result

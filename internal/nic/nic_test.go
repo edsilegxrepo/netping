@@ -90,12 +90,18 @@ func TestNewNetworkInterface_ValidInterfaceName(t *testing.T) {
 	// Test with IPv6 preference
 	_, _ = NewNetworkInterface(validIface, target, 53, false, true, time.Second)
 
-	// Test loopback interface
+	// Test loopback interface with both v4 and v6
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagLoopback != 0 {
-			res, err := NewNetworkInterface(iface.Name, target, 80, true, false, time.Second)
+			res4, err := NewNetworkInterface(iface.Name, target, 80, true, false, time.Second)
 			if err == nil {
-				assert.True(t, res.Use)
+				assert.True(t, res4.Use)
+				assert.NotNil(t, res4.RemoteAddr)
+			}
+			res6, err := NewNetworkInterface(iface.Name, target, 80, false, true, time.Second)
+			if err == nil {
+				assert.True(t, res6.Use)
+				assert.NotNil(t, res6.RemoteAddr)
 			}
 			break
 		}

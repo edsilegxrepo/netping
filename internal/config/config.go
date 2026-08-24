@@ -582,6 +582,7 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		Resolver:                   resolver,
 		ShouldRetryResolve:         primaryTarget.ShouldRetryResolve,
 		RetryResolveAfterNFailures: *opts.retryHostnameResolveAfterNFailures,
+		RetryHostnameLookupAfter:   *opts.retryHostnameResolveAfterNFailures,
 		NetworkInterface:           networkInterface,
 		PrinterConfig:              printerConfig,
 		SendData:                   *opts.sendData,

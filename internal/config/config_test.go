@@ -393,6 +393,56 @@ func TestParseConfig_FailureScenarios(t *testing.T) {
 	assert.Contains(t, err.Error(), "more than 2 ms")
 }
 
+func TestConfig_FullFieldGetters(t *testing.T) {
+	fs := flag.NewFlagSet("getters", flag.ContinueOnError)
+	cfg, err := ParseConfig(fs, []string{
+		"--host", "example.com",
+		"--port", "443",
+		"--protocol", "https",
+		"--count", "10",
+		"--timeout", "2.0",
+		"--interval", "0.5",
+		"--timestamp",
+		"--show-source-address",
+		"--retry-resolve", "3",
+		"--show-failures-only",
+		"--ipv4",
+	})
+	assert.NoError(t, err)
+
+	assert.Equal(t, "example.com", cfg.GetHostname())
+	assert.Equal(t, uint16(443), cfg.GetPort())
+	assert.Equal(t, consts.HTTPS, cfg.GetProtocol())
+	assert.True(t, cfg.GetUseIPv4())
+	assert.False(t, cfg.GetUseIPv6())
+	assert.Equal(t, "2s", cfg.GetTimeout())
+	assert.Equal(t, uint(10), cfg.GetProbesBeforeQuit())
+	assert.Equal(t, "500ms", cfg.GetIntervalBetweenProbes())
+	assert.True(t, cfg.GetShowFailuresOnly())
+	assert.True(t, cfg.GetShouldRetryResolve())
+	assert.Equal(t, uint(3), cfg.GetRetryResolveAfterNFailures())
+	assert.True(t, cfg.GetWithTimestamp())
+	assert.True(t, cfg.GetWithSourceAddress())
+	assert.NotNil(t, cfg.GetNetworkInterface())
+	assert.Equal(t, cfg.PrinterConfig, cfg.GetPrinterConfig())
+}
+
+func TestParseConfig_MultiTarget_URIs(t *testing.T) {
+	fs := flag.NewFlagSet("uris", flag.ContinueOnError)
+	cfg, err := ParseConfig(fs, []string{
+		"--uri", "https://1.1.1.1:443,dns://8.8.8.8:53,9.9.9.9:53",
+		"--concurrency", "8",
+		"--history-limit", "500000",
+		"--diagnostics",
+	})
+	assert.NoError(t, err)
+
+	assert.Equal(t, 3, len(cfg.Targets))
+	assert.Equal(t, uint(8), cfg.Concurrency)
+	assert.Equal(t, uint(500000), cfg.HistoryLimit)
+	assert.True(t, cfg.ShowDiags)
+}
+
 
 
 

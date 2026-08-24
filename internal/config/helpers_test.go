@@ -1,6 +1,9 @@
 package config
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/edsilegx/netping/pkg/consts"
@@ -320,6 +323,119 @@ func TestResolveTargetPool(t *testing.T) {
 	_, err = ResolveTargetPool("", "", "", "", "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "--host, --port, or --uri")
+}
+
+func TestResolveProtocolAndPort_Comprehensive(t *testing.T) {
+	cases := []struct {
+		protoStr string
+		inPort   string
+		target   string
+		expProto consts.Protocol
+		expPort  string
+	}{
+		{"http", "", "", consts.HTTP, "80"},
+		{"https", "", "", consts.HTTPS, "443"},
+		{"grpc", "", "", consts.GRPC, "50051"},
+		{"icmp", "", "", consts.ICMP, "0"},
+		{"tls", "", "", consts.TLS, "443"},
+		{"dns", "", "", consts.DNS, "53"},
+		{"dot", "", "", consts.DOT, "853"},
+		{"doh", "", "", consts.DOH, "443"},
+		{"redis", "", "", consts.REDIS, "6379"},
+		{"postgres", "", "", consts.POSTGRES, "5432"},
+		{"mysql", "", "", consts.MYSQL, "3306"},
+		{"mssql", "", "", consts.MSSQL, "1433"},
+		{"oracle", "", "", consts.ORACLE, "1521"},
+		{"mongodb", "", "", consts.MONGODB, "27017"},
+		{"cassandra", "", "", consts.CASSANDRA, "9042"},
+		{"saphana", "", "", consts.SAPHANA, "30015"},
+		{"memcached", "", "", consts.MEMCACHED, "11211"},
+		{"smtp", "", "", consts.SMTP, "25"},
+		{"smtps", "", "", consts.SMTPS, "465"},
+		{"imap", "", "", consts.IMAP, "143"},
+		{"imaps", "", "", consts.IMAPS, "993"},
+		{"pop3", "", "", consts.POP3, "110"},
+		{"pop3s", "", "", consts.POP3S, "995"},
+		{"ldap", "", "", consts.LDAP, "389"},
+		{"ldaps", "", "", consts.LDAPS, "636"},
+		{"smb", "", "", consts.SMB, "445"},
+		{"ftp", "", "", consts.FTP, "21"},
+		{"rsync", "", "", consts.RSYNC, "873"},
+		{"kafka", "", "", consts.KAFKA, "9092"},
+		{"rabbitmq", "", "", consts.RABBITMQ, "5672"},
+		{"o365", "", "", consts.O365, "443"},
+		{"s3", "", "", consts.S3, "443"},
+		{"azureblob", "", "", consts.AZUREBLOB, "443"},
+		{"gcs", "", "", consts.GCS, "443"},
+		{"unknown_proto", "9000", "", consts.TCP, "9000"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.protoStr, func(t *testing.T) {
+			p, port, _ := ResolveProtocolAndPort(c.protoStr, c.inPort, c.target)
+			assert.Equal(t, c.expProto, p)
+			assert.Equal(t, c.expPort, port)
+		})
+	}
+}
+
+func TestPrintUsage(t *testing.T) {
+	var buf strings.Builder
+	PrintUsage(&buf)
+	out := buf.String()
+	assert.Contains(t, out, "netping version")
+	assert.Contains(t, out, "TARGET CONFIGURATION:")
+	assert.Contains(t, out, "PROBE EXECUTION & TIMING:")
+	assert.Contains(t, out, "DASHBOARD & WEB MONITORING:")
+}
+
+func TestPrintVersion(t *testing.T) {
+	var buf strings.Builder
+	PrintVersion(&buf)
+	out := buf.String()
+	assert.Contains(t, out, "netping version")
+}
+
+func TestCheckForUpdatesURL(t *testing.T) {
+	origVer := version
+	version = "3.5.2"
+	defer func() { version = origVer }()
+
+	// Mock GitHub release endpoint returning newer version
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"tag_name": "v99.0.0"}`))
+	}))
+	defer ts.Close()
+
+	var buf strings.Builder
+	err := CheckForUpdatesURL(ts.URL, ts.Client(), &buf)
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "Found newer version: 99.0.0")
+
+	// Mock endpoint returning older version
+	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"tag_name": "v1.0.0"}`))
+	}))
+	defer ts2.Close()
+
+	var buf2 strings.Builder
+	err = CheckForUpdatesURL(ts2.URL, ts2.Client(), &buf2)
+	assert.NoError(t, err)
+	assert.Contains(t, buf2.String(), "is newer than the latest release")
+
+	// Mock endpoint returning same version
+	ts3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"tag_name": "v3.5.2"}`))
+	}))
+	defer ts3.Close()
+
+	var buf3 strings.Builder
+	err = CheckForUpdatesURL(ts3.URL, ts3.Client(), &buf3)
+	assert.NoError(t, err)
+	assert.Contains(t, buf3.String(), "You have the latest version")
 }
 
 

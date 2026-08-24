@@ -1,6 +1,7 @@
 package printers
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -85,4 +86,62 @@ func TestExportMultiTarget_TableAlignment(t *testing.T) {
 	assert.NotContains(t, text, "0.0    %")
 	assert.Contains(t, text, "2026-08-23 16:00:00")
 	assert.NotContains(t, text, "0000-01-01")
+}
+
+func TestExportFormats_Single_And_Multi(t *testing.T) {
+	tmpDir := t.TempDir()
+	st := &stats.Statistics{
+		Hostname:                "example.com",
+		Port:                    443,
+		TotalSuccessfulProbes:   5,
+		TotalUnsuccessfulProbes: 0,
+		RTT:                     []float32{12.5, 14.5},
+	}
+
+	targets := []FleetTarget{
+		{
+			Target:   "example.com:443",
+			Host:     "example.com",
+			Port:     443,
+			Protocol: "HTTPS",
+			Stats:    st,
+		},
+	}
+
+	history := []SingleProbeExportRecord{
+		{
+			Timestamp: time.Now(),
+			Seq:       1,
+			Target:    "example.com:443",
+			Protocol:  "HTTPS",
+			IP:        "93.184.216.34",
+			IsSuccess: true,
+			RTTMs:     12.5,
+		},
+	}
+
+	formats := []ExportFormat{
+		FormatJSON,
+		FormatPrettyJSON,
+		FormatCSV,
+		FormatTSV,
+		FormatSQLite3,
+		FormatPlainText,
+	}
+
+	for _, fmtKey := range formats {
+		t.Run(fmt.Sprintf("format_%d", fmtKey), func(t *testing.T) {
+			singlePath := filepath.Join(tmpDir, fmt.Sprintf("single_%d", fmtKey))
+			err := ExportSingleTarget("example.com", 443, "HTTPS", st, history, fmtKey, singlePath)
+			require.NoError(t, err)
+			_, err = os.Stat(singlePath)
+			assert.NoError(t, err)
+
+			multiPath := filepath.Join(tmpDir, fmt.Sprintf("multi_%d", fmtKey))
+			err = ExportMultiTarget(targets, time.Now().Add(-5*time.Second), history, fmtKey, multiPath)
+			require.NoError(t, err)
+			_, err = os.Stat(multiPath)
+			assert.NoError(t, err)
+		})
+	}
 }

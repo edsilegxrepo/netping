@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -470,87 +471,95 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 	return targets, nil
 }
 
-// usage prints how netping should be run with clean categorized sections
-func usage() {
-	fmt.Printf("\nnetping version %s - Multi-Protocol Latency & Diagnostics Prober\n\n", version)
-	fmt.Println("USAGE:")
-	fmt.Println("  netping <host> <port> [options]")
-	fmt.Println("  netping --host <hosts> --port <ports> [options]")
-	fmt.Println("  netping --uri <uri1,uri2,...> [options]")
-	fmt.Println()
-	fmt.Println("EXAMPLES:")
-	fmt.Println("  netping example.com 443")
-	fmt.Println("  netping --host web1,web2 --port 80,443 --protocol https")
-	fmt.Println("  netping --host db-server --protocol postgresql --diags")
-	fmt.Println("  netping --uri cloudflare.com:443 --dashboard")
-	fmt.Println("  netping --host 1.1.1.1,8.8.8.8 --port 53 --output-format csv --output-file ./dns.csv")
-	fmt.Println()
-	fmt.Println("TARGET CONFIGURATION:")
-	fmt.Println("  --host <hosts>             Target hostname(s) or IP(s), comma-separated for multi-target.")
-	fmt.Println("  --port <ports>             Target port(s), comma-separated for multi-port.")
-	fmt.Println("  --uri <uris>               Target URI(s) in host:port or scheme://host:port format.")
-	fmt.Println("  --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, ...).")
-	fmt.Println("  --service <name>           Service name / SID for Oracle database connections.")
-	fmt.Println("  --oracle-service <name>    Alias for --service.")
-	fmt.Println("  --dns-host <domains>       Domain(s) to resolve in DNS query mode (comma-separated).")
-	fmt.Println()
-	fmt.Println("PROBE EXECUTION & TIMING:")
-	fmt.Println("  --count <n>                Stop after <n> probes (default: unlimited).")
-	fmt.Println("  --interval <sec>           Interval between probes in seconds (default: 1.0).")
-	fmt.Println("  --timeout <sec>            Response timeout in seconds (default: 1.0).")
-	fmt.Println("  --concurrency <n>          Maximum parallel prober workers (0 = unconstrained).")
-	fmt.Println("  --ipv4                     Force IPv4 address resolution.")
-	fmt.Println("  --ipv6                     Force IPv6 address resolution.")
-	fmt.Println("  --interface <iface>        Bind to a specific network interface name or source IP.")
-	fmt.Println("  --dns-server <ip:port>     Custom DNS server to use for resolution.")
-	fmt.Println("  --resolve-every-probe      Re-resolve target DNS on every probe cycle.")
-	fmt.Println("  --retry-resolve <n>        Retry resolving target hostname after <n> consecutive failures.")
-	fmt.Println()
-	fmt.Println("SLA & ERROR HANDLING:")
-	fmt.Println("  --max-latency <ms>         Fail probe if latency exceeds threshold in milliseconds.")
-	fmt.Println("  --max-consecutive-fails <n> Stop probing after <n> consecutive failed probes.")
-	fmt.Println("  --retry <n>                Number of transient retry attempts per probe before failing.")
-	fmt.Println("  --retry-backoff <sec>      Initial retry backoff delay in seconds (default: 0.05).")
-	fmt.Println("  --retry-max-backoff <sec>  Maximum retry backoff delay in seconds (default: 2.0).")
-	fmt.Println("  --retry-jitter             Apply randomized jitter to exponential retry backoff.")
-	fmt.Println()
-	fmt.Println("PROTOCOL & PAYLOAD OPTIONS:")
-	fmt.Println("  --send <data>              Send specific payload string upon connection.")
-	fmt.Println("  --expect <data>            Expect specific response string in banner.")
-	fmt.Println("  --starttls                 Upgrade connection via STARTTLS (SMTP, IMAP, POP3).")
-	fmt.Println("  --fast-close               Use SO_LINGER=0 to avoid TIME_WAIT socket accumulation.")
-	fmt.Println("  --traceroute               Perform hop-by-hop Layer-4 route discovery.")
-	fmt.Println()
-	fmt.Println("DASHBOARD & WEB MONITORING:")
-	fmt.Println("  --dashboard                Open interactive live terminal TUI dashboard.")
-	fmt.Println("  --web                      Start embedded real-time web dashboard (default 127.0.0.1:3000).")
-	fmt.Println("  --web-addr <addr>          Custom listen address for web dashboard (e.g. :3000).")
-	fmt.Println("  --metrics-addr <addr>      Enable Prometheus metrics exporter on given address (e.g. :9100).")
-	fmt.Println("  --history-limit <n>        Maximum in-memory historical probe events retained (default: 1000000, max: 5000000).")
-	fmt.Println("  --sparkline                Render live terminal latency sparklines.")
-	fmt.Println()
-	fmt.Println("OUTPUT & REPORTING:")
-	fmt.Println("  --output-format <format>   Export format: json, pretty_json, csv, tsv, sqlite, txt.")
-	fmt.Println("  --output-file <path>       Destination file path to save output report.")
-	fmt.Println("  --quiet                    Quiet mode: suppress per-probe lines, show only final summary.")
-	fmt.Println("  --show-failures-only       Show only failed probes in live output.")
-	fmt.Println("  --show-source-address      Show source IP and port used for probes.")
-	fmt.Println("  --timestamp                Show timestamp for each probe in output.")
-	fmt.Println("  --diags, --diagnostics     Show detailed protocol negotiation diagnostics.")
-	fmt.Println("  --no-color                 Do not colorize terminal output.")
-	fmt.Println()
-	fmt.Println("GENERAL:")
-	fmt.Println("  --help                     Show this help message and exit.")
-	fmt.Println("  --version                  Show version and exit.")
-	fmt.Println("  --check-updates            Check for newer releases on GitHub and exit.")
-	fmt.Println()
+// PrintUsage prints how netping should be run with clean categorized sections to the given writer
+func PrintUsage(w io.Writer) {
+	fmt.Fprintf(w, "\nnetping version %s - Multi-Protocol Latency & Diagnostics Prober\n\n", version)
+	fmt.Fprintln(w, "USAGE:")
+	fmt.Fprintln(w, "  netping <host> <port> [options]")
+	fmt.Fprintln(w, "  netping --host <hosts> --port <ports> [options]")
+	fmt.Fprintln(w, "  netping --uri <uri1,uri2,...> [options]")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "EXAMPLES:")
+	fmt.Fprintln(w, "  netping example.com 443")
+	fmt.Fprintln(w, "  netping --host web1,web2 --port 80,443 --protocol https")
+	fmt.Fprintln(w, "  netping --host db-server --protocol postgresql --diags")
+	fmt.Fprintln(w, "  netping --uri cloudflare.com:443 --dashboard")
+	fmt.Fprintln(w, "  netping --host 1.1.1.1,8.8.8.8 --port 53 --output-format csv --output-file ./dns.csv")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "TARGET CONFIGURATION:")
+	fmt.Fprintln(w, "  --host <hosts>             Target hostname(s) or IP(s), comma-separated for multi-target.")
+	fmt.Fprintln(w, "  --port <ports>             Target port(s), comma-separated for multi-port.")
+	fmt.Fprintln(w, "  --uri <uris>               Target URI(s) in host:port or scheme://host:port format.")
+	fmt.Fprintln(w, "  --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, ...).")
+	fmt.Fprintln(w, "  --service <name>           Service name / SID for Oracle database connections.")
+	fmt.Fprintln(w, "  --oracle-service <name>    Alias for --service.")
+	fmt.Fprintln(w, "  --dns-host <domains>       Domain(s) to resolve in DNS query mode (comma-separated).")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "PROBE EXECUTION & TIMING:")
+	fmt.Fprintln(w, "  --count <n>                Stop after <n> probes (default: unlimited).")
+	fmt.Fprintln(w, "  --interval <sec>           Interval between probes in seconds (default: 1.0).")
+	fmt.Fprintln(w, "  --timeout <sec>            Response timeout in seconds (default: 1.0).")
+	fmt.Fprintln(w, "  --concurrency <n>          Maximum parallel prober workers (0 = unconstrained).")
+	fmt.Fprintln(w, "  --ipv4                     Force IPv4 address resolution.")
+	fmt.Fprintln(w, "  --ipv6                     Force IPv6 address resolution.")
+	fmt.Fprintln(w, "  --interface <iface>        Bind to a specific network interface name or source IP.")
+	fmt.Fprintln(w, "  --dns-server <ip:port>     Custom DNS server to use for resolution.")
+	fmt.Fprintln(w, "  --resolve-every-probe      Re-resolve target DNS on every probe cycle.")
+	fmt.Fprintln(w, "  --retry-resolve <n>        Retry resolving target hostname after <n> consecutive failures.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "SLA & ERROR HANDLING:")
+	fmt.Fprintln(w, "  --max-latency <ms>         Fail probe if latency exceeds threshold in milliseconds.")
+	fmt.Fprintln(w, "  --max-consecutive-fails <n> Stop probing after <n> consecutive failed probes.")
+	fmt.Fprintln(w, "  --retry <n>                Number of transient retry attempts per probe before failing.")
+	fmt.Fprintln(w, "  --retry-backoff <sec>      Initial retry backoff delay in seconds (default: 0.05).")
+	fmt.Fprintln(w, "  --retry-max-backoff <sec>  Maximum retry backoff delay in seconds (default: 2.0).")
+	fmt.Fprintln(w, "  --retry-jitter             Apply randomized jitter to exponential retry backoff.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "PROTOCOL & PAYLOAD OPTIONS:")
+	fmt.Fprintln(w, "  --send <data>              Send specific payload string upon connection.")
+	fmt.Fprintln(w, "  --expect <data>            Expect specific response string in banner.")
+	fmt.Fprintln(w, "  --starttls                 Upgrade connection via STARTTLS (SMTP, IMAP, POP3).")
+	fmt.Fprintln(w, "  --fast-close               Use SO_LINGER=0 to avoid TIME_WAIT socket accumulation.")
+	fmt.Fprintln(w, "  --traceroute               Perform hop-by-hop Layer-4 route discovery.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "DASHBOARD & WEB MONITORING:")
+	fmt.Fprintln(w, "  --dashboard                Open interactive live terminal TUI dashboard.")
+	fmt.Fprintln(w, "  --web                      Start embedded real-time web dashboard (default 127.0.0.1:3000).")
+	fmt.Fprintln(w, "  --web-addr <addr>          Custom listen address for web dashboard (e.g. :3000).")
+	fmt.Fprintln(w, "  --metrics-addr <addr>      Enable Prometheus metrics exporter on given address (e.g. :9100).")
+	fmt.Fprintln(w, "  --history-limit <n>        Maximum in-memory historical probe events retained (default: 1000000, max: 5000000).")
+	fmt.Fprintln(w, "  --sparkline                Render live terminal latency sparklines.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "OUTPUT & REPORTING:")
+	fmt.Fprintln(w, "  --output-format <format>   Export format: json, pretty_json, csv, tsv, sqlite, txt.")
+	fmt.Fprintln(w, "  --output-file <path>       Destination file path to save output report.")
+	fmt.Fprintln(w, "  --quiet                    Quiet mode: suppress per-probe lines, show only final summary.")
+	fmt.Fprintln(w, "  --show-failures-only       Show only failed probes in live output.")
+	fmt.Fprintln(w, "  --show-source-address      Show source IP and port used for probes.")
+	fmt.Fprintln(w, "  --timestamp                Show timestamp for each probe in output.")
+	fmt.Fprintln(w, "  --diags, --diagnostics     Show detailed protocol negotiation diagnostics.")
+	fmt.Fprintln(w, "  --no-color                 Do not colorize terminal output.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "GENERAL:")
+	fmt.Fprintln(w, "  --help                     Show this help message and exit.")
+	fmt.Fprintln(w, "  --version                  Show version and exit.")
+	fmt.Fprintln(w, "  --check-updates            Check for newer releases on GitHub and exit.")
+	fmt.Fprintln(w)
+}
 
+func usage() {
+	PrintUsage(os.Stdout)
 	os.Exit(1)
+}
+
+// PrintVersion displays the version to the given writer
+func PrintVersion(w io.Writer) {
+	fmt.Fprintf(w, "netping version %s\n", version)
 }
 
 // showVersion displays the version and exits
 func showVersion() {
-	fmt.Printf("netping version %s\n", version)
+	PrintVersion(os.Stdout)
 	os.Exit(0)
 }
 
@@ -584,31 +593,29 @@ func compareVersions(v1, v2 string) int {
 	return 0
 }
 
-// checkForUpdates checks for newer versions of tcping
-func checkForUpdates() {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
+// CheckForUpdatesURL checks for newer versions of netping against the given release endpoint
+func CheckForUpdatesURL(url string, client *http.Client, w io.Writer) error {
+	if client == nil {
+		client = &http.Client{Timeout: 5 * time.Second}
+	}
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
-		fmt.Printf("Could not create request: %s", err)
-		os.Exit(1)
+		fmt.Fprintf(w, "Could not create request: %s\n", err)
+		return err
 	}
-
-	client := &http.Client{Timeout: 5 * time.Second}
-
-	// optional (GitHub recommends)
 	req.Header.Set("User-Agent", "edsilegx-netping-update-check")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("Failed to check for updates %s\n", err)
-		os.Exit(1)
+		fmt.Fprintf(w, "Failed to check for updates: %s\n", err)
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("Failed to check for updates: HTTP %d\n", resp.StatusCode)
-		os.Exit(1)
+		fmt.Fprintf(w, "Failed to check for updates: HTTP %d\n", resp.StatusCode)
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
 	release := struct {
@@ -616,8 +623,8 @@ func checkForUpdates() {
 	}{}
 
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		fmt.Printf("Failed to parse release info: %s\n", err)
-		os.Exit(1)
+		fmt.Fprintf(w, "Failed to parse release info: %s\n", err)
+		return err
 	}
 
 	reg := `^v?(\d+\.\d+\.\d+)$`
@@ -625,25 +632,31 @@ func checkForUpdates() {
 	re := regexp.MustCompile(reg)
 	m := re.FindStringSubmatch(latestTagName)
 	if len(m) == 0 {
-		fmt.Printf("Failed to check for updates. The version name does not match the rule: %s\n", latestTagName)
-		os.Exit(1)
+		fmt.Fprintf(w, "Failed to check for updates. The version name does not match the rule: %s\n", latestTagName)
+		return fmt.Errorf("invalid version tag %q", latestTagName)
 	}
 
 	latestVer := m[1]
-
 	comparison := compareVersions(version, latestVer)
 
 	if comparison < 0 {
-		fmt.Printf("Found newer version: %s\n", latestVer)
-		fmt.Printf("Please update netping from the URL below:\n")
-		fmt.Printf("https://github.com/%s/%s/releases/tag/%s\n",
-			owner, repo, latestTagName)
+		fmt.Fprintf(w, "Found newer version: %s\n", latestVer)
+		fmt.Fprintf(w, "Please update netping from the URL below:\n")
+		fmt.Fprintf(w, "https://github.com/%s/%s/releases/tag/%s\n", owner, repo, latestTagName)
 	} else if comparison > 0 {
-		fmt.Printf("Current version %s is newer than the latest release %s\n",
-			version, latestVer)
+		fmt.Fprintf(w, "Current version %s is newer than the latest release %s\n", version, latestVer)
 	} else {
-		fmt.Printf("You have the latest version: %s\n", version)
+		fmt.Fprintf(w, "You have the latest version: %s\n", version)
 	}
+	return nil
+}
 
+// checkForUpdates checks for newer versions of netping
+func checkForUpdates() {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
+	err := CheckForUpdatesURL(url, nil, os.Stdout)
+	if err != nil {
+		os.Exit(1)
+	}
 	os.Exit(0)
 }

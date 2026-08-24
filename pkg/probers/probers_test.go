@@ -2368,6 +2368,1419 @@ func TestFormatBytesSize(t *testing.T) {
 	assert.Equal(t, "-10", formatBytesSize("-10"))
 }
 
+func TestDatabase_Helpers(t *testing.T) {
+	assert.Equal(t, uint16(3306), defaultDBPort(MySQL, false))
+	assert.Equal(t, uint16(1433), defaultDBPort(MSSQL, false))
+	assert.Equal(t, uint16(1521), defaultDBPort(Oracle, false))
+	assert.Equal(t, uint16(2484), defaultDBPort(Oracle, true))
+	assert.Equal(t, uint16(27017), defaultDBPort(MongoDB, false))
+	assert.Equal(t, uint16(9042), defaultDBPort(Cassandra, false))
+	assert.Equal(t, uint16(30015), defaultDBPort(SAPHANA, false))
+	assert.Equal(t, uint16(5432), defaultDBPort(PostgreSQL, false))
+
+	assert.Equal(t, "SQL Server 2022", mssqlReleaseName(16))
+	assert.Equal(t, "SQL Server 2019", mssqlReleaseName(15))
+	assert.Equal(t, "SQL Server 2017", mssqlReleaseName(14))
+	assert.Equal(t, "SQL Server 2016", mssqlReleaseName(13))
+	assert.Equal(t, "SQL Server 2014", mssqlReleaseName(12))
+	assert.Equal(t, "SQL Server 2012", mssqlReleaseName(11))
+	assert.Equal(t, "SQL Server 2008", mssqlReleaseName(10))
+	assert.Equal(t, "SQL Server v9", mssqlReleaseName(9))
+
+	assert.Equal(t, "Oracle 19c/21c/23c", tnsProtocolRelease(316))
+	assert.Equal(t, "Oracle 18c", tnsProtocolRelease(315))
+	assert.Equal(t, "Oracle 12c R2", tnsProtocolRelease(314))
+	assert.Equal(t, "Oracle 12c R1", tnsProtocolRelease(313))
+	assert.Equal(t, "Oracle 11g R2", tnsProtocolRelease(312))
+	assert.Equal(t, "Oracle 11g R1", tnsProtocolRelease(311))
+	assert.Equal(t, "Oracle 10g", tnsProtocolRelease(310))
+	assert.Equal(t, "Oracle TNS v300", tnsProtocolRelease(300))
+}
+
+func TestGRPC_StatusNames(t *testing.T) {
+	assert.Equal(t, "OK", grpcStatusName("0"))
+	assert.Equal(t, "CANCELLED", grpcStatusName("1"))
+	assert.Equal(t, "UNKNOWN", grpcStatusName("2"))
+	assert.Equal(t, "INVALID_ARGUMENT", grpcStatusName("3"))
+	assert.Equal(t, "DEADLINE_EXCEEDED", grpcStatusName("4"))
+	assert.Equal(t, "NOT_FOUND", grpcStatusName("5"))
+	assert.Equal(t, "ALREADY_EXISTS", grpcStatusName("6"))
+	assert.Equal(t, "PERMISSION_DENIED", grpcStatusName("7"))
+	assert.Equal(t, "RESOURCE_EXHAUSTED", grpcStatusName("8"))
+	assert.Equal(t, "FAILED_PRECONDITION", grpcStatusName("9"))
+	assert.Equal(t, "ABORTED", grpcStatusName("10"))
+	assert.Equal(t, "OUT_OF_RANGE", grpcStatusName("11"))
+	assert.Equal(t, "UNIMPLEMENTED", grpcStatusName("12"))
+	assert.Equal(t, "INTERNAL", grpcStatusName("13"))
+	assert.Equal(t, "UNAVAILABLE", grpcStatusName("14"))
+	assert.Equal(t, "DATA_LOSS", grpcStatusName("15"))
+	assert.Equal(t, "UNAUTHENTICATED", grpcStatusName("16"))
+	assert.Equal(t, "CODE_99", grpcStatusName("99"))
+}
+
+func TestLDAP_ResultCodeNames(t *testing.T) {
+	assert.Equal(t, "SUCCESS", ldapResultCodeName(0))
+	assert.Equal(t, "OPERATIONS_ERROR", ldapResultCodeName(1))
+	assert.Equal(t, "PROTOCOL_ERROR", ldapResultCodeName(2))
+	assert.Equal(t, "AUTH_METHOD_NOT_SUPPORTED", ldapResultCodeName(7))
+	assert.Equal(t, "STRONGER_AUTH_REQUIRED", ldapResultCodeName(8))
+	assert.Equal(t, "SASL_BIND_IN_PROGRESS", ldapResultCodeName(14))
+	assert.Equal(t, "NO_SUCH_OBJECT", ldapResultCodeName(32))
+	assert.Equal(t, "INVALID_DN_SYNTAX", ldapResultCodeName(34))
+	assert.Equal(t, "INAPPROPRIATE_AUTH", ldapResultCodeName(48))
+	assert.Equal(t, "INVALID_CREDENTIALS", ldapResultCodeName(49))
+	assert.Equal(t, "INSUFFICIENT_ACCESS_RIGHTS", ldapResultCodeName(50))
+	assert.Equal(t, "BUSY", ldapResultCodeName(51))
+	assert.Equal(t, "UNAVAILABLE", ldapResultCodeName(52))
+	assert.Equal(t, "UNWILLING_TO_PERFORM", ldapResultCodeName(53))
+	assert.Equal(t, "RESULT", ldapResultCodeName(99))
+}
+
+func TestMemcached_FormatBytes(t *testing.T) {
+	assert.Equal(t, "500B", formatBytes(500))
+	assert.Equal(t, "50K", formatBytes(51200))
+	assert.Equal(t, "50.0M", formatBytes(52428800))
+	assert.Equal(t, "1.5G", formatBytes(1610612736))
+}
+
+func TestSMB_BuildMultiProtocolNegotiatePacket(t *testing.T) {
+	pkt := buildMultiProtocolNegotiatePacket()
+	assert.NotEmpty(t, pkt)
+	assert.True(t, len(pkt) > 30)
+}
+
+func TestMultiProber_Workers_And_Badge(t *testing.T) {
+	w1 := TargetWorker{
+		Target:   "1.1.1.1:443",
+		Host:     "1.1.1.1",
+		IP:       netip.MustParseAddr("1.1.1.1"),
+		Port:     443,
+		Protocol: "HTTPS",
+		Stats:    &stats.Statistics{Hostname: "1.1.1.1", Port: 443},
+	}
+	mp := NewMultiProber([]TargetWorker{w1}, MultiProberOptions{})
+	workers := mp.Workers()
+	assert.Equal(t, 1, len(workers))
+	assert.Equal(t, "1.1.1.1:443", workers[0].Target)
+
+	// Test badge formatting branches
+	w2 := TargetWorker{Host: "example.com", IP: netip.MustParseAddr("1.1.1.1"), Port: 443, Protocol: "HTTPS"}
+	w3 := TargetWorker{Host: "example.com", Port: 80, Protocol: "HTTP"}
+	w4 := TargetWorker{Host: "1.1.1.1", IP: netip.MustParseAddr("1.1.1.1"), Protocol: "ICMP"}
+	w5 := TargetWorker{Host: "example.com", Protocol: "DNS"}
+
+	for _, w := range []TargetWorker{w1, w2, w3, w4, w5} {
+		assert.NotEmpty(t, formatTargetBadge(w))
+		assert.NotEmpty(t, formatTargetBadgeColored(w))
+	}
+}
+
+func TestTCP_Address(t *testing.T) {
+	p := NewTcping(TCPOptions{
+		Hostname: "example.com",
+		IP:       netip.MustParseAddr("93.184.216.34"),
+		Port:     80,
+	})
+	assert.Equal(t, "93.184.216.34:80", p.address())
+
+	p2 := NewTcping(TCPOptions{
+		Hostname: "example.com",
+		Port:     80,
+	})
+	assert.Equal(t, "example.com:80", p2.address())
+}
+
+func TestExtractTNSParam(t *testing.T) {
+	tnsStr := "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=db.local)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=orcl)))"
+	assert.Equal(t, "=TCP", extractTNSParam(tnsStr, "PROTOCOL"))
+	assert.Equal(t, "=orcl", extractTNSParam(tnsStr, "SERVICE_NAME"))
+	assert.Equal(t, "", extractTNSParam(tnsStr, "NONEXISTENT"))
+}
+
+func TestHana_VersionDecoders(t *testing.T) {
+	assert.Equal(t, "SAP HANA 2.0 SPS05 (2.00.050.00)", decodeHanaVersion("2.00.050.00"))
+	assert.Equal(t, "SAP HANA 2.0 SPS05 Patch 2 (2.00.052.00)", decodeHanaVersion("2.00.052.00"))
+	assert.Equal(t, "SAP HANA 1.00", decodeHanaVersion("1.00"))
+}
+
+func TestBSON_Extractors(t *testing.T) {
+	// Construct a small BSON document buffer
+	var buf bytes.Buffer
+	// String element (0x02), key="version\x00", len=6, "5.0.0\x00"
+	buf.WriteByte(0x02)
+	buf.WriteString("version\x00")
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(6))
+	buf.WriteString("5.0.0\x00")
+
+	// Int32 element (0x10), key="maxBsonObjectSize\x00", value=16777216
+	buf.WriteByte(0x10)
+	buf.WriteString("maxBsonObjectSize\x00")
+	_ = binary.Write(&buf, binary.LittleEndian, int32(16777216))
+
+	// Int64 element (0x12), key="ok\x00", value=1
+	buf.WriteByte(0x12)
+	buf.WriteString("ok\x00")
+	_ = binary.Write(&buf, binary.LittleEndian, int64(1))
+
+	// Bool element (0x08), key="isWritablePrimary\x00", value=1
+	buf.WriteByte(0x08)
+	buf.WriteString("isWritablePrimary\x00")
+	buf.WriteByte(0x01)
+
+	raw := buf.Bytes()
+	assert.Equal(t, "5.0.0", extractBSONString(raw, "version"))
+	assert.Equal(t, int32(16777216), extractBSONInt32(raw, "maxBsonObjectSize"))
+	assert.Equal(t, int64(1), extractBSONInt64(raw, "ok"))
+	assert.True(t, extractBSONBool(raw, "isWritablePrimary"))
+
+	assert.Equal(t, "", extractBSONString(raw, "nonexistent"))
+	assert.Equal(t, int32(-1), extractBSONInt32(raw, "nonexistent"))
+	assert.Equal(t, int64(-1), extractBSONInt64(raw, "nonexistent"))
+	assert.False(t, extractBSONBool(raw, "nonexistent"))
+}
+
+func TestFTP_ReadResponse_Multiline(t *testing.T) {
+	banner := "220-Welcome to Pure-FTPd\r\n220-You are user number 1 of 50 allowed.\r\n220 This is a private system\r\n"
+	reader := bufio.NewReader(strings.NewReader(banner))
+	lastLine, lines, err := readFTPResponse(reader)
+	assert.NoError(t, err)
+	assert.Equal(t, "220 This is a private system", lastLine)
+	assert.Equal(t, 3, len(lines))
+	assert.Contains(t, lines[0], "Pure-FTPd")
+}
+
+func TestDNSQuery_BuildAndParseName(t *testing.T) {
+	pkt := buildDNSQuery("example.com")
+	assert.NotEmpty(t, pkt)
+
+	name, offset, err := parseDNSName(pkt, 12)
+	assert.NoError(t, err)
+	assert.Equal(t, "example.com", name)
+	assert.True(t, offset > 12)
+}
+
+func TestSSH_FormatTopItems(t *testing.T) {
+	items := "aes128-gcm,aes256-gcm,chacha20-poly1305,aes128-ctr"
+	formatted := formatTopItems(items, 2)
+	assert.Equal(t, "aes128-gcm|aes256-gcm", formatted)
+
+	var buf bytes.Buffer
+	// SSH namelist binary format: 4-byte length + comma-separated strings
+	namelist := "curve25519-sha256,ecdh-sha2-nistp256"
+	_ = binary.Write(&buf, binary.BigEndian, uint32(len(namelist)))
+	buf.WriteString(namelist)
+	parsedStr, err := readSSHNameList(&buf)
+	assert.NoError(t, err)
+	assert.Contains(t, parsedStr, "curve25519-sha256")
+}
+
+func TestProber_Constructors_AllProtocols(t *testing.T) {
+	targetIP := netip.MustParseAddr("127.0.0.1")
+
+	o365P := NewO365ing(O365Options{
+		Hostname: "outlook.office365.com",
+		IP:       targetIP,
+		Port:     443,
+		Timeout:  time.Second,
+	})
+	assert.NotNil(t, o365P)
+
+	qP1 := NewQueueing(QueueOptions{
+		Protocol: QueueKafka,
+		Hostname: "kafka.local",
+		IP:       targetIP,
+		Port:     9092,
+		Timeout:  time.Second,
+	})
+	assert.NotNil(t, qP1)
+
+	qP2 := NewQueueing(QueueOptions{
+		Protocol: QueueRabbitMQ,
+		Hostname: "rabbit.local",
+		IP:       targetIP,
+		Port:     5672,
+		Timeout:  time.Second,
+	})
+	assert.NotNil(t, qP2)
+
+	sP := NewStorageing(StorageOptions{
+		Type:     StorageS3,
+		Hostname: "s3.amazonaws.com",
+		IP:       targetIP,
+		Port:     443,
+		Timeout:  time.Second,
+	})
+	assert.NotNil(t, sP)
+
+	wsP := NewWSing(WSOptions{
+		Hostname: "stream.binance.com",
+		IP:       targetIP,
+		Port:     9443,
+		UseTLS:   true,
+		Timeout:  time.Second,
+	})
+	assert.NotNil(t, wsP)
+
+	mP1 := NewMailing(MailOptions{
+		Protocol: MailSMTP,
+		Hostname: "smtp.gmail.com",
+		IP:       targetIP,
+		Port:     587,
+		StartTLS: true,
+		Timeout:  time.Second,
+	})
+	assert.NotNil(t, mP1)
+
+	mP2 := NewMailing(MailOptions{
+		Protocol: MailIMAP,
+		Hostname: "imap.gmail.com",
+		IP:       targetIP,
+		Port:     993,
+		UseTLS:   true,
+		Timeout:  time.Second,
+	})
+	assert.NotNil(t, mP2)
+
+	mP3 := NewMailing(MailOptions{
+		Protocol: MailPOP3,
+		Hostname: "pop.gmail.com",
+		IP:       targetIP,
+		Port:     995,
+		UseTLS:   true,
+		Timeout:  time.Second,
+	})
+	assert.NotNil(t, mP3)
+}
+
+func TestDNSQuery_DissectResponse_ShortPacket(t *testing.T) {
+	_, err := dissectDNSResponse([]byte{0x00, 0x01, 0x81})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "too short")
+}
+
+func TestDNSQuery_DissectResponse_Codes(t *testing.T) {
+	// Construct a standard 12-byte header with flags
+	makeHeader := func(flags uint16) []byte {
+		hdr := make([]byte, 12)
+		binary.BigEndian.PutUint16(hdr[0:2], 0x1234)
+		binary.BigEndian.PutUint16(hdr[2:4], flags)
+		return hdr
+	}
+
+	// NOERROR (rcode = 0, QR=1, AA=1, RD=1, RA=1 -> 0x8580)
+	r1, err := dissectDNSResponse(makeHeader(0x8580))
+	assert.NoError(t, err)
+	assert.Equal(t, "NOERROR", r1.RcodeStr)
+	assert.Contains(t, r1.Flags, "AA")
+	assert.Contains(t, r1.Flags, "RD")
+	assert.Contains(t, r1.Flags, "RA")
+
+	// SERVFAIL (rcode = 2 -> 0x8002)
+	r2, err := dissectDNSResponse(makeHeader(0x8002))
+	assert.NoError(t, err)
+	assert.Equal(t, "SERVFAIL", r2.RcodeStr)
+
+	// NXDOMAIN (rcode = 3 -> 0x8003)
+	r3, err := dissectDNSResponse(makeHeader(0x8003))
+	assert.NoError(t, err)
+	assert.Equal(t, "NXDOMAIN", r3.RcodeStr)
+
+	// FORMERR (rcode = 1 -> 0x8001)
+	r4, err := dissectDNSResponse(makeHeader(0x8001))
+	assert.NoError(t, err)
+	assert.Equal(t, "FORMERR", r4.RcodeStr)
+
+	// REFUSED (rcode = 5 -> 0x8005)
+	r5, err := dissectDNSResponse(makeHeader(0x8005))
+	assert.NoError(t, err)
+	assert.Equal(t, "REFUSED", r5.RcodeStr)
+}
+
+func TestDNSQuery_ParseDNSName_Errors(t *testing.T) {
+	_, _, err := parseDNSName([]byte{}, 0)
+	assert.Error(t, err)
+
+	_, _, err = parseDNSName([]byte{0xc0}, 0)
+	assert.Error(t, err)
+
+	_, _, err = parseDNSName([]byte{0x05, 'a', 'b'}, 0)
+	assert.Error(t, err)
+}
+
+func TestDNSQuery_DissectResponse_WithAnswers(t *testing.T) {
+	// Build packet: Header (12 bytes, qdCount=1, anCount=3) + Question (example.com + Type 1 + Class 1) + Answer 1 (A: 1.2.3.4) + Answer 2 (AAAA: ::1) + Answer 3 (CNAME)
+	var pkt bytes.Buffer
+	// Header: ID=0x1234, Flags=0x8180 (NOERROR, QR=1, RD=1, RA=1), QDCOUNT=1, ANCOUNT=3, NSCOUNT=0, ARCOUNT=0
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(0x1234))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(0x8180))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(1)) // QD
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(3)) // AN
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(0))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(0))
+
+	// Question: \x07example\x03com\x00 Type=1 (A), Class=1 (IN)
+	pkt.Write([]byte("\x07example\x03com\x00"))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(1))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(1))
+
+	// Answer 1: Name ptr -> offset 12 (0xc00c), Type 1 (A), Class 1, TTL 300, RdLength 4, IP 1.2.3.4
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(0xc00c))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(1))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(1))
+	_ = binary.Write(&pkt, binary.BigEndian, uint32(300))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(4))
+	pkt.Write([]byte{1, 2, 3, 4})
+
+	// Answer 2: Name ptr -> offset 12 (0xc00c), Type 28 (AAAA), Class 1, TTL 600, RdLength 16, IP ::1
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(0xc00c))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(28))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(1))
+	_ = binary.Write(&pkt, binary.BigEndian, uint32(600))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(16))
+	pkt.Write(net.ParseIP("::1").To16())
+
+	// Answer 3: Name ptr -> offset 12 (0xc00c), Type 5 (CNAME), Class 1, TTL 900, RdLength 11, target ptr -> offset 12
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(0xc00c))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(5))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(1))
+	_ = binary.Write(&pkt, binary.BigEndian, uint32(900))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(2))
+	_ = binary.Write(&pkt, binary.BigEndian, uint16(0xc00c))
+
+	resp, err := dissectDNSResponse(pkt.Bytes())
+	assert.NoError(t, err)
+	assert.Equal(t, "NOERROR", resp.RcodeStr)
+	assert.Equal(t, 3, len(resp.Answers))
+	assert.Equal(t, "1.2.3.4", resp.Answers[0])
+	assert.Equal(t, "::1", resp.Answers[1])
+	assert.Equal(t, "CNAME->example.com", resp.Answers[2])
+	assert.Equal(t, uint32(300), resp.MinTTL)
+}
+
+func TestStorage_Ping_Mock(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-amz-request-id", "mock-s3-req-12345")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("<Error><Code>AccessDenied</Code></Error>"))
+	}))
+	defer ts.Close()
+
+	sP := NewStorageing(StorageOptions{
+		Type:     StorageS3,
+		Hostname: "127.0.0.1",
+		Port:     80,
+		Timeout:  time.Second,
+	})
+	sP.httpClient = ts.Client()
+	sP.url = ts.URL
+
+	res := sP.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Equal(t, 403, res.HTTPStatus)
+	assert.Contains(t, res.Diagnostics, "HTTP 403")
+
+	// Test Azure Blob header
+	tsAzure := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "2023-08-03", r.Header.Get("x-ms-version"))
+		w.Header().Set("x-ms-request-id", "azure-blob-req-67890")
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer tsAzure.Close()
+
+	azureP := NewStorageing(StorageOptions{
+		Type:     StorageAzureBlob,
+		Hostname: "127.0.0.1",
+		Port:     80,
+		Timeout:  time.Second,
+	})
+	azureP.httpClient = tsAzure.Client()
+	azureP.url = tsAzure.URL
+
+	resAzure := azureP.Ping(context.Background())
+	assert.NoError(t, resAzure.Err)
+	assert.Equal(t, 403, resAzure.HTTPStatus)
+}
+
+func TestProber_FinalizeStatistics_Down(t *testing.T) {
+	st := stats.NewStatistics(stats.Options{
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     80,
+	})
+	st.StartTime = time.Now().Add(-10 * time.Second)
+	st.DestWasDown = true
+	st.StartOfDowntime = time.Now().Add(-5 * time.Second)
+
+	p := &Prober{
+		Statistics: st,
+	}
+	p.finalizeStatistics()
+
+	assert.True(t, st.TotalDowntime > 0)
+	assert.True(t, st.UpTime > 0)
+}
+
+func TestQueue_Kafka_Mock(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Write response first so client never hangs waiting for server
+		resp := []byte{
+			0x00, 0x00, 0x00, 0x0A,
+			0x00, 0x00, 0x00, 0x01,
+			0x00, 0x00,
+			0x00, 0x00, 0x00, 0x05,
+		}
+		_, _ = conn.Write(resp)
+
+		buf := make([]byte, 23)
+		_, _ = io.ReadFull(conn, buf)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	q := NewQueueing(QueueOptions{
+		Protocol: QueueKafka,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := q.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "Kafka: ApiVersions OK")
+}
+
+func TestQueue_RabbitMQ_Mock(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Write AMQP Connection.Start frame first
+		resp := []byte{
+			0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C,
+			0x00, 0x0A, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xCE,
+		}
+		_, _ = conn.Write(resp)
+
+		buf := make([]byte, 8)
+		_, _ = io.ReadFull(conn, buf)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	q := NewQueueing(QueueOptions{
+		Protocol: QueueRabbitMQ,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := q.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "AMQP 0-9-1")
+}
+
+func TestRedis_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		r := bufio.NewReader(conn)
+		// Read PING
+		_, _ = r.ReadString('\n')
+		_, _ = r.ReadString('\n')
+		_, _ = conn.Write([]byte("+PONG\r\n"))
+
+		// Read INFO
+		_, _ = r.ReadString('\n')
+		_, _ = r.ReadString('\n')
+		_, _ = r.ReadString('\n')
+		_, _ = r.ReadString('\n')
+		infoResp := "$30\r\nredis_version:7.2.4\r\nuptime:100\r\n"
+		_, _ = conn.Write([]byte(infoResp))
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	red := NewRedising(RedisOptions{
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := red.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "7.2.4")
+}
+
+func TestMemcached_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		r := bufio.NewReader(conn)
+		// Read version command
+		_, _ = r.ReadString('\n')
+		_, _ = conn.Write([]byte("VERSION 1.6.22\r\n"))
+
+		// Read stats command
+		_, _ = r.ReadString('\n')
+		resp := "STAT curr_items 42\r\nSTAT total_connections 100\r\nEND\r\n"
+		_, _ = conn.Write([]byte(resp))
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	mc := NewMemcacheding(MemcachedOptions{
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := mc.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "1.6.22")
+}
+
+func TestPostgres_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Read SSLRequest (8 bytes)
+		sslReq := make([]byte, 8)
+		_, _ = io.ReadFull(conn, sslReq)
+		// Send 'N' (no SSL)
+		_, _ = conn.Write([]byte("N"))
+
+		// Read StartupMessage
+		lenBuf := make([]byte, 4)
+		_, _ = io.ReadFull(conn, lenBuf)
+		pktLen := int(binary.BigEndian.Uint32(lenBuf))
+		if pktLen > 4 {
+			rest := make([]byte, pktLen-4)
+			_, _ = io.ReadFull(conn, rest)
+		}
+
+		// Send Auth Cleartext reply ('R' + 4 bytes len + 4 bytes auth type 3)
+		authResp := []byte{
+			'R',
+			0x00, 0x00, 0x00, 0x08,
+			0x00, 0x00, 0x00, 0x03,
+		}
+		_, _ = conn.Write(authResp)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	db := NewDBing(DBOptions{
+		Type:     PostgreSQL,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := db.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "SSL: Not Supported")
+}
+
+func TestMySQL_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// MySQL Handshake error packet
+		errMsg := "Access denied for user 'netping'@'127.0.0.1'"
+		pktLen := 1 + 2 + len(errMsg)
+		resp := append([]byte{
+			byte(pktLen), 0x00, 0x00, 0x00, // 3-byte len + seq=0
+			0xff,       // Error byte
+			0x15, 0x04, // Error code 1045
+		}, []byte(errMsg)...)
+		_, _ = conn.Write(resp)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	db := NewDBing(DBOptions{
+		Type:     MySQL,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := db.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "Error: #1045")
+}
+
+func TestMail_SMTP_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		r := bufio.NewReader(conn)
+		// Send 220 banner
+		_, _ = conn.Write([]byte("220 smtp.local ESMTP Postfix\r\n"))
+		// Read EHLO
+		_, _ = r.ReadString('\n')
+		// Send 250 capabilities
+		_, _ = conn.Write([]byte("250-smtp.local\r\n250-SIZE 52428800\r\n250 HELP\r\n"))
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	m := NewMailing(MailOptions{
+		Protocol: MailSMTP,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := m.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "ESMTP Postfix")
+}
+
+func TestMail_IMAP_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		r := bufio.NewReader(conn)
+		// Send IMAP banner
+		_, _ = conn.Write([]byte("* OK IMAP4rev1 Service Ready\r\n"))
+		// Read CAPABILITY command
+		_, _ = r.ReadString('\n')
+		// Send capabilities
+		_, _ = conn.Write([]byte("* CAPABILITY IMAP4rev1 STARTTLS AUTH=PLAIN\r\nA001 OK Completed\r\n"))
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	m := NewMailing(MailOptions{
+		Protocol: MailIMAP,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := m.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "IMAP4rev1")
+}
+
+func TestMail_POP3_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		r := bufio.NewReader(conn)
+		// Send POP3 banner
+		_, _ = conn.Write([]byte("+OK POP3 server ready\r\n"))
+		// Read CAPA command
+		_, _ = r.ReadString('\n')
+		// Send capabilities
+		_, _ = conn.Write([]byte("+OK Capability list follows\r\nTOP\r\nUSER\r\n.\r\n"))
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	m := NewMailing(MailOptions{
+		Protocol: MailPOP3,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := m.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "POP3 server ready")
+}
+
+func TestCassandra_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Read STARTUP frame (22 bytes)
+		buf := make([]byte, 22)
+		_, _ = io.ReadFull(conn, buf)
+
+		// Send READY response (9 bytes header: version 0x84, stream 1, opcode 0x02 READY)
+		resp := []byte{0x84, 0x00, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00}
+		_, _ = conn.Write(resp)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	db := NewDBing(DBOptions{
+		Type:     Cassandra,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := db.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "READY")
+}
+
+func TestMSSQL_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Read PRELOGIN (32 bytes)
+		buf := make([]byte, 32)
+		_, _ = io.ReadFull(conn, buf)
+
+		// Send TDS response (8 bytes header + token terminator)
+		resp := []byte{
+			0x04, 0x01, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, // Header: type 4, length 16
+			0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Body
+		}
+		_, _ = conn.Write(resp)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	db := NewDBing(DBOptions{
+		Type:     MSSQL,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := db.Ping(context.Background())
+	assert.NoError(t, res.Err)
+}
+
+func TestFTP_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		r := bufio.NewReader(conn)
+		// 220 banner
+		_, _ = conn.Write([]byte("220 FTP Server ready\r\n"))
+
+		// Read FEAT
+		_, _ = r.ReadString('\n')
+		_, _ = conn.Write([]byte("211-Features:\r\n UTF8\r\n211 End\r\n"))
+
+		// Read QUIT
+		_, _ = r.ReadString('\n')
+		_, _ = conn.Write([]byte("221 Goodbye\r\n"))
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	ftp := NewFTPing(FTPOptions{
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := ftp.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "FTP Server ready")
+}
+
+func TestWS_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		r := bufio.NewReader(conn)
+		// Read HTTP Upgrade request until empty line
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil || strings.TrimSpace(line) == "" {
+				break
+			}
+		}
+
+		// Write 101 Switching Protocols response
+		upgradeResp := "HTTP/1.1 101 Switching Protocols\r\n" +
+			"Upgrade: websocket\r\n" +
+			"Connection: Upgrade\r\n" +
+			"Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+		_, _ = conn.Write([]byte(upgradeResp))
+
+		// Read Ping frame (6 bytes header + payload)
+		buf := make([]byte, 10)
+		_, _ = io.ReadFull(conn, buf)
+
+		// Write Pong frame
+		pongFrame := []byte{0x8a, 0x04, buf[6], buf[7], buf[8], buf[9]}
+		_, _ = conn.Write(pongFrame)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	ws := NewWSing(WSOptions{
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := ws.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "101 Switching Protocols")
+}
+
+func TestLDAP_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Read BindRequest (14 bytes)
+		buf := make([]byte, 14)
+		_, _ = io.ReadFull(conn, buf)
+
+		// Send BindResponse (SUCCESS, code 0)
+		resp := []byte{0x30, 0x0C, 0x02, 0x01, 0x01, 0x61, 0x07, 0x0a, 0x01, 0x00, 0x04, 0x00, 0x04, 0x00}
+		_, _ = conn.Write(resp)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	ldapP := NewLDAPing(LDAPOptions{
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := ldapP.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "Bind: SUCCESS")
+}
+
+func TestRsync_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		r := bufio.NewReader(conn)
+		// Send server greeting
+		_, _ = conn.Write([]byte("@RSYNCD: 31.0\n"))
+
+		// Read client greeting
+		_, _ = r.ReadString('\n')
+
+		// Read empty line
+		_, _ = r.ReadString('\n')
+
+		// Send modules list and exit
+		_, _ = conn.Write([]byte("pub\tPublic mirror\n@RSYNCD: EXIT\n"))
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	rsyncP := NewRsyncing(RsyncOptions{
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := rsyncP.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "31.0")
+}
+
+func TestLDAP_ExtractStringAttr(t *testing.T) {
+	// Construct simulated ASN.1 buffer with "vendorName" + OCTET STRING "OpenLDAP"
+	data := append([]byte("vendorName"), 0x04, 0x08)
+	data = append(data, []byte("OpenLDAP")...)
+	assert.Equal(t, "OpenLDAP", extractLDAPStringAttr(data, "vendorName"))
+	assert.Equal(t, "", extractLDAPStringAttr(data, "nonexistent"))
+}
+
+func TestTCP_Ping_SendData_ExpectData(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		buf := make([]byte, 4)
+		_, _ = io.ReadFull(conn, buf)
+		if string(buf) == "PING" {
+			_, _ = conn.Write([]byte("PONG_OK"))
+		}
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	p := NewTcping(TCPOptions{
+		Hostname:   "127.0.0.1",
+		IP:         netip.MustParseAddr("127.0.0.1"),
+		Port:       uint16(tcpAddr.Port),
+		SendData:   "PING",
+		ExpectData: "PONG",
+		Timeout:    3 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "Payload Matched")
+}
+
+func TestUDP_Ping_SendData_ExpectData(t *testing.T) {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	assert.NoError(t, err)
+	defer conn.Close()
+
+	go func() {
+		buf := make([]byte, 1024)
+		n, remoteAddr, err := conn.ReadFromUDP(buf)
+		if err == nil && n > 0 {
+			_, _ = conn.WriteToUDP([]byte("HEARTBEAT_ACK"), remoteAddr)
+		}
+	}()
+
+	lAddr := conn.LocalAddr().(*net.UDPAddr)
+	p := NewUDPing(UDPOptions{
+		IP:         netip.MustParseAddr("127.0.0.1"),
+		Port:       uint16(lAddr.Port),
+		SendData:   "HEARTBEAT",
+		ExpectData: "ACK",
+		Timeout:    3 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	assert.NoError(t, res.Err)
+}
+
+func TestCassandra_Authenticate(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Read STARTUP
+		buf := make([]byte, 22)
+		_, _ = io.ReadFull(conn, buf)
+
+		// AUTHENTICATE response: opcode 0x03, body length 28 (class: org.apache.cassandra.auth.PasswordAuthenticator)
+		authClass := "org.apache.cassandra.auth.PasswordAuthenticator"
+		body := append([]byte{0x00, byte(len(authClass))}, []byte(authClass)...)
+		header := []byte{0x84, 0x00, 0x00, 0x01, 0x03, 0x00, 0x00, 0x00, byte(len(body))}
+		_, _ = conn.Write(append(header, body...))
+		time.Sleep(50 * time.Millisecond)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	db := NewDBing(DBOptions{
+		Type:     Cassandra,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := db.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "PasswordAuthenticator")
+}
+
+func TestMongoDB_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Build BSON document: version string "7.0.5"
+		var doc bytes.Buffer
+		doc.WriteByte(0x02) // string
+		doc.WriteString("version\x00")
+		_ = binary.Write(&doc, binary.LittleEndian, uint32(6))
+		doc.WriteString("7.0.5\x00")
+		doc.WriteByte(0x00) // null terminator
+
+		docBytes := doc.Bytes()
+		totalDocLen := uint32(len(docBytes) + 4)
+		fullDoc := append([]byte{byte(totalDocLen), byte(totalDocLen >> 8), byte(totalDocLen >> 16), byte(totalDocLen >> 24)}, docBytes...)
+
+		// OP_MSG body: 4 bytes flagBits + 1 byte sectionKind + fullDoc
+		body := append([]byte{0x00, 0x00, 0x00, 0x00, 0x00}, fullDoc...)
+		totalMsgLen := uint32(len(body) + 16)
+		header := []byte{
+			byte(totalMsgLen), byte(totalMsgLen >> 8), byte(totalMsgLen >> 16), byte(totalMsgLen >> 24),
+			0x02, 0x00, 0x00, 0x00, // RequestID 2
+			0x01, 0x00, 0x00, 0x00, // ResponseTo 1
+			0xdd, 0x07, 0x00, 0x00, // OpCode OP_MSG
+		}
+		_, _ = conn.Write(append(header, body...))
+
+		// Read client request
+		buf := make([]byte, 52)
+		_, _ = io.ReadFull(conn, buf)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	db := NewDBing(DBOptions{
+		Type:     MongoDB,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := db.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "7.0.5")
+}
+
+func TestOracle_MockPing(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Read client connect
+		buf := make([]byte, 512)
+		_, _ = conn.Read(buf)
+
+		// Send TNS ACCEPT packet (length 16, type 2)
+		tnsAccept := []byte{
+			0x00, 0x10, 0x00, 0x00, // Length 16
+			0x02,                   // Type 2: ACCEPT
+			0x00, 0x00, 0x00,       // Reserved
+			0x01, 0x3c, 0x01, 0x2c, // Version 316, Compatible 300
+			0x00, 0x00, 0x00, 0x00, // Options
+		}
+		_, _ = conn.Write(tnsAccept)
+		time.Sleep(50 * time.Millisecond)
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	db := NewDBing(DBOptions{
+		Type:     Oracle,
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     uint16(tcpAddr.Port),
+		Timeout:  3 * time.Second,
+	})
+
+	res := db.Ping(context.Background())
+	assert.NoError(t, res.Err)
+	assert.Contains(t, res.Diagnostics, "TNS: ACCEPT")
+}
+
+func TestProbers_Constructors_MailTLS(t *testing.T) {
+	targetIP := netip.MustParseAddr("127.0.0.1")
+
+	// SMTP without TLS
+	s1 := NewMailing(MailOptions{Protocol: MailSMTP, IP: targetIP})
+	assert.Equal(t, uint16(25), s1.port)
+
+	// SMTP with TLS
+	s2 := NewMailing(MailOptions{Protocol: MailSMTP, IP: targetIP, UseTLS: true})
+	assert.Equal(t, uint16(465), s2.port)
+
+	// IMAP without TLS
+	i1 := NewMailing(MailOptions{Protocol: MailIMAP, IP: targetIP})
+	assert.Equal(t, uint16(143), i1.port)
+
+	// POP3 without TLS
+	p1 := NewMailing(MailOptions{Protocol: MailPOP3, IP: targetIP})
+	assert.Equal(t, uint16(110), p1.port)
+}
+
+func TestOracle_DecodeVSN_Full(t *testing.T) {
+	// Error case
+	assert.Equal(t, "", decodeOracleVSN("invalid"))
+
+	// Major versions
+	makeVSN := func(major uint32) string {
+		val := major << 24
+		return strconv.FormatUint(uint64(val), 10)
+	}
+
+	assert.Contains(t, decodeOracleVSN(makeVSN(23)), "Oracle 23c")
+	assert.Contains(t, decodeOracleVSN(makeVSN(21)), "Oracle 21c")
+	assert.Contains(t, decodeOracleVSN(makeVSN(19)), "Oracle 19c")
+	assert.Contains(t, decodeOracleVSN(makeVSN(18)), "Oracle 18c")
+	assert.Contains(t, decodeOracleVSN(makeVSN(12)), "Oracle 12c")
+	assert.Contains(t, decodeOracleVSN(makeVSN(11)), "Oracle 11g")
+	assert.Contains(t, decodeOracleVSN(makeVSN(10)), "Oracle v10")
+}
+
+func TestNewProber_Defaults(t *testing.T) {
+	st := stats.NewStatistics(stats.Options{
+		Hostname: "127.0.0.1",
+		IP:       netip.MustParseAddr("127.0.0.1"),
+		Port:     80,
+	})
+	p := NewProber(nil, nil, st, Options{
+		IntervalBetweenProbes: 0,
+		Timeout:               0,
+	})
+	assert.NotNil(t, p)
+	assert.Equal(t, time.Second, p.Timeout)
+	p.Ticker.Stop()
+}
+
+func TestTNSProtocolRelease_Full(t *testing.T) {
+	assert.Equal(t, "Oracle 19c/21c/23c", tnsProtocolRelease(316))
+	assert.Equal(t, "Oracle 18c", tnsProtocolRelease(315))
+	assert.Equal(t, "Oracle 12c R2", tnsProtocolRelease(314))
+	assert.Equal(t, "Oracle 12c R1", tnsProtocolRelease(313))
+	assert.Equal(t, "Oracle 11g R2", tnsProtocolRelease(312))
+	assert.Equal(t, "Oracle 11g R1", tnsProtocolRelease(311))
+	assert.Equal(t, "Oracle 10g", tnsProtocolRelease(310))
+	assert.Equal(t, "Oracle TNS v300", tnsProtocolRelease(300))
+}
+
+func TestMongoDB_BSON_WireVersions(t *testing.T) {
+	// Construct doc with maxWireVersion
+	makeWireDoc := func(wire int32) []byte {
+		var doc bytes.Buffer
+		doc.WriteByte(0x10) // int32
+		doc.WriteString("maxWireVersion\x00")
+		_ = binary.Write(&doc, binary.LittleEndian, wire)
+		doc.WriteByte(0x00) // terminator
+		docBytes := doc.Bytes()
+		docLen := uint32(len(docBytes) + 4)
+		return append([]byte{byte(docLen), byte(docLen >> 8), byte(docLen >> 16), byte(docLen >> 24)}, docBytes...)
+	}
+
+	assert.Equal(t, int32(25), extractBSONInt32(makeWireDoc(25), "maxWireVersion"))
+	assert.Equal(t, int32(21), extractBSONInt32(makeWireDoc(21), "maxWireVersion"))
+	assert.Equal(t, int32(17), extractBSONInt32(makeWireDoc(17), "maxWireVersion"))
+	assert.Equal(t, int32(13), extractBSONInt32(makeWireDoc(13), "maxWireVersion"))
+	assert.Equal(t, int32(9), extractBSONInt32(makeWireDoc(9), "maxWireVersion"))
+}
+
+func TestRedis_ReadRESPBulkString_Branches(t *testing.T) {
+	// Nil bulk string
+	str, err := readRESPBulkString(bufio.NewReader(strings.NewReader("")), "$-1")
+	assert.NoError(t, err)
+	assert.Equal(t, "", str)
+
+	// Valid bulk string
+	str2, err := readRESPBulkString(bufio.NewReader(strings.NewReader("hello\r\n")), "$5")
+	assert.NoError(t, err)
+	assert.Equal(t, "hello", str2)
+
+	// Invalid length
+	_, err = readRESPBulkString(bufio.NewReader(strings.NewReader("")), "$abc")
+	assert.Error(t, err)
+
+	// Truncated data
+	_, err = readRESPBulkString(bufio.NewReader(strings.NewReader("he")), "$5")
+	assert.Error(t, err)
+}
+
+func TestOracle_Refuse_Redirect(t *testing.T) {
+	// Test REFUSE packet
+	ln1, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln1.Close()
+
+	go func() {
+		conn, err := ln1.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		buf := make([]byte, 512)
+		_, _ = conn.Read(buf)
+
+		refuseBody := "(DESCRIPTION=(ERR=12514)(VSN=353894400))"
+		pktLen := uint16(len(refuseBody) + 8)
+		hdr := make([]byte, 8)
+		binary.BigEndian.PutUint16(hdr[0:2], pktLen)
+		hdr[4] = 0x04 // REFUSE
+		_, _ = conn.Write(append(hdr, []byte(refuseBody)...))
+		time.Sleep(50 * time.Millisecond)
+	}()
+
+	tcpAddr1 := ln1.Addr().(*net.TCPAddr)
+	db1 := NewDBing(DBOptions{
+		Type:        Oracle,
+		Hostname:    "127.0.0.1",
+		IP:          netip.MustParseAddr("127.0.0.1"),
+		Port:        uint16(tcpAddr1.Port),
+		ServiceName: "XE",
+		Timeout:     3 * time.Second,
+	})
+
+	res1 := db1.Ping(context.Background())
+	assert.NoError(t, res1.Err)
+	assert.Contains(t, res1.Diagnostics, "TNS-12514")
+
+	// Test REDIRECT packet
+	ln2, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln2.Close()
+
+	go func() {
+		conn, err := ln2.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		buf := make([]byte, 512)
+		_, _ = conn.Read(buf)
+
+		hdr := make([]byte, 8)
+		binary.BigEndian.PutUint16(hdr[0:2], 8)
+		hdr[4] = 0x05 // REDIRECT
+		_, _ = conn.Write(hdr)
+		time.Sleep(50 * time.Millisecond)
+	}()
+
+	tcpAddr2 := ln2.Addr().(*net.TCPAddr)
+	db2 := NewDBing(DBOptions{
+		Type:        Oracle,
+		Hostname:    "127.0.0.1",
+		IP:          netip.MustParseAddr("127.0.0.1"),
+		Port:        uint16(tcpAddr2.Port),
+		ServiceName: "XE",
+		Timeout:     3 * time.Second,
+	})
+
+	res2 := db2.Ping(context.Background())
+	assert.NoError(t, res2.Err)
+	assert.Contains(t, res2.Diagnostics, "REDIRECT")
+}
+
 
 
 

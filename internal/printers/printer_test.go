@@ -163,5 +163,30 @@ func TestPlainAndColorPrinterMethods(t *testing.T) {
 		colorP.PrintRetryingToResolve("example.com")
 		colorP.PrintTotalDownTime(s)
 		colorP.PrintStatistics(s)
+		colorP.PrintError("test error")
+		colorP.Shutdown(s)
+
+		plain.PrintError("test error")
+		plain.Shutdown(s)
 	})
+}
+
+func TestPrinterConfig_Getters(t *testing.T) {
+	cfg := PrinterConfig{
+		WithTimestamp:     true,
+		WithSourceAddress: true,
+		WithDiags:         true,
+	}
+	assert.True(t, cfg.GetWithTimestamp())
+	assert.True(t, cfg.GetWithSourceAddress())
+	assert.True(t, cfg.GetWithDiags())
+}
+
+func TestGenerateDefaultExportPath(t *testing.T) {
+	p1 := GenerateDefaultExportPath(false, FormatCSV)
+	assert.Contains(t, p1, ".csv")
+
+	p2 := GenerateDefaultExportPath(true, FormatJSON)
+	assert.Contains(t, p2, "fleet")
+	assert.Contains(t, p2, ".json")
 }

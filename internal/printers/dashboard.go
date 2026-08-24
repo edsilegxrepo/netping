@@ -1321,9 +1321,10 @@ var (
 	legacySparkBlocks = []rune{'_', '\u2584', '\u2588'}
 )
 
-// isLegacyWindowsConsole returns true if running on Windows inside legacy conhost (e.g. cmd.exe)
-// without native DirectWrite / Cascadia font fractional block character support.
-func isLegacyWindowsConsole() bool {
+// shouldUseCompatGlyphs returns true if compatibility 3-level glyphs are explicitly requested
+// (via NETPING_COMPAT_GLYPHS=1 / NETPING_LEGACY_CONSOLE=1 across any OS) or if auto-detected
+// on Windows inside legacy conhost (e.g. cmd.exe) lacking modern fractional block glyph support.
+func shouldUseCompatGlyphs() bool {
 	if os.Getenv("NETPING_COMPAT_GLYPHS") == "1" || os.Getenv("NETPING_LEGACY_CONSOLE") == "1" {
 		return true
 	}
@@ -1351,7 +1352,7 @@ func isLegacyWindowsConsole() bool {
 }
 
 func getSparkBlocks() []rune {
-	if isLegacyWindowsConsole() {
+	if shouldUseCompatGlyphs() {
 		return legacySparkBlocks
 	}
 	return modernSparkBlocks
@@ -1500,7 +1501,7 @@ func renderMultiLineBarChart(rtts []float64, plotWidth, height int) string {
 		}
 	}
 
-	isLegacy := isLegacyWindowsConsole()
+	isLegacy := shouldUseCompatGlyphs()
 	lowChar := "\u2581"
 	if isLegacy {
 		lowChar = "_"

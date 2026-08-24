@@ -102,3 +102,57 @@ func TestStatistics_ConcurrentAccess(t *testing.T) {
 	assert.Equal(t, uint(50), stats.TotalSuccessfulProbes)
 	assert.Equal(t, 50, len(stats.RTT))
 }
+
+func TestStatistics_RecordSuccess_RecordFailure_Snapshot_Reset(t *testing.T) {
+	st := NewStatistics(Options{
+		Hostname: "live.example.com",
+		IP:       netip.MustParseAddr("1.1.1.1"),
+		Port:     443,
+		Protocol: consts.HTTPS,
+	})
+
+	now := time.Now()
+
+	// Initial snapshot on empty stats
+	snap0 := st.Snapshot()
+	assert.Equal(t, "live.example.com", snap0.Hostname)
+	assert.Equal(t, uint(0), snap0.TotalSent)
+	assert.Equal(t, float64(0), snap0.PacketLoss)
+	assert.Equal(t, float32(0), snap0.AvgRTT)
+
+	// Record 3 successes
+	st.RecordSuccess(10.0, now)
+	st.RecordSuccess(20.0, now.Add(time.Second))
+	st.RecordSuccess(15.0, now.Add(2*time.Second))
+
+	assert.Equal(t, uint(3), st.TotalSuccessfulProbes)
+	assert.Equal(t, float32(10.0), st.MinRTT)
+	assert.Equal(t, float32(20.0), st.MaxRTT)
+	assert.Equal(t, float32(15.0), st.LatestRTT)
+	assert.Equal(t, uint(3), st.OngoingSuccessfulProbes)
+	assert.Equal(t, uint(0), st.OngoingUnsuccessfulProbes)
+
+	// Record 1 failure
+	st.RecordFailure("connection timeout", now.Add(3*time.Second))
+	assert.Equal(t, uint(1), st.TotalUnsuccessfulProbes)
+	assert.Equal(t, uint(0), st.OngoingSuccessfulProbes)
+	assert.Equal(t, uint(1), st.OngoingUnsuccessfulProbes)
+	assert.Equal(t, "connection timeout", st.LastFailureReason)
+
+	// Snapshot checks
+	snap := st.Snapshot()
+	assert.Equal(t, uint(4), snap.TotalSent)
+	assert.Equal(t, uint(3), snap.TotalSuccess)
+	assert.Equal(t, uint(1), snap.TotalFailed)
+	assert.Equal(t, float64(25.0), snap.PacketLoss) // 1 out of 4 is 25%
+	assert.Equal(t, float32(15.0), snap.AvgRTT)
+	assert.NotEmpty(t, snap.UptimeDuration)
+
+	// Reset checks
+	st.Reset()
+	assert.Equal(t, uint(0), st.TotalSuccessfulProbes)
+	assert.Equal(t, uint(0), st.TotalUnsuccessfulProbes)
+	assert.Equal(t, 0, len(st.RTT))
+	assert.Equal(t, float32(0), st.MinRTT)
+	assert.Equal(t, float32(0), st.MaxRTT)
+}

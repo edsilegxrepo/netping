@@ -63,3 +63,88 @@ func TestMultiProber_Execution(t *testing.T) {
 	assert.Equal(t, uint(2), workers[0].Stats.TotalSuccessfulProbes)
 	assert.Equal(t, uint(2), workers[1].Stats.TotalSuccessfulProbes)
 }
+
+func TestMultiProber_ContextCancellation(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer ln.Close()
+
+	parts := strings.Split(ln.Addr().String(), ":")
+	port, _ := strconv.Atoi(parts[len(parts)-1])
+
+	pinger := NewTcping(TCPOptions{
+		IP:      netip.MustParseAddr("127.0.0.1"),
+		Port:    uint16(port),
+		Timeout: 1 * time.Second,
+	})
+
+	workers := []TargetWorker{
+		{
+			Target: ln.Addr().String(),
+			Pinger: pinger,
+			Stats:  &stats.Statistics{},
+		},
+	}
+
+	multi := NewMultiProber(workers, MultiProberOptions{
+		ProbeCount: 1000,
+		Interval:   50 * time.Millisecond,
+		Timeout:    1 * time.Second,
+		NoColor:    true,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	multi.Run(ctx)
+	elapsed := time.Since(start)
+
+	// Verify prober exited promptly upon cancellation without waiting for all 1000 probes
+	assert.Less(t, elapsed, 2*time.Second)
+	assert.Less(t, workers[0].Stats.TotalSuccessfulProbes, uint(10))
+}
+
+func TestMultiProber_Concurrency_Throttling(t *testing.T) {
+	var listeners []net.Listener
+	var workers []TargetWorker
+
+	for i := 0; i < 4; i++ {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		assert.NoError(t, err)
+		defer ln.Close()
+		listeners = append(listeners, ln)
+
+		parts := strings.Split(ln.Addr().String(), ":")
+		port, _ := strconv.Atoi(parts[len(parts)-1])
+
+		pinger := NewTcping(TCPOptions{
+			IP:      netip.MustParseAddr("127.0.0.1"),
+			Port:    uint16(port),
+			Timeout: 1 * time.Second,
+		})
+
+		workers = append(workers, TargetWorker{
+			Target: ln.Addr().String(),
+			Pinger: pinger,
+			Stats:  &stats.Statistics{},
+		})
+	}
+
+	multi := NewMultiProber(workers, MultiProberOptions{
+		ProbeCount:  2,
+		Interval:    5 * time.Millisecond,
+		Timeout:     1 * time.Second,
+		Concurrency: 2, // Constrain to 2 workers in parallel
+		NoColor:     true,
+	})
+
+	multi.Run(context.Background())
+
+	for i := 0; i < 4; i++ {
+		assert.Equal(t, uint(2), workers[i].Stats.TotalSuccessfulProbes)
+	}
+}

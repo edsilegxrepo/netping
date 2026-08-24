@@ -2,16 +2,22 @@ package web
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/edsilegx/netping/internal/printers"
 	"github.com/edsilegx/netping/pkg/stats"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWebServer(t *testing.T) {
@@ -296,4 +302,160 @@ func TestBroadcaster_SetMaxHistory_Trimming(t *testing.T) {
 	assert.Equal(t, 2, len(histShrunk))
 	assert.Equal(t, uint(9), histShrunk[0].Sequence)
 	assert.Equal(t, uint(10), histShrunk[1].Sequence)
+}
+
+func TestWebServer_Export_HostSave_AllFormats(t *testing.T) {
+	st := stats.NewStatistics(stats.Options{
+		Hostname: "test-export.com",
+		IP:       netip.MustParseAddr("1.1.1.1"),
+		Port:     443,
+	})
+	st.RecordSuccess(12.5, time.Now())
+	st.RecordSuccess(18.5, time.Now())
+
+	broadcaster := NewBroadcaster()
+	broadcaster.Broadcast(ProbeEvent{
+		Sequence: 1,
+		Success:  true,
+		RTT:      12.5,
+		Target:   "test-export.com:443",
+	})
+	broadcaster.Broadcast(ProbeEvent{
+		Sequence: 2,
+		Success:  true,
+		RTT:      18.5,
+		Target:   "test-export.com:443",
+	})
+
+	server := NewServer("127.0.0.1:0", st, broadcaster)
+	tmpDir := t.TempDir()
+
+	formats := []string{"json", "pretty_json", "csv", "tsv", "sqlite"}
+	for _, fmtKey := range formats {
+		t.Run(fmtKey, func(t *testing.T) {
+			ext := "." + fmtKey
+			if fmtKey == "pretty_json" {
+				ext = ".json"
+			}
+			outPath := filepath.Join(tmpDir, fmt.Sprintf("export_%s%s", fmtKey, ext))
+
+			reqBody := fmt.Sprintf(`{"format":"%s","path":%q}`, fmtKey, outPath)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/export", strings.NewReader(reqBody))
+			w := httptest.NewRecorder()
+
+			server.handleExport(w, req)
+			assert.Equal(t, http.StatusOK, w.Code)
+
+			var res struct {
+				Success bool   `json:"success"`
+				Path    string `json:"path"`
+			}
+			err := json.Unmarshal(w.Body.Bytes(), &res)
+			require.NoError(t, err)
+			assert.True(t, res.Success)
+			assert.Equal(t, outPath, res.Path)
+
+			// Verify async background writer completes file creation within 2 seconds
+			assert.Eventually(t, func() bool {
+				info, err := os.Stat(outPath)
+				return err == nil && info.Size() > 0
+			}, 2*time.Second, 50*time.Millisecond, "expected output file %s to be created by async worker", outPath)
+		})
+	}
+}
+
+func TestWebServer_Reset_Endpoint(t *testing.T) {
+	st := stats.NewStatistics(stats.Options{
+		Hostname: "reset-target.com",
+		IP:       netip.MustParseAddr("8.8.8.8"),
+		Port:     53,
+	})
+	st.RecordSuccess(10.0, time.Now())
+
+	broadcaster := NewBroadcaster()
+	broadcaster.Broadcast(ProbeEvent{
+		Sequence: 1,
+		Success:  true,
+		RTT:      10.0,
+		Target:   "reset-target.com:53",
+	})
+	assert.Equal(t, 1, broadcaster.GetHistoryCount())
+
+	server := NewServer("127.0.0.1:0", st, broadcaster)
+
+	// POST /api/v1/reset
+	reqReset := httptest.NewRequest(http.MethodPost, "/api/v1/reset", nil)
+	wReset := httptest.NewRecorder()
+	server.handleReset(wReset, reqReset)
+
+	assert.Equal(t, http.StatusOK, wReset.Code)
+	assert.Contains(t, wReset.Body.String(), `"status":"reset"`)
+	assert.Equal(t, 0, broadcaster.GetHistoryCount())
+	assert.Equal(t, uint(0), st.Snapshot().TotalSent)
+}
+
+func TestWebServer_FleetTargets_DetailedAPI(t *testing.T) {
+	st1 := stats.NewStatistics(stats.Options{Hostname: "target1.com", Port: 80})
+	st1.RecordSuccess(15.0, time.Now())
+	st2 := stats.NewStatistics(stats.Options{Hostname: "target2.com", Port: 443})
+	st2.RecordSuccess(25.0, time.Now())
+
+	server := NewServer("127.0.0.1:0", st1, NewBroadcaster())
+	server.SetTargetsSupplier(func() []printers.FleetTarget {
+		return []printers.FleetTarget{
+			{Target: "target1.com:80", Host: "target1.com", Port: 80, Protocol: "HTTP", Stats: st1},
+			{Target: "target2.com:443", Host: "target2.com", Port: 443, Protocol: "HTTPS", Stats: st2},
+		}
+	})
+
+	// GET /api/v1/targets
+	reqTargets := httptest.NewRequest(http.MethodGet, "/api/v1/targets", nil)
+	wTargets := httptest.NewRecorder()
+	server.handleTargets(wTargets, reqTargets)
+
+	assert.Equal(t, http.StatusOK, wTargets.Code)
+	assert.Contains(t, wTargets.Body.String(), "target1.com")
+	assert.Contains(t, wTargets.Body.String(), "target2.com")
+
+	// GET /api/v1/targets/target1.com:80
+	reqTarget1 := httptest.NewRequest(http.MethodGet, "/api/v1/targets/target1.com:80", nil)
+	wTarget1 := httptest.NewRecorder()
+	server.handleTargetDetail(wTarget1, reqTarget1)
+	assert.Equal(t, http.StatusOK, wTarget1.Code)
+	assert.Contains(t, wTarget1.Body.String(), "target1.com")
+}
+
+func TestWebServer_Concurrent_SSE_Clients(t *testing.T) {
+	broadcaster := NewBroadcaster()
+	st := stats.NewStatistics(stats.Options{Hostname: "stream.com", Port: 443})
+	server := NewServer("127.0.0.1:0", st, broadcaster)
+
+	const clientCount = 20
+	var wg sync.WaitGroup
+
+	for i := 0; i < clientCount; i++ {
+		wg.Add(1)
+		go func(clientId int) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			defer cancel()
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/stream", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			server.handleStream(w, req)
+		}(i)
+	}
+
+	// Broadcast bursts of events during active connections
+	for seq := 1; seq <= 10; seq++ {
+		time.Sleep(10 * time.Millisecond)
+		broadcaster.Broadcast(ProbeEvent{
+			Sequence: uint(seq),
+			Success:  true,
+			RTT:      float64(seq) * 2.5,
+			Target:   "stream.com:443",
+		})
+	}
+
+	wg.Wait()
 }

@@ -175,6 +175,11 @@ type Config struct {
 	DNSHosts                   []string
 	ServiceName                string
 	HistoryLimit               uint
+	GenerateAPIKeyPath         string
+	APIKeyStore                string
+	APIKeyHash                 string
+	TriggerMode                bool
+	TriggerConcurrency         int
 }
 
 func (c Config) GetHostname() string {
@@ -276,6 +281,12 @@ type flagOptions struct {
 	uri                               *string
 	concurrency                       *uint
 	historyLimit                      *uint
+	generateAPIKey                    *string
+	apiKeyStore                       *string
+	apiKeyHash                        *string
+	triggerMode                       *bool
+	listen                            *string
+	triggerConcurrency                *int
 }
 
 func registerFlags(fs *flag.FlagSet) flagOptions {
@@ -366,6 +377,12 @@ func registerFlags(fs *flag.FlagSet) flagOptions {
 		serviceName:         fs.String("service", "", "Service name / SID for Oracle database connections (e.g. ORCL, FREE, XE, ORCLPDB1)."),
 		oracleService:       fs.String("oracle-service", "", "Oracle database service name (e.g. ORCL, FREE, XE, ORCLPDB1)."),
 		historyLimit:        fs.Uint("history-limit", 1000000, "Maximum in-memory historical probe events retained (default: 1000000, max: 5000000)."),
+		generateAPIKey:      fs.String("generate-api-key", "", "Generate a 256-bit API key, compute Argon2id hash, and save to keystore file path."),
+		apiKeyStore:         fs.String("api-key-store", "", "Path to API key keystore file for Trigger mode authentication."),
+		apiKeyHash:          fs.String("api-key-hash", "", "Inline Argon2id hash string for Trigger mode authentication."),
+		triggerMode:         fs.Bool("trigger-mode", false, "Start in trigger-only mode without initial targets."),
+		listen:              fs.String("listen", "", "Start trigger listener on specified address (e.g. :3000 or 127.0.0.1:3000)."),
+		triggerConcurrency:  fs.Int("trigger-concurrency", 100, "Maximum concurrent dynamic probe workers."),
 	}
 }
 
@@ -417,15 +434,28 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		return nil, fmt.Errorf("only one IP version can be specified")
 	}
 
+	if *opts.generateAPIKey != "" {
+		return &Config{
+			GenerateAPIKeyPath: *opts.generateAPIKey,
+		}, nil
+	}
+
+	isTriggerMode := *opts.triggerMode || *opts.listen != "" || (*opts.apiKeyStore != "" && *opts.host == "" && *opts.uri == "" && *opts.port == "")
+
 	serviceName := *opts.serviceName
 	if serviceName == "" && *opts.oracleService != "" {
 		serviceName = *opts.oracleService
 	}
 
-	// Resolve the target pool strictly via --host, --port, or --uri
-	targetPool, err := ResolveTargetPool(*opts.host, *opts.port, *opts.uri, *opts.protocol, serviceName)
-	if err != nil {
-		return nil, err
+	var targetPool []TargetDef
+	if *opts.host != "" || *opts.port != "" || *opts.uri != "" {
+		var err error
+		targetPool, err = ResolveTargetPool(*opts.host, *opts.port, *opts.uri, *opts.protocol, serviceName)
+		if err != nil {
+			return nil, err
+		}
+	} else if !isTriggerMode {
+		return nil, fmt.Errorf("target host, port, or URI must be specified using --host, --port, or --uri")
 	}
 
 	intervalBetweenProbesDuration := utils.SecondsToDuration(*opts.intervalBetweenProbes)
@@ -469,11 +499,15 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		targetStrings = append(targetStrings, fmt.Sprintf("%s:%d", tDef.Host, tDef.Port))
 	}
 
-	primaryTarget := targetConfigs[0]
+	var primaryTarget TargetConfig
+	if len(targetConfigs) > 0 {
+		primaryTarget = targetConfigs[0]
+	}
 	timeoutInDuration := utils.SecondsToDuration(*opts.timeout)
 
 	var networkInterface nic.NetworkInterface
 	if *opts.interfaceName != "" {
+		var err error
 		networkInterface, err = nic.NewNetworkInterface(
 			*opts.interfaceName,
 			primaryTarget.IP,
@@ -564,6 +598,14 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		}
 	}
 
+	webAddr := *opts.webAddr
+	if *opts.listen != "" {
+		webAddr = *opts.listen
+	}
+	if webAddr == "" && isTriggerMode {
+		webAddr = ":3000"
+	}
+
 	cfg := &Config{
 		Hostname:                   primaryTarget.Host,
 		IP:                         primaryTarget.IP,
@@ -574,17 +616,18 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		Concurrency:                *opts.concurrency,
 		UseIPv4:                    *opts.useIPv4,
 		UseIPv6:                    *opts.useIPv6,
-		Timeout:                    timeoutInDuration,
+		ShowSourceAddress:          *opts.showSourceAddress,
 		ProbesBeforeQuit:           *opts.probesBeforeQuit,
-		TargetIsIP:                 primaryTarget.TargetIsIP,
+		Timeout:                    timeoutInDuration,
 		IntervalBetweenProbes:      intervalBetweenProbesDuration,
-		ShowFailuresOnly:           *opts.showFailuresOnly,
-		Resolver:                   resolver,
-		ShouldRetryResolve:         primaryTarget.ShouldRetryResolve,
+		PrinterConfig:              printerConfig,
+		NetworkInterface:           networkInterface,
 		RetryResolveAfterNFailures: *opts.retryHostnameResolveAfterNFailures,
 		RetryHostnameLookupAfter:   *opts.retryHostnameResolveAfterNFailures,
-		NetworkInterface:           networkInterface,
-		PrinterConfig:              printerConfig,
+		TargetIsIP:                 primaryTarget.TargetIsIP,
+		ShouldRetryResolve:         primaryTarget.ShouldRetryResolve,
+		ShowFailuresOnly:           *opts.showFailuresOnly,
+		Resolver:                   resolver,
 		SendData:                   *opts.sendData,
 		ExpectData:                 *opts.expectData,
 		FastClose:                  *opts.fastClose,
@@ -600,13 +643,18 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		InitialRetryBackoff:        utils.SecondsToDuration(*opts.retryBackoff),
 		MaxRetryBackoff:            utils.SecondsToDuration(*opts.retryMaxBackoff),
 		RetryJitter:                *opts.retryJitter,
-		EnableWeb:                  *opts.enableWeb || *opts.webAddr != "",
-		WebAddr:                    *opts.webAddr,
+		EnableWeb:                  *opts.enableWeb || isTriggerMode,
+		WebAddr:                    webAddr,
 		ShowDiags:                  *opts.showDiags || *opts.showDiagnostics,
 		StartTLS:                   *opts.startTLS,
 		DNSHosts:                   dnsHosts,
 		ServiceName:                serviceName,
 		HistoryLimit:               *opts.historyLimit,
+		GenerateAPIKeyPath:         *opts.generateAPIKey,
+		APIKeyStore:                *opts.apiKeyStore,
+		APIKeyHash:                 *opts.apiKeyHash,
+		TriggerMode:                isTriggerMode,
+		TriggerConcurrency:         *opts.triggerConcurrency,
 	}
 
 	return cfg, nil

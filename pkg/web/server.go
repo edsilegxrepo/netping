@@ -28,6 +28,9 @@ type Server struct {
 	httpServer      *http.Server
 	startTime       time.Time
 	targetsSupplier func() []printers.FleetTarget
+	validator       KeyValidator
+	dynamicExecutor DynamicExecutor
+	fleetManager    DynamicFleetManager
 }
 
 // NewServer constructs a new web dashboard server.
@@ -66,6 +69,12 @@ func NewServer(addr string, st *stats.Statistics, broadcaster *Broadcaster) *Ser
 	mux.HandleFunc("/api/v1/config/history", s.handleHistoryConfig)
 	mux.HandleFunc("/api/v1/config/history/", s.handleHistoryConfig)
 
+	// Trigger API v1 (Protected via Argon2id)
+	mux.HandleFunc("/api/v1/trigger", s.handleTrigger)
+	mux.HandleFunc("/api/v1/trigger/", s.handleTrigger)
+	mux.HandleFunc("/api/v1/trigger/status", s.handleTriggerStatus)
+	mux.HandleFunc("/api/v1/trigger/status/", s.handleTriggerStatus)
+
 	// Swagger UI / OpenAPI 3.0 Documentation
 	mux.HandleFunc("/api", s.handleAPIDocs)
 	mux.HandleFunc("/api/", s.handleAPIDocs)
@@ -93,9 +102,32 @@ func NewServer(addr string, st *stats.Statistics, broadcaster *Broadcaster) *Ser
 	return s
 }
 
+// Handler returns the underlying http.Handler for testing and embedding.
+func (s *Server) Handler() http.Handler {
+	if s.httpServer != nil {
+		return s.httpServer.Handler
+	}
+	return nil
+}
+
 // SetTargetsSupplier registers a fleet supplier callback to query active probers in O(1) time.
 func (s *Server) SetTargetsSupplier(fn func() []printers.FleetTarget) {
 	s.targetsSupplier = fn
+}
+
+// SetKeyValidator registers an API key validator for protected endpoints.
+func (s *Server) SetKeyValidator(v KeyValidator) {
+	s.validator = v
+}
+
+// SetDynamicExecutor registers the dynamic on-demand probe runner.
+func (s *Server) SetDynamicExecutor(e DynamicExecutor) {
+	s.dynamicExecutor = e
+}
+
+// SetDynamicFleetManager registers the dynamic target fleet manager.
+func (s *Server) SetDynamicFleetManager(m DynamicFleetManager) {
+	s.fleetManager = m
 }
 
 // Start launches the web server asynchronously and shuts down gracefully on context cancellation.
@@ -342,6 +374,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	flusher.Flush()
 
 	ch := s.broadcaster.Subscribe()
 	defer s.broadcaster.Unsubscribe(ch)
@@ -383,7 +416,123 @@ func parseExportFormat(fmtStr string) printers.ExportFormat {
 	}
 }
 
+func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) bool {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-API-Key, Content-Type, Accept")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return false
+	}
+
+	if s.validator == nil {
+		return true // Auth not configured (e.g. standard subscriber mode)
+	}
+
+	key := strings.TrimSpace(r.Header.Get("X-API-Key"))
+	if key == "" {
+		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+		if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			key = strings.TrimSpace(authHeader[7:])
+		} else if strings.HasPrefix(strings.ToLower(authHeader), "apikey ") {
+			key = strings.TrimSpace(authHeader[7:])
+		} else {
+			key = authHeader
+		}
+	}
+
+	if key == "" || !s.validator.ValidateKey(key) {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
+			"error":   "unauthorized",
+			"message": "Invalid or missing API key. Provide via 'X-API-Key' or 'Authorization: Bearer <key>' header.",
+		})
+		return false
+	}
+
+	return true
+}
+
+func (s *Server) handleTrigger(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-API-Key, Content-Type, Accept")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if !s.authenticate(w, r) {
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed. Use POST to trigger probes.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.dynamicExecutor == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error":   "unavailable",
+			"message": "Trigger engine is not initialized",
+		})
+		return
+	}
+
+	var req TriggerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "bad_request",
+			"message": fmt.Sprintf("invalid JSON payload: %v", err),
+		})
+		return
+	}
+
+	resp, err := s.dynamicExecutor.Execute(r.Context(), req)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "probe_execution_failed",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleTriggerStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.authenticate(w, r) {
+		return
+	}
+
+	targetCount := 0
+	if s.targetsSupplier != nil {
+		targetCount = len(s.targetsSupplier())
+	}
+	historyCount := 0
+	historyLimit := 1000000
+	if s.broadcaster != nil {
+		historyCount = s.broadcaster.GetHistoryCount()
+		historyLimit = s.broadcaster.GetMaxHistory()
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":          "ready",
+		"mode":            "trigger",
+		"auth_enabled":    s.validator != nil,
+		"uptime":          time.Since(s.startTime).Round(time.Second).String(),
+		"active_targets":  targetCount,
+		"history_events":  historyCount,
+		"history_limit":   historyLimit,
+		"server_time_utc": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
 func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
+	if !s.authenticate(w, r) {
+		return
+	}
+
 	if s.broadcaster != nil {
 		s.broadcaster.ClearHistory()
 	}
@@ -598,6 +747,9 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-API-Key, Content-Type, Accept")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
@@ -828,8 +980,58 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 					},
 				},
 			},
+			"/api/v1/trigger": map[string]interface{}{
+				"post": map[string]interface{}{
+					"summary":     "Execute Dynamic Probe",
+					"description": "Triggers an on-demand synchronous network probe across any supported protocol.",
+					"security": []map[string]interface{}{
+						{"ApiKeyAuth": []string{}},
+						{"BearerAuth": []string{}},
+					},
+					"requestBody": map[string]interface{}{
+						"required": true,
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type": "object",
+									"required": []string{"target"},
+									"properties": map[string]interface{}{
+										"target":     map[string]interface{}{"type": "string", "example": "db.internal.net"},
+										"port":       map[string]interface{}{"type": "integer", "example": 5432},
+										"protocol":   map[string]interface{}{"type": "string", "example": "postgres"},
+										"timeout":    map[string]interface{}{"type": "string", "example": "2s"},
+										"count":      map[string]interface{}{"type": "integer", "example": 1},
+										"show_diags": map[string]interface{}{"type": "boolean", "example": true},
+										"broadcast":  map[string]interface{}{"type": "boolean", "example": true},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{
+							"description": "Probe execution result",
+						},
+						"401": map[string]interface{}{"description": "Unauthorized - Missing or invalid API key"},
+					},
+				},
+			},
 		},
 		"components": map[string]interface{}{
+			"securitySchemes": map[string]interface{}{
+				"ApiKeyAuth": map[string]interface{}{
+					"type":        "apiKey",
+					"in":          "header",
+					"name":        "X-API-Key",
+					"description": "Argon2id API Key authentication token",
+				},
+				"BearerAuth": map[string]interface{}{
+					"type":         "http",
+					"scheme":       "bearer",
+					"bearerFormat": "APIKey",
+					"description":  "Argon2id API Key bearer token",
+				},
+			},
 			"schemas": map[string]interface{}{
 				"TargetSnapshot": map[string]interface{}{
 					"type": "object",

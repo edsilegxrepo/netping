@@ -459,3 +459,61 @@ func TestWebServer_Concurrent_SSE_Clients(t *testing.T) {
 
 	wg.Wait()
 }
+
+type mockValidator struct {
+	validKey string
+}
+
+func (m *mockValidator) ValidateKey(rawKey string) bool {
+	return rawKey == m.validKey
+}
+
+type mockExecutor struct{}
+
+func (m *mockExecutor) Execute(ctx context.Context, req TriggerRequest) (*TriggerResponse, error) {
+	return &TriggerResponse{
+		Success:   true,
+		Target:    req.Target,
+		Protocol:  "TCP",
+		RTTMs:     12.34,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}, nil
+}
+
+func TestWebServer_TriggerAPI(t *testing.T) {
+	broadcaster := NewBroadcaster()
+	server := NewServer("127.0.0.1:0", nil, broadcaster)
+	validator := &mockValidator{validKey: "np_live_secretkey123"}
+	server.SetKeyValidator(validator)
+	server.SetDynamicExecutor(&mockExecutor{})
+
+	// 1. Unauthenticated -> 401
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trigger", strings.NewReader(`{"target":"example.com:80"}`))
+	w := httptest.NewRecorder()
+	server.handleTrigger(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), `"unauthorized"`)
+
+	// 2. Preflight OPTIONS -> 204
+	reqOpt := httptest.NewRequest(http.MethodOptions, "/api/v1/trigger", nil)
+	wOpt := httptest.NewRecorder()
+	server.handleTrigger(wOpt, reqOpt)
+	assert.Equal(t, http.StatusNoContent, wOpt.Code)
+	assert.Equal(t, "*", wOpt.Header().Get("Access-Control-Allow-Origin"))
+
+	// 3. Authenticated X-API-Key -> 200
+	reqAuth := httptest.NewRequest(http.MethodPost, "/api/v1/trigger", strings.NewReader(`{"target":"example.com:80"}`))
+	reqAuth.Header.Set("X-API-Key", "np_live_secretkey123")
+	wAuth := httptest.NewRecorder()
+	server.handleTrigger(wAuth, reqAuth)
+	assert.Equal(t, http.StatusOK, wAuth.Code)
+	assert.Contains(t, wAuth.Body.String(), `"example.com:80"`)
+
+	// 4. Trigger Status -> 200
+	reqStatus := httptest.NewRequest(http.MethodGet, "/api/v1/trigger/status", nil)
+	reqStatus.Header.Set("Authorization", "Bearer np_live_secretkey123")
+	wStatus := httptest.NewRecorder()
+	server.handleTriggerStatus(wStatus, reqStatus)
+	assert.Equal(t, http.StatusOK, wStatus.Code)
+	assert.Contains(t, wStatus.Body.String(), `"mode":"trigger"`)
+}

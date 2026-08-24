@@ -16,7 +16,7 @@ func TestFlagsRequiringValue(t *testing.T) {
 	registerFlags(fs)
 	fv := flagsRequiringValue(fs)
 
-	wantValue := []string{"host", "port", "uri", "concurrency", "count", "interval", "timeout", "retry-resolve", "dns-server", "dns-host", "interface", "output-format", "output-file", "send", "expect", "max-consecutive-fails", "max-latency", "metrics-addr", "protocol", "retry", "retry-backoff", "retry-max-backoff", "web-addr", "service", "oracle-service"}
+	wantValue := []string{"host", "port", "uri", "concurrency", "count", "interval", "timeout", "retry-resolve", "dns-server", "dns-host", "interface", "output-format", "output-file", "send", "expect", "max-consecutive-fails", "max-latency", "metrics-addr", "protocol", "retry", "retry-backoff", "retry-max-backoff", "web-addr", "service", "oracle-service", "history-limit"}
 	for _, name := range wantValue {
 		assert.True(t, fv[name], "expected %q to require a value", name)
 	}

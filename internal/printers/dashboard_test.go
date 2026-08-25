@@ -133,7 +133,7 @@ func TestMultiDashboardPrinterLifecycle(t *testing.T) {
 }
 
 func TestSparklineRenderingModes(t *testing.T) {
-	t.Setenv("NETPING_COMPAT_GLYPHS", "1")
+	t.Setenv("NETPING_LEGACY_CONSOLE", "1")
 	assert.True(t, shouldUseCompatGlyphs())
 	blocksLegacy := getSparkBlocks()
 	assert.Equal(t, legacySparkBlocks, blocksLegacy)
@@ -148,7 +148,7 @@ func TestSparklineRenderingModes(t *testing.T) {
 	chartLegacy := renderMultiLineBarChart(rtts, 20, 5)
 	assert.NotEmpty(t, chartLegacy)
 
-	t.Setenv("NETPING_COMPAT_GLYPHS", "0")
+	t.Setenv("NETPING_LEGACY_CONSOLE", "0")
 	assert.False(t, shouldUseCompatGlyphs())
 	blocksModern := getSparkBlocks()
 	assert.Equal(t, modernSparkBlocks, blocksModern)

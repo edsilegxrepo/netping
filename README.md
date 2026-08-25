@@ -133,6 +133,7 @@ netping --host <host1,host2> --port <port1,port2> [options]
 | Flag | Type | Default | Description |
 | :--- | :---: | :---: | :--- |
 | `--dashboard` | `bool` | `false` | Launch full-screen interactive 120-column TUI dashboard with waveform history. |
+| `--legacy-console` | `bool` | `false` | Use CP437/ASCII compatibility glyphs and square borders for legacy terminals (PuTTY, cmd.exe). |
 | `--web` | `bool` | `false` | Launch embedded real-time web dashboard with SSE event streaming. |
 | `--web-addr` | `string` | `127.0.0.1:3000` | Listening address and port for the embedded web dashboard. |
 
@@ -241,6 +242,21 @@ netping --host 1.1.1.1 --port 443 --dashboard --protocol https --diags
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 Press Ctrl+C to stop probing and view final report.
 ```
+
+#### Terminal Compatibility & Legacy Console Mode (PuTTY, cmd.exe)
+For terminal emulators or fonts lacking Unicode fractional block elements (`U+2581`–`U+2587`) or rounded box corners (such as PuTTY using *Lucida Console* or *Consolas*, or classic Windows `cmd.exe`), use `--legacy-console` or export `NETPING_LEGACY_CONSOLE=1`:
+
+```bash
+# Via CLI flag
+netping --host 1.1.1.1 --port 443 --dashboard --legacy-console
+
+# Via Environment Variable
+export NETPING_LEGACY_CONSOLE=1
+netping --host 1.1.1.1 --port 443 --dashboard
+```
+This forces compatibility mode:
+- **Sparklines & Waveform**: Uses CP437/VGA-safe block characters (`_`, `▄`, `█`), avoiding missing-glyph `[?]` replacement boxes.
+- **Card & Modal Borders**: Replaces Unicode rounded corners (`╭`, `╮`, `╰`, `╯`) with crisp square corners (`┌`, `┐`, `└`, `┘`).
 
 #### Zero-Dependency Embedded Web Dashboard
 ```bash

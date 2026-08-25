@@ -195,6 +195,7 @@ type Config struct {
 	APIKeyHash                 string
 	TriggerMode                bool
 	TriggerConcurrency         int
+	LegacyConsole              bool
 }
 
 func (c Config) GetHostname() string {
@@ -318,6 +319,7 @@ type flagOptions struct {
 	triggerMode                        *bool
 	listen                             *string
 	triggerConcurrency                 *int
+	legacyConsole                      *bool
 }
 
 func registerFlags(fs *flag.FlagSet) flagOptions {
@@ -425,6 +427,7 @@ func registerFlags(fs *flag.FlagSet) flagOptions {
 		triggerMode:         fs.Bool("trigger-mode", false, "Start in trigger-only mode without initial targets."),
 		listen:              fs.String("listen", "", "Start trigger listener on specified address (e.g. :3000 or 127.0.0.1:3000)."),
 		triggerConcurrency:  fs.Int("trigger-concurrency", 100, "Maximum concurrent dynamic probe workers."),
+		legacyConsole:       fs.Bool("legacy-console", false, "Use CP437/ASCII fallback glyphs and square borders for legacy terminals (PuTTY, cmd.exe)."),
 	}
 }
 
@@ -648,6 +651,11 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		webAddr = ":3000"
 	}
 
+	isLegacyConsole := *opts.legacyConsole
+	if isLegacyConsole {
+		_ = os.Setenv("NETPING_LEGACY_CONSOLE", "1")
+	}
+
 	cfg := &Config{
 		Hostname:                   primaryTarget.Host,
 		IP:                         primaryTarget.IP,
@@ -697,6 +705,7 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		APIKeyHash:                 *opts.apiKeyHash,
 		TriggerMode:                isTriggerMode,
 		TriggerConcurrency:         *opts.triggerConcurrency,
+		LegacyConsole:              isLegacyConsole,
 	}
 
 	return cfg, nil

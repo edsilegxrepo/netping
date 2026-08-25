@@ -14,6 +14,8 @@
   - **In-Memory Security Hygiene**: Cryptographic memory wiping via `auth.ZeroBytes` and constant-time key validation (`subtle.ConstantTimeCompare`) against timing attacks.
 - **HTTP Probe Method Dispatching**:
   - **Dynamic Method Routing**: Supports payload transmission (`--send` / `send_data` via HTTP `POST`) and response body assertion (`--expect` / `expect_data` via HTTP `GET`) across CLI and trigger API, while preserving standard lightweight `HEAD` requests by default.
+- **Terminal Compatibility & Legacy Console Mode**:
+  - Added `--legacy-console` CLI flag and `NETPING_LEGACY_CONSOLE=1` support to force CP437/VGA-safe block characters (`_`, `▄`, `█`) on terminal clients lacking Unicode fractional block glyphs (e.g. PuTTY with Lucida Console / Consolas).
 - **Testing & Verification**:
   - Comprehensive unit test suites across `pkg/auth`, `pkg/engine`, `pkg/web`, `internal/config`, and `cmd`.
   - 8-stage end-to-end lifecycle testing covering key generation, idle daemon startup, REST authentication, probe triggering, SSE streaming, and dashboard visualization.

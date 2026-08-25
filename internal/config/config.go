@@ -140,6 +140,7 @@ type TargetConfig struct {
 	Protocol                consts.Protocol
 	TargetIsIP              bool
 	ServiceName             string
+	URI                     string
 	ShouldRetryResolve      bool
 	RetryResolveAfterNFails uint
 }
@@ -542,6 +543,7 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 			Protocol:                tDef.Protocol,
 			TargetIsIP:              targetIsAlreadyIP,
 			ServiceName:             tDef.ServiceName,
+			URI:                     tDef.URI,
 			ShouldRetryResolve:      shouldRetryResolve,
 			RetryResolveAfterNFails: *opts.retryHostnameResolveAfterNFailures,
 		}

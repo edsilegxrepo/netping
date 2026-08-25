@@ -34,6 +34,10 @@ func TestGetDefaultPort(t *testing.T) {
 	assert.Equal(t, uint16(21), GetDefaultPort(FTP))
 	assert.Equal(t, uint16(88), GetDefaultPort(KERBEROS))
 	assert.Equal(t, uint16(88), GetDefaultPort(KERBEROSUDP))
+	assert.Equal(t, uint16(443), GetDefaultPort(OIDC))
+	assert.Equal(t, uint16(443), GetDefaultPort(SAML))
+	assert.Equal(t, uint16(443), GetDefaultPort(OAUTH2))
+	assert.Equal(t, uint16(443), GetDefaultPort(SSO))
 	assert.Equal(t, uint16(443), GetDefaultPort(Protocol("UNKNOWN")))
 }
 
@@ -80,6 +84,26 @@ func TestNormalizeProtocol(t *testing.T) {
 	assert.Equal(t, ICMP, p)
 	assert.Equal(t, uint16(0), port)
 
+	p, port, ok = NormalizeProtocol("oidc")
+	assert.True(t, ok)
+	assert.Equal(t, OIDC, p)
+	assert.Equal(t, uint16(443), port)
+
+	p, port, ok = NormalizeProtocol("saml2")
+	assert.True(t, ok)
+	assert.Equal(t, SAML, p)
+	assert.Equal(t, uint16(443), port)
+
+	p, port, ok = NormalizeProtocol("oauth2")
+	assert.True(t, ok)
+	assert.Equal(t, OAUTH2, p)
+	assert.Equal(t, uint16(443), port)
+
+	p, port, ok = NormalizeProtocol("sso")
+	assert.True(t, ok)
+	assert.Equal(t, SSO, p)
+	assert.Equal(t, uint16(443), port)
+
 	// Unknown fallback
 	p, port, ok = NormalizeProtocol("unrecognized_scheme")
 	assert.False(t, ok)
@@ -89,5 +113,5 @@ func TestNormalizeProtocol(t *testing.T) {
 
 func TestAllProtocols(t *testing.T) {
 	all := AllProtocols()
-	assert.GreaterOrEqual(t, len(all), 45)
+	assert.GreaterOrEqual(t, len(all), 50)
 }

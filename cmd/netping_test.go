@@ -426,6 +426,88 @@ func TestEndToEnd_TriggerMode_AllPayloadsAndFeatures(t *testing.T) {
 	assert.True(t, resHTTPGet.Success)
 	assert.Contains(t, resHTTPGet.Diagnostics, `Matched: "service-ready"`)
 
+	// 9. Kerberos Protocol Probe via Trigger API
+	resKrb, code, err := sendTrigger(web.TriggerRequest{
+		Host:      "127.0.0.1",
+		Port:      targetPort,
+		Protocol:  "kerberos",
+		ShowDiags: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "KERBEROS", resKrb.Protocol)
+
+	// 10. Single Sign-On (SSO) Protocols (OIDC, SAML 2.0, OAuth 2.0)
+	ssoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "openid-configuration"):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"issuer":"https://sso.example.com","token_endpoint":"https://sso.example.com/token","id_token_signing_alg_values_supported":["RS256"],"scopes_supported":["openid"]}`))
+		case strings.Contains(r.URL.Path, "FederationMetadata.xml") || strings.Contains(r.URL.Path, "saml"):
+			w.Header().Set("Content-Type", "application/xml")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><EntityDescriptor entityID="https://saml.example.com/" xmlns="urn:oasis:names:tc:SAML:2.0:metadata"><IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol"><SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://saml.example.com/sso"/></IDPSSODescriptor></EntityDescriptor>`))
+		case strings.Contains(r.URL.Path, "oauth-authorization-server") || strings.Contains(r.URL.Path, "oauth"):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"issuer":"https://oauth.example.com","token_endpoint":"https://oauth.example.com/token","code_challenge_methods_supported":["S256"]}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer ssoServer.Close()
+
+	ssoU, _ := url.Parse(ssoServer.URL)
+	ssoH, ssoPStr, _ := net.SplitHostPort(ssoU.Host)
+	ssoPortNum, _ := strconv.Atoi(ssoPStr)
+
+	// 10a. OIDC Trigger
+	resOIDC, code, err := sendTrigger(web.TriggerRequest{
+		Host:      ssoH,
+		Port:      uint16(ssoPortNum),
+		URI:       ssoServer.URL + "/.well-known/openid-configuration",
+		Protocol:  "oidc",
+		ShowDiags: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, code)
+	assert.True(t, resOIDC.Success)
+	assert.Equal(t, "OIDC", resOIDC.Protocol)
+	assert.Contains(t, resOIDC.Diagnostics, "Protocol: OIDC")
+	assert.Contains(t, resOIDC.Diagnostics, "Issuer: https://sso.example.com")
+
+	// 10b. SAML 2.0 Trigger
+	resSAML, code, err := sendTrigger(web.TriggerRequest{
+		Host:      ssoH,
+		Port:      uint16(ssoPortNum),
+		URI:       ssoServer.URL + "/FederationMetadata/2007-06/FederationMetadata.xml",
+		Protocol:  "saml",
+		ShowDiags: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, code)
+	assert.True(t, resSAML.Success)
+	assert.Equal(t, "SAML", resSAML.Protocol)
+	assert.Contains(t, resSAML.Diagnostics, "Protocol: SAML 2.0 Metadata")
+	assert.Contains(t, resSAML.Diagnostics, "EntityID: https://saml.example.com/")
+
+	// 10c. OAuth 2.0 Trigger
+	resOAuth, code, err := sendTrigger(web.TriggerRequest{
+		Host:      ssoH,
+		Port:      uint16(ssoPortNum),
+		URI:       ssoServer.URL + "/.well-known/oauth-authorization-server",
+		Protocol:  "oauth2",
+		ShowDiags: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, code)
+	assert.True(t, resOAuth.Success)
+	assert.Equal(t, "OAUTH2", resOAuth.Protocol)
+	assert.Contains(t, resOAuth.Diagnostics, "Protocol: OAuth 2.0 (RFC 8414)")
+	assert.Contains(t, resOAuth.Diagnostics, "Issuer: https://oauth.example.com")
+	assert.Contains(t, resOAuth.Diagnostics, "PKCE: [S256]")
+
 	// Verify target registry tracked active targets
 	fleet := registry.GetFleetTargets()
 	assert.GreaterOrEqual(t, len(fleet), 1)

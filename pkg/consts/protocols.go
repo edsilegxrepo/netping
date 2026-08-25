@@ -54,6 +54,10 @@ var protocolDefaultPorts = map[Protocol]uint16{
 	FTPS:        990,
 	KERBEROS:    88,
 	KERBEROSUDP: 88,
+	OIDC:        443,
+	SAML:        443,
+	OAUTH2:      443,
+	SSO:         443,
 }
 
 // protocolAliases maps common user strings and URI schemes to canonical Protocols.
@@ -149,6 +153,22 @@ var protocolAliases = map[string]Protocol{
 	"krb-udp":      KERBEROSUDP,
 	"kdc-udp":      KERBEROSUDP,
 	"kerberosudp":  KERBEROSUDP,
+	"oidc":           OIDC,
+	"openid":         OIDC,
+	"openid-connect": OIDC,
+	"oidc-discovery": OIDC,
+	"saml":           SAML,
+	"saml2":          SAML,
+	"saml-idp":       SAML,
+	"saml-sp":        SAML,
+	"saml-metadata":  SAML,
+	"oauth2":         OAUTH2,
+	"oauth":          OAUTH2,
+	"oauth2-as":      OAUTH2,
+	"oauth-metadata": OAUTH2,
+	"sso":            SSO,
+	"single-sign-on": SSO,
+	"federation":     SSO,
 }
 
 // GetDefaultPort returns the standard default port for a protocol.

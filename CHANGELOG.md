@@ -2,6 +2,12 @@
 
 ## v3.6.1 - 2026-08-25
 
+- **Single Sign-On (SSO) & Federation Probing Engine**:
+  - **OpenID Connect (OIDC 1.0)**: Added native latency and discovery probing (`--protocol oidc`) on Port 443 with deep inspection (`--diags`) extracting issuer, endpoints, token signing algorithms, scopes, and active JWKS X.509 signing key expiration audits.
+  - **SAML 2.0 Identity Federation**: Added SAML metadata prober (`--protocol saml`) parsing XML `EntityDescriptor`, SSO/SLO bindings (`HTTP-Redirect`, `HTTP-POST`), NameID formats, and `<ds:X509Certificate>` validity with $<30\text{d}$ expiration warnings and expired alerts.
+  - **OAuth 2.0 Authorization Server (RFC 8414)**: Added OAuth 2.0 metadata prober (`--protocol oauth2`) dissecting token endpoints, grant types, client authentication methods, and PKCE (`S256`) security verification.
+  - **Unified SSO Auto-Discovery**: Added `--protocol sso` for automatic endpoint type inference from target URIs.
+  - **Documentation**: See [docs/SSO.md](docs/SSO.md) for full protocol specifications, XML/JSON schemas, and architecture details.
 - **Kerberos v5 Protocol Probing Engine (RFC 4120)**:
   - **Dual-Transport Probing**: Added native Kerberos KDC latency probing on Port 88 over both **TCP** (`--protocol kerberos`) and **UDP** (`--protocol kerberos-udp`) via RFC 4120 ASN.1 DER `AS-REQ` generation.
   - **Deep Protocol Inspection (`--diags`)**: Extracts message types (`KRB-ERROR`/`AS-REP`), symbolic error codes (0–76+), authoritative Realm/SPN identities, microsecond clock skew ($\ge 300\text{s}$ critical alerts), supported cipher suites (AES-256, AES-128, RC4), and pre-authentication mechanisms.

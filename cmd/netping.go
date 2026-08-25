@@ -90,6 +90,7 @@ func buildPingerForTarget(tCfg config.TargetConfig, cfg config.Config, dialer *n
 		DNSHosts:    cfg.DNSHosts,
 		StartTLS:    cfg.StartTLS,
 		FastClose:   cfg.FastClose,
+		URI:         tCfg.URI,
 	})
 }
 

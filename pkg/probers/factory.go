@@ -1,6 +1,7 @@
 package probers
 
 import (
+	"crypto/tls"
 	"net"
 	"net/netip"
 	"time"
@@ -24,6 +25,8 @@ type FactoryOptions struct {
 	DNSHosts    []string
 	StartTLS    bool
 	FastClose   bool
+	URI         string
+	TLSConfig   *tls.Config
 }
 
 // BuildPinger constructs a Pinger for the specified protocol and options.
@@ -476,6 +479,58 @@ func BuildPinger(opts FactoryOptions) Pinger {
 			Realm:    opts.ServiceName,
 			Timeout:  timeout,
 			Dialer:   dialer,
+		})
+	case consts.OIDC:
+		return NewSSOing(SSOOptions{
+			Type:      SSOTypeOIDC,
+			Hostname:  opts.Hostname,
+			IP:        opts.IP,
+			Port:      opts.Port,
+			URI:       opts.URI,
+			Timeout:   timeout,
+			TLSConfig: opts.TLSConfig,
+			Dialer:    dialer,
+			UseIPv4:   opts.UseIPv4,
+			UseIPv6:   opts.UseIPv6,
+		})
+	case consts.SAML:
+		return NewSSOing(SSOOptions{
+			Type:      SSOTypeSAML,
+			Hostname:  opts.Hostname,
+			IP:        opts.IP,
+			Port:      opts.Port,
+			URI:       opts.URI,
+			Timeout:   timeout,
+			TLSConfig: opts.TLSConfig,
+			Dialer:    dialer,
+			UseIPv4:   opts.UseIPv4,
+			UseIPv6:   opts.UseIPv6,
+		})
+	case consts.OAUTH2:
+		return NewSSOing(SSOOptions{
+			Type:      SSOTypeOAuth2,
+			Hostname:  opts.Hostname,
+			IP:        opts.IP,
+			Port:      opts.Port,
+			URI:       opts.URI,
+			Timeout:   timeout,
+			TLSConfig: opts.TLSConfig,
+			Dialer:    dialer,
+			UseIPv4:   opts.UseIPv4,
+			UseIPv6:   opts.UseIPv6,
+		})
+	case consts.SSO:
+		return NewSSOing(SSOOptions{
+			Type:      SSOTypeAuto,
+			Hostname:  opts.Hostname,
+			IP:        opts.IP,
+			Port:      opts.Port,
+			URI:       opts.URI,
+			Timeout:   timeout,
+			TLSConfig: opts.TLSConfig,
+			Dialer:    dialer,
+			UseIPv4:   opts.UseIPv4,
+			UseIPv6:   opts.UseIPv6,
 		})
 	default:
 		return NewTcping(TCPOptions{

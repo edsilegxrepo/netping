@@ -11,7 +11,7 @@ For complete architectural specifications, concurrency mechanics, and dependency
 Traditional ping utilities are typically restricted to Layer 3 ICMP or simple Layer 4 TCP handshakes. Modern distributed systems, cloud infrastructures, and microservice meshes require granular application-layer latency analysis, TLS certificate verification, database responsiveness checks, and real-time observability.
 
 ### Core Objectives
-- **Layer 3 to Layer 7 Unified Probing**: Measure handshake, TTFB, and protocol responsiveness across 51 network and application protocols (HTTP/S, gRPC/S, WebSocket/S, DNS/DoH/DoT, Redis/S, DBs, Mail, Queues, Storage, Directory, SMB, Rsync, FTP/S, SSH, O365, Kerberos TCP/UDP).
+- **Layer 3 to Layer 7 Unified Probing**: Measure handshake, TTFB, and protocol responsiveness across 55 network and application protocols (HTTP/S, gRPC/S, WebSocket/S, DNS/DoH/DoT, Redis/S, DBs, Mail, Queues, Storage, Directory, SMB, Rsync, FTP/S, SSH, O365, Kerberos TCP/UDP, OIDC, SAML 2.0, OAuth 2.0, SSO).
 - **Deep Protocol Diagnostics (`--diags`)**: Extract TLS cipher suites, certificate expiration, HTTP headers, database banners, message queue metadata, and DNS RCODEs.
 - **Real-Time Visual Telemetry**:
   - **120-Column Interactive TUI Dashboard (`--dashboard`)** with a 106-point latency waveform chart.
@@ -202,6 +202,20 @@ Probing kdc01.corp.example.com on port 88
   └─ [DIAG] Protocol: Kerberos v5 (RFC 4120) │ Transport: TCP │ Msg: KRB-ERROR (30) │ Status: KDC_ERR_PREAUTH_REQUIRED (25) │ Realm: CORP.EXAMPLE.COM │ SPN: krbtgt/CORP.EXAMPLE.COM │ ServerTime: 2026-08-25 16:40:23 UTC │ ClockSkew: +0.02s │ ETypes: [AES256-CTS-SHA1(18), AES128-CTS-SHA1(17)] │ PreAuth: [PA-ENC-TIMESTAMP(2), PA-ETYPE-INFO2(19)]
 ● Reply from kdc01.corp.example.com on port 88: TCP_conn=2 time=1.890 ms
   └─ [DIAG] Protocol: Kerberos v5 (RFC 4120) │ Transport: TCP │ Msg: KRB-ERROR (30) │ Status: KDC_ERR_PREAUTH_REQUIRED (25) │ Realm: CORP.EXAMPLE.COM │ SPN: krbtgt/CORP.EXAMPLE.COM │ ServerTime: 2026-08-25 16:40:24 UTC │ ClockSkew: +0.02s │ ETypes: [AES256-CTS-SHA1(18), AES128-CTS-SHA1(17)] │ PreAuth: [PA-ENC-TIMESTAMP(2), PA-ETYPE-INFO2(19)]
+```
+
+#### Single Sign-On (SSO) & Federation Probing (OIDC, SAML 2.0, OAuth 2.0)
+```bash
+# 1. OpenID Connect Discovery & JWKS Signing Key Expiry Audit
+netping --host accounts.google.com --protocol oidc --diags --count 1
+
+# 2. SAML 2.0 IdP Metadata & X.509 Signing Certificate Inspection
+netping --host login.microsoftonline.com --uri /common/FederationMetadata/2007-06/FederationMetadata.xml --protocol saml --diags --count 1
+```
+```text
+Probing accounts.google.com on port 443
+● Reply from accounts.google.com on port 443: TCP_conn=1 time=45.120 ms
+  └─ [DIAG] Protocol: OIDC (OpenID Connect 1.0) │ Issuer: https://accounts.google.com │ TokenEndpoint: https://oauth2.googleapis.com/token │ AuthEndpoint: https://accounts.google.com/o/oauth2/v2/auth │ SigningAlgs: [RS256] │ Scopes: [openid, profile, email] │ JWKS: 3 active keys (nearest cert expires in 118 days)
 ```
 
 #### HTTP/HTTPS Probing with Payload Dispatching (`--send` / `--expect`)

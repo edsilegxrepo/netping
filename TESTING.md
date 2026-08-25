@@ -165,6 +165,15 @@ sequenceDiagram
 | **Probers (Kerberos)**| `TestKerberos_TCP_InvalidLengthHeader`| Validates TCP stream framing protection against oversized length headers (>65536). | PASS if prober aborts and returns invalid length error. |
 | **Probers (Kerberos)**| `TestKerberos_UDP_MockServer_KRBError` | In-memory UDP mock server validating raw datagram exchange and `KRB-ERROR` parsing. | PASS if UDP datagram transmits, parses, and computes latency. |
 | **Probers (Kerberos)**| `TestKerberos_Timeout` | Validates context deadline expiration when KDC does not respond. | PASS if timeout error is returned cleanly without goroutine leak. |
+| **Probers (SSO)**     | `TestSSO_OIDC_Discovery_And_JWKS` | Mock OIDC discovery JSON and JWKS server extracting signing algs, scopes, and key cert validity. | PASS if issuer, endpoints, signing algorithms, and nearest cert expiry days are decoded. |
+| **Probers (SSO)**     | `TestSSO_OIDC_Expired_And_Warning_JWKS` | Validates JWKS cert expiration calculation and `<30d` warning / expired critical alerts. | PASS if `[CRITICAL: Cert Expired]` and `[WARNING: Nearest Cert Expires in X days]` trigger. |
+| **Probers (SSO)**     | `TestSSO_SAML2_Metadata_ValidCert` | Mock SAML 2.0 XML metadata server parsing EntityID, SSO bindings, NameID formats, and signing cert. | PASS if XML DOM parses and valid certificate validity window is extracted. |
+| **Probers (SSO)**     | `TestSSO_SAML2_Metadata_ExpiringSoon_And_Expired` | Validates SAML signing cert expiration alerts for expiring `<30d` and expired certificates. | PASS if `[WARNING: X days left]` and `[CRITICAL: EXPIRED on YYYY-MM-DD]` are flagged. |
+| **Probers (SSO)**     | `TestSSO_OAuth2_AuthorizationServer` | Mock RFC 8414 OAuth 2.0 AS server dissecting token endpoints, grants, auth methods, and PKCE S256. | PASS if all RFC 8414 metadata fields are extracted and `PKCE: [S256]` is verified. |
+| **Probers (SSO)**     | `TestSSO_OAuth2_Missing_S256` | Tests RFC 8414 metadata without S256 PKCE support flagging missing security warning. | PASS if `PKCE: [plain only - S256 missing]` notice is rendered. |
+| **Probers (SSO)**     | `TestSSO_AutoDetection` | Tests automatic protocol deduction from URI paths (`/metadata.xml`, `/oauth/token`, etc.). | PASS if OIDC, SAML, and OAuth2 types are inferred accurately from path. |
+| **Probers (SSO)**     | `TestSSO_ErrorHandling_And_Non200` | Tests HTTP 500 error status responses and missing target configuration errors. | PASS if non-success status codes return structured errors without crashing. |
+| **Probers (SSO)**     | `TestSSO_Factory_Integration` | Validates BuildPinger instantiation for OIDC, SAML, OAUTH2, and SSO protocol constants. | PASS if BuildPinger produces initialized SSOing instances. |
 | **Probers (HTTP/S)** | `TestHTTPing_Ping_Success` | Probes mock HTTP server collecting DNS, TCP, TLS, and TTFB trace timings. | PASS if TTFB > 0, HTTPStatus = 200, and RTT is within bounds. |
 | **Probers (HTTP/S)** | `TestHTTPing_SendDataAndExpectData` | Validates method dispatch (HEAD default, POST with body, GET with expect substring matching). | PASS if POST transmits payload and GET asserts expected response substring. |
 | **Probers (Database)** | `TestDBing_Postgres_Handshake` | Simulates PostgreSQL SSLRequest and StartupMessage protocol handshakes. | PASS if SSL capability and server version are parsed into Diagnostics. |
@@ -186,6 +195,7 @@ sequenceDiagram
 | **Dynamic Engine** | `TestDynamicEngine_ConcurrencyLimit` | Validates worker semaphore rejection under saturated context cancellation. | PASS if canceled request aborts immediately without leaked slots. |
 | **Dynamic Engine** | `TestDynamicEngine_TracerouteExecution` | Triggers dynamic traceroute via DynamicEngine. | PASS if hops array is returned in TriggerResponse. |
 | **Dynamic Engine** | `TestDynamicEngine_MultipleProbes` | Triggers multi-probe execution (count=3) with per-probe breakdown. | PASS if resp.Probes contains exactly 3 probe results. |
+| **Dynamic Engine** | `TestDynamicEngine_SSO_All3Protocols_Execution` | Dispatches dynamic on-demand trigger probes across OIDC, SAML, and OAuth 2.0. | PASS if all 3 protocols execute through DynamicEngine and return status 200 + diagnostics. |
 | **Web & SSE** | `TestBroadcaster_BroadcastAndSubscribe` | Streams real-time ProbeEvents to concurrent SSE subscriber channels. | PASS if subscriber receives event payload with identical sequence number. |
 | **Web & SSE** | `TestBroadcaster_Concurrent` | Streams high-volume events across 50 concurrent SSE subscriber goroutines. | PASS if zero deadlocks, zero dropped events, and zero race conditions occur. |
 | **Web Server** | `TestWebServer_REST_Endpoints` | Tests `/api/v1/health`, `/api/v1/targets`, `/api/v1/metrics`, `/api/v1/probes`. | PASS if all endpoints return valid JSON and HTTP 200. |
@@ -234,6 +244,10 @@ All integration and E2E tests are executed with `-tags=integration` and probe ag
 | **Kerberos KDC** | `TestLive_Kerberos_TCP_E2E` | MIT KDC Container (`:88` TCP) | PASS if TCP 4-byte framing connects, receives `KRB-ERROR`/`AS-REP`, and parses realm. |
 | **Kerberos KDC** | `TestLive_Kerberos_UDP_E2E` | MIT KDC Container (`:88` UDP) | PASS if UDP datagram exchanges with KDC container and extracts diagnostics. |
 | **Kerberos KDC** | `TestLive_Kerberos_CLI_Diags_E2E`| CLI Subprocess with `--diags` | PASS if CLI output contains `[DIAG]`, `Kerberos v5`, `ClockSkew:`, and Realm. |
+| **SSO / OIDC**   | `TestLive_SSO_OIDC_Google_E2E` | Live OIDC (`accounts.google.com`) | PASS if HTTP 200, Issuer, TokenEndpoint, and JWKS key count are decoded. |
+| **SSO / SAML**   | `TestLive_SSO_SAML_Microsoft_E2E` | Live SAML (`login.microsoftonline.com`) | PASS if HTTP 200, EntityID, SSO Bindings, and Signing Certificate are extracted. |
+| **SSO / OAuth2** | `TestLive_SSO_OAuth2_Microsoft_E2E` | Live OAuth 2.0 (`login.microsoftonline.com`) | PASS if HTTP 200, RFC 8414 TokenEndpoint, and AuthMethods are parsed. |
+| **SSO / CLI**    | `TestLive_SSO_CLI_Diags_E2E` | CLI Subprocess (`--protocol oidc --diags`) | PASS if CLI output contains `[DIAG]`, `Protocol: OIDC`, `Issuer:`, and `JWKS:`. |
 | **Web REST E2E** | `TestLive_Web_REST_API_Full_E2E` | Live Embedded Web & REST API | PASS across all 10 sub-tests: Dashboard, Health, Metrics, Targets, Probes, SSE, Export, Reset. |
 
 ---
@@ -267,6 +281,23 @@ go test -tags=integration -v ./tests/integration -run "TestLive_Kerberos"
 
 ---
 
+### 4.4. Single Sign-On (SSO) & Federation Integration Suite
+
+The SSO End-to-End integration suite verifies federated authentication and authorization endpoints across **OpenID Connect (OIDC)**, **SAML 2.0**, and **OAuth 2.0**:
+
+#### Running SSO Integration Tests:
+```bash
+go test -tags=integration -v ./tests/integration -run "TestLive_SSO"
+```
+
+#### Verified Test Scenarios:
+1. **`TestLive_SSO_OIDC_Google_E2E`**: Performs live OIDC discovery probe against `accounts.google.com`, validates HTTP 200, and verifies parsed `issuer`, `token_endpoint`, and active JWKS signing keys.
+2. **`TestLive_SSO_SAML_Microsoft_E2E`**: Probes Microsoft Entra ID SAML 2.0 metadata (`login.microsoftonline.com`), parses `entityID` (`https://sts.windows.net/`), `SingleSignOnService` bindings, and audits the X.509 signing certificate.
+3. **`TestLive_SSO_OAuth2_Microsoft_E2E`**: Probes Microsoft Entra ID OAuth 2.0 Authorization Server metadata, validates HTTP 200, and extracts RFC 8414 token endpoints and client authentication methods.
+4. **`TestLive_SSO_CLI_Diags_E2E`**: Executes CLI binary (`netping --host accounts.google.com --protocol oidc --count 1 --diags`) verifying end-to-end console output formatting and `[DIAG]` structured tree.
+
+---
+
 ## 5. Code Coverage Report
 
 `netping` enforces a minimum code coverage threshold of **80%** across all production packages.
@@ -284,7 +315,7 @@ go test -tags=integration -v ./tests/integration -run "TestLive_Kerberos"
 | `pkg/consts` | Protocol constants, port mapping & exit codes | **100.0%** | PASS |
 | `pkg/engine` | Dynamic trigger orchestration & worker semaphores | **84.3%** | PASS |
 | `pkg/metrics` | Embedded Prometheus/OpenMetrics exporter | **100.0%** | PASS |
-| `pkg/probers` | 51 L3–L7 protocol handshakes & wire parsers | **84.9%** | PASS |
+| `pkg/probers` | 55 L3–L7 protocol handshakes & wire parsers | **85.0%** | PASS |
 | `pkg/stats` | RFC 3550 jitter, streak tracking & snapshots | **98.3%** | PASS |
 | `pkg/utils` | Percentile ranks, error taxonomy & sparklines | **82.1%** | PASS |
 | `pkg/web` | Embedded web server, SSE broadcaster & REST API | **84.2%** | PASS |

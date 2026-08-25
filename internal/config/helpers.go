@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"net/url"
 
 	"github.com/edsilegx/netping/pkg/consts"
 )
@@ -103,6 +104,7 @@ type TargetDef struct {
 	Port        uint16
 	Protocol    consts.Protocol
 	ServiceName string
+	URI         string
 }
 
 // splitAndTrimComma splits a comma-delimited string, trimming whitespace and filtering empty elements.
@@ -125,15 +127,30 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 		for _, raw := range splitAndTrimComma(uriStr) {
 			proto := consts.TCP
 			targetPart := raw
-			if idx := strings.Index(raw, "://"); idx != -1 {
-				scheme := raw[:idx]
-				targetPart = raw[idx+3:]
-				proto, _, _ = ResolveProtocolAndPort(scheme, "", "")
-			} else if protoStr != "" {
+			if protoStr != "" {
 				proto, _, _ = ResolveProtocolAndPort(protoStr, "", "")
+			} else if idx := strings.Index(raw, "://"); idx != -1 {
+				scheme := raw[:idx]
+				proto, _, _ = ResolveProtocolAndPort(scheme, "", "")
 			}
 
-			h, p := ParseHostPort(targetPart, 0)
+			rawURL := raw
+			if !strings.Contains(raw, "://") {
+				rawURL = "https://" + raw
+			}
+			var h string
+			var p uint16
+			if parsedU, err := url.Parse(rawURL); err == nil && parsedU.Hostname() != "" {
+				h = parsedU.Hostname()
+				if parsedU.Port() != "" {
+					if parsedPort, err := strconv.ParseUint(parsedU.Port(), 10, 16); err == nil && parsedPort > 0 {
+						p = uint16(parsedPort)
+					}
+				}
+			} else {
+				h, p = ParseHostPort(targetPart, 0)
+			}
+
 			if p == 0 {
 				_, defPortStr, _ := ResolveProtocolAndPort(string(proto), "", "")
 				if parsedPort, err := strconv.ParseUint(defPortStr, 10, 16); err == nil && parsedPort > 0 {
@@ -150,6 +167,7 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 				Port:        p,
 				Protocol:    proto,
 				ServiceName: serviceName,
+				URI:         raw,
 			})
 		}
 		if len(targets) == 0 {
@@ -256,6 +274,8 @@ EXAMPLES:
   netping --host web1,web2 --port 80,443 --protocol https
   netping --host db-server --port 5432 --protocol postgresql --diags
   netping --host kdc.corp.local --protocol kerberos --diags
+  netping --host accounts.google.com --protocol oidc --diags
+  netping --host login.microsoftonline.com --protocol saml --diags
   netping --uri cloudflare.com:443 --dashboard
   netping --host 1.1.1.1,8.8.8.8 --port 53 --output-format csv --output-file ./dns.csv
 
@@ -263,7 +283,7 @@ TARGET CONFIGURATION:
   --host <hosts>             Target hostname(s) or IP(s), comma-separated for multi-target.
   --port <ports>             Target port(s), comma-separated for multi-port.
   --uri <uris>               Target URI(s) in host:port or scheme://host:port format.
-  --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, kerberos, ...).
+  --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, kerberos, oidc, saml, oauth2, sso, ...).
   --service <name>           Service name / SID for Oracle database connections.
   --oracle-service <name>    Alias for --service.
   --dns-host <domains>       Domain(s) to resolve in DNS query mode (comma-separated).

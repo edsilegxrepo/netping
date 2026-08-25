@@ -28,7 +28,7 @@ graph TB
         PingerContract["pkg/probers.Pinger (Interface)"]
     end
 
-    subgraph Probers ["Protocol-Specific Probers (51 Protocols)"]
+    subgraph Probers ["Protocol-Specific Probers (55 Protocols)"]
         TCP["pkg/probers/tcp.go"]
         HTTP["pkg/probers/http.go (HEAD/POST/GET)"]
         TLS["pkg/probers/raw_tls.go"]
@@ -43,6 +43,7 @@ graph TB
         Storage["pkg/probers/storage.go"]
         Queue["pkg/probers/queue.go"]
         Directory["pkg/probers/ldap.go & kerberos.go"]
+        SSOProbers["pkg/probers/sso.go (OIDC, SAML 2.0, OAuth 2.0)"]
         Trace["pkg/probers/traceroute.go"]
     end
 

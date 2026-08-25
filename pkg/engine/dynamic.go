@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -409,16 +410,24 @@ func resolveTriggerTarget(req TriggerRequest) (string, uint16, consts.Protocol, 
 	svc := req.ServiceName
 
 	// If URI format provided (scheme://host:port or host:port)
-	if strings.Contains(rawTarget, "://") {
+	if protoStr == "" && strings.Contains(rawTarget, "://") {
 		parts := strings.SplitN(rawTarget, "://", 2)
-		if protoStr == "" {
-			protoStr = parts[0]
-		}
-		rawTarget = parts[1]
+		protoStr = parts[0]
 	}
 
 	host := rawTarget
-	if h, p, err := net.SplitHostPort(rawTarget); err == nil {
+	rawURL := rawTarget
+	if !strings.Contains(rawTarget, "://") {
+		rawURL = "https://" + rawTarget
+	}
+	if parsedU, err := url.Parse(rawURL); err == nil && parsedU.Hostname() != "" {
+		host = parsedU.Hostname()
+		if port == 0 && parsedU.Port() != "" {
+			if parsed, err := strconv.ParseUint(parsedU.Port(), 10, 16); err == nil && parsed > 0 {
+				port = uint16(parsed)
+			}
+		}
+	} else if h, p, err := net.SplitHostPort(rawTarget); err == nil {
 		host = h
 		if port == 0 {
 			if parsed, err := strconv.ParseUint(p, 10, 16); err == nil && parsed > 0 {
@@ -445,6 +454,10 @@ func resolveProtocolAndDefaultPort(protocolStr string) (consts.Protocol, string,
 }
 
 func buildPinger(host string, ip netip.Addr, port uint16, proto consts.Protocol, svc string, timeout time.Duration, req TriggerRequest) probers.Pinger {
+	uri := req.URI
+	if uri == "" && strings.Contains(req.Target, "/") {
+		uri = req.Target
+	}
 	return probers.BuildPinger(probers.FactoryOptions{
 		Protocol:    proto,
 		Hostname:    host,
@@ -458,5 +471,6 @@ func buildPinger(host string, ip netip.Addr, port uint16, proto consts.Protocol,
 		ServiceName: svc,
 		StartTLS:    req.StartTLS,
 		FastClose:   req.FastClose,
+		URI:         uri,
 	})
 }

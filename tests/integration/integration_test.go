@@ -1882,3 +1882,83 @@ func TestLive_Kerberos_CLI_Diags_E2E(t *testing.T) {
 	assert.Contains(t, out, "ClockSkew:")
 }
 
+// ---------------------------------------------------------
+// SSO (OIDC, SAML 2.0, OAuth 2.0) Integration Suite
+// ---------------------------------------------------------
+
+func TestLive_SSO_OIDC_Google_E2E(t *testing.T) {
+	p := probers.BuildPinger(probers.FactoryOptions{
+		Protocol: consts.OIDC,
+		Hostname: "accounts.google.com",
+		Port:     443,
+		Timeout:  5 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	require.NoError(t, res.Err)
+	assert.Equal(t, 200, res.HTTPStatus)
+	assert.True(t, res.RTT > 0)
+	assert.Contains(t, res.Diagnostics, "Protocol: OIDC (OpenID Connect 1.0)")
+	assert.Contains(t, res.Diagnostics, "Issuer: https://accounts.google.com")
+	assert.Contains(t, res.Diagnostics, "TokenEndpoint: https://oauth2.googleapis.com/token")
+	assert.Contains(t, res.Diagnostics, "JWKS:")
+}
+
+func TestLive_SSO_SAML_Microsoft_E2E(t *testing.T) {
+	p := probers.BuildPinger(probers.FactoryOptions{
+		Protocol: consts.SAML,
+		Hostname: "login.microsoftonline.com",
+		URI:      "https://login.microsoftonline.com/common/FederationMetadata/2007-06/FederationMetadata.xml",
+		Port:     443,
+		Timeout:  5 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	require.NoError(t, res.Err)
+	assert.Equal(t, 200, res.HTTPStatus)
+	assert.True(t, res.RTT > 0)
+	assert.Contains(t, res.Diagnostics, "Protocol: SAML 2.0 Metadata")
+	assert.Contains(t, res.Diagnostics, "EntityID: https://sts.windows.net/")
+	assert.Contains(t, res.Diagnostics, "Bindings: [")
+	assert.Contains(t, res.Diagnostics, "SigningCert:")
+}
+
+func TestLive_SSO_OAuth2_Microsoft_E2E(t *testing.T) {
+	p := probers.BuildPinger(probers.FactoryOptions{
+		Protocol: consts.OAUTH2,
+		Hostname: "login.microsoftonline.com",
+		URI:      "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+		Port:     443,
+		Timeout:  5 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	require.NoError(t, res.Err)
+	assert.Equal(t, 200, res.HTTPStatus)
+	assert.True(t, res.RTT > 0)
+	assert.Contains(t, res.Diagnostics, "Protocol: OAuth 2.0 (RFC 8414)")
+	assert.Contains(t, res.Diagnostics, "Issuer: https://login.microsoftonline.com/")
+	assert.Contains(t, res.Diagnostics, "TokenEndpoint:")
+	assert.Contains(t, res.Diagnostics, "AuthMethods:")
+}
+
+func TestLive_SSO_CLI_Diags_E2E(t *testing.T) {
+	binPath := filepath.Join("..", "..", "bin", "netping")
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+
+	cmd := exec.Command(binPath, "--host", "accounts.google.com", "--protocol", "oidc", "--count", "1", "--diags")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+
+	out := string(output)
+	assert.Contains(t, out, "Reply from accounts.google.com")
+	assert.Contains(t, out, "[DIAG]")
+	assert.Contains(t, out, "Protocol: OIDC")
+	assert.Contains(t, out, "Issuer: https://accounts.google.com")
+	assert.Contains(t, out, "JWKS:")
+}
+
+
+

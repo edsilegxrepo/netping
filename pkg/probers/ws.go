@@ -77,6 +77,7 @@ func (w *WSing) Ping(ctx context.Context) ProbeResult {
 	if w.useTLS {
 		tlsConfig := &tls.Config{
 			ServerName: targetHost,
+			MinVersion: tls.VersionTLS12,
 		}
 		tlsDialer := &tls.Dialer{
 			NetDialer: w.dialer,
@@ -93,7 +94,7 @@ func (w *WSing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(w.timeout))
 

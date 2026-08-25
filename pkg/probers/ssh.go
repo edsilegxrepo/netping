@@ -96,7 +96,7 @@ func (s *SSHing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(s.timeout))
 	reader := bufio.NewReader(conn)

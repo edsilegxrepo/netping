@@ -96,7 +96,9 @@ func (q *Queueing) Ping(ctx context.Context) ProbeResult {
 		tlsConfig := &tls.Config{
 			ServerName: targetHost,
 			// #nosec G402 -- user-configurable TLS verification flag for message queue probing
+			// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- user-configurable TLS verification flag
 			InsecureSkipVerify: q.skipVerify,
+			MinVersion:         tls.VersionTLS12,
 		}
 		tlsDialer := &tls.Dialer{
 			NetDialer: q.dialer,
@@ -113,7 +115,7 @@ func (q *Queueing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(q.timeout))
 

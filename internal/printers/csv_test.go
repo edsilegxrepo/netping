@@ -51,7 +51,7 @@ func TestWriteRecord(t *testing.T) {
 
 	file, err := os.Open(probeFilename)
 	assert.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	reader := csv.NewReader(file)
 	headers, err := reader.Read()
@@ -90,7 +90,7 @@ func TestWriteStatistics(t *testing.T) {
 
 	statsFile, err := os.Open(statsFilename)
 	assert.NoError(t, err)
-	defer statsFile.Close()
+	defer func() { _ = statsFile.Close() }()
 
 	reader := csv.NewReader(statsFile)
 

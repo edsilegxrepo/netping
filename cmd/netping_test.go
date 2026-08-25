@@ -119,7 +119,7 @@ func startTestTCPTarget(t *testing.T) (net.Listener, uint16) {
 			}
 			// Echo server for send/expect data testing
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 1024)
 				n, _ := c.Read(buf)
 				if n > 0 {
@@ -236,7 +236,7 @@ func TestEndToEnd_TriggerMode_AllPayloadsAndFeatures(t *testing.T) {
 	defer ts.Close()
 
 	targetLn, targetPort := startTestTCPTarget(t)
-	defer targetLn.Close()
+	defer func() { _ = targetLn.Close() }()
 
 	sendTrigger := func(req web.TriggerRequest) (*web.TriggerResponse, int, error) {
 		body, _ := json.Marshal(req)
@@ -251,7 +251,7 @@ func TestEndToEnd_TriggerMode_AllPayloadsAndFeatures(t *testing.T) {
 		if err != nil {
 			return nil, 0, err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		var result web.TriggerResponse
 		err = json.NewDecoder(resp.Body).Decode(&result)
@@ -370,13 +370,13 @@ func TestEndToEnd_TriggerMode_AllPayloadsAndFeatures(t *testing.T) {
 			b, _ := io.ReadAll(r.Body)
 			if string(b) == `{"action":"ping"}` {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"status":"pong","code":200}`))
+				_, _ = w.Write([]byte(`{"status":"pong","code":200}`))
 				return
 			}
 			w.WriteHeader(http.StatusBadRequest)
 		case http.MethodGet:
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ok-service-ready"))
+			_, _ = w.Write([]byte("ok-service-ready"))
 		case http.MethodHead:
 			w.WriteHeader(http.StatusOK)
 		}
@@ -470,7 +470,7 @@ func TestEndToEnd_TriggerMode_RealTime_SSE_Subscription(t *testing.T) {
 	defer ts.Close()
 
 	targetLn, targetPort := startTestTCPTarget(t)
-	defer targetLn.Close()
+	defer func() { _ = targetLn.Close() }()
 
 	// 1. Client connects to public unauthenticated SSE stream
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -481,7 +481,7 @@ func TestEndToEnd_TriggerMode_RealTime_SSE_Subscription(t *testing.T) {
 
 	sseResp, err := http.DefaultClient.Do(sseReq)
 	require.NoError(t, err)
-	defer sseResp.Body.Close()
+	defer func() { _ = sseResp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, sseResp.StatusCode)
 	assert.Contains(t, sseResp.Header.Get("Content-Type"), "text/event-stream")
 
@@ -579,7 +579,7 @@ func TestEndToEnd_CompleteTriggerLifecycle(t *testing.T) {
 	// =========================================================================
 	dashResp, err := http.Get(ts.URL + "/")
 	require.NoError(t, err)
-	defer dashResp.Body.Close()
+	defer func() { _ = dashResp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, dashResp.StatusCode)
 	assert.Contains(t, dashResp.Header.Get("Content-Type"), "text/html")
 
@@ -594,7 +594,7 @@ func TestEndToEnd_CompleteTriggerLifecycle(t *testing.T) {
 
 	sseResp, err := http.DefaultClient.Do(sseReq)
 	require.NoError(t, err)
-	defer sseResp.Body.Close()
+	defer func() { _ = sseResp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, sseResp.StatusCode)
 	assert.Contains(t, sseResp.Header.Get("Content-Type"), "text/event-stream")
 
@@ -618,7 +618,7 @@ func TestEndToEnd_CompleteTriggerLifecycle(t *testing.T) {
 	// STAGE 5: REST CLIENT AUTH & PROBE TRIGGERING (TCP ECHO SERVICE)
 	// =========================================================================
 	targetLn, targetPort := startTestTCPTarget(t)
-	defer targetLn.Close()
+	defer func() { _ = targetLn.Close() }()
 
 	triggerPayload := web.TriggerRequest{
 		Host:      "127.0.0.1",
@@ -638,7 +638,7 @@ func TestEndToEnd_CompleteTriggerLifecycle(t *testing.T) {
 
 	triggerResp, err := http.DefaultClient.Do(triggerReq)
 	require.NoError(t, err)
-	defer triggerResp.Body.Close()
+	defer func() { _ = triggerResp.Body.Close() }()
 
 	// =========================================================================
 	// STAGE 6: SYNCHRONOUS PROBE RESPONSE VERIFICATION
@@ -702,7 +702,7 @@ func TestEndToEnd_TriggerMode_EdgeCases_And_SecurityBoundaries(t *testing.T) {
 	defer ts.Close()
 
 	targetLn, targetPort := startTestTCPTarget(t)
-	defer targetLn.Close()
+	defer func() { _ = targetLn.Close() }()
 
 	// 1. Malformed JSON payload -> 400 Bad Request
 	malformedReq, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/trigger", strings.NewReader(`{malformed_json:`))
@@ -739,7 +739,7 @@ func TestEndToEnd_TriggerMode_EdgeCases_And_SecurityBoundaries(t *testing.T) {
 	sseReq, _ := http.NewRequestWithContext(sseCtx, http.MethodGet, ts.URL+"/api/v1/stream", nil)
 	sseResp, err := http.DefaultClient.Do(sseReq)
 	require.NoError(t, err)
-	defer sseResp.Body.Close()
+	defer func() { _ = sseResp.Body.Close() }()
 
 	noBroadcastReceived := make(chan struct{}, 1)
 	go func() {
@@ -805,7 +805,7 @@ func TestEndToEnd_TriggerMode_EdgeCases_And_SecurityBoundaries(t *testing.T) {
 				errChan <- err
 				return
 			}
-			defer cResp.Body.Close()
+			defer func() { _ = cResp.Body.Close() }()
 			if cResp.StatusCode != http.StatusOK {
 				errChan <- fmt.Errorf("expected 200 OK, got %d", cResp.StatusCode)
 				return
@@ -825,7 +825,7 @@ func TestEndToEnd_TriggerMode_EdgeCases_And_SecurityBoundaries(t *testing.T) {
 	overReq.Header.Set("Content-Type", "application/json")
 	overResp, err := http.DefaultClient.Do(overReq)
 	require.NoError(t, err)
-	defer overResp.Body.Close()
+	defer func() { _ = overResp.Body.Close() }()
 	assert.Equal(t, http.StatusBadRequest, overResp.StatusCode, "oversized payload should be rejected with 400 Bad Request")
 }
 

@@ -73,6 +73,7 @@ func (l *LDAPing) Ping(ctx context.Context) ProbeResult {
 	if l.useTLS {
 		tlsConfig := &tls.Config{
 			ServerName: targetHost,
+			MinVersion: tls.VersionTLS12,
 		}
 		tlsDialer := &tls.Dialer{
 			NetDialer: l.dialer,
@@ -89,7 +90,7 @@ func (l *LDAPing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(l.timeout))
 

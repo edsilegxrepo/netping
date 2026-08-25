@@ -100,10 +100,12 @@ func (f *FTPing) Ping(ctx context.Context) ProbeResult {
 	var err error
 
 	if f.useTLS {
+		// #nosec G402 -- diagnostic FTPS prober measuring connection latency
+		// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- diagnostic prober measuring latency
 		tlsConfig := &tls.Config{
-			ServerName: targetHost,
-			// #nosec G402 -- diagnostic FTPS prober measuring connection latency
+			ServerName:         targetHost,
 			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
 		}
 		tlsDialer := &tls.Dialer{
 			NetDialer: f.dialer,
@@ -120,7 +122,7 @@ func (f *FTPing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(f.timeout))
 	reader := bufio.NewReader(conn)
@@ -177,10 +179,12 @@ func (f *FTPing) Ping(ctx context.Context) ProbeResult {
 			}
 		}
 
+		// #nosec G402 -- diagnostic AUTH TLS prober measuring handshake latency
+		// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- diagnostic prober measuring latency
 		tlsConn := tls.Client(conn, &tls.Config{
-			ServerName: targetHost,
-			// #nosec G402 -- diagnostic AUTH TLS prober measuring handshake latency
+			ServerName:         targetHost,
 			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
 		})
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
 			return ProbeResult{

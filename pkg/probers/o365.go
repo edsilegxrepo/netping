@@ -70,7 +70,9 @@ func NewO365ing(opts O365Options) *O365ing {
 		TLSClientConfig: &tls.Config{
 			ServerName: opts.Hostname,
 			// #nosec G402 -- user-configurable TLS verification flag for endpoint probing
+			// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- user-configurable TLS verification flag
 			InsecureSkipVerify: opts.SkipVerify,
+			MinVersion:         tls.VersionTLS12,
 		},
 		DialContext: dialContext,
 	}
@@ -146,7 +148,7 @@ func (o *O365ing) Ping(ctx context.Context) ProbeResult {
 			Err:       err,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 
 	var dnsTime, tcpTime, tlsTime time.Duration

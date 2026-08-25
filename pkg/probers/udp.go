@@ -62,7 +62,7 @@ func (u UDPing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	payload := []byte(u.sendData)
 	if len(payload) == 0 {

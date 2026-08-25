@@ -94,10 +94,12 @@ func (d *DBing) dial(ctx context.Context) (net.Conn, string, string, error) {
 	var tlsDetails string
 
 	if d.UseTLS && d.Type != PostgreSQL && d.Type != MySQL { // PostgreSQL & MySQL do in-band SSL negotiation
+		// #nosec G402 -- diagnostic database TLS prober measuring latency
+		// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- diagnostic prober measuring latency
 		tlsConfig := &tls.Config{
-			ServerName: targetHost,
-			// #nosec G402 -- diagnostic database TLS prober measuring latency
+			ServerName:         targetHost,
 			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
 		}
 		tlsDialer := &tls.Dialer{NetDialer: d.Dialer, Config: tlsConfig}
 		conn, err = tlsDialer.DialContext(ctx, "tcp", addr)
@@ -125,7 +127,7 @@ func (d *DBing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(d.Timeout))
 
@@ -191,10 +193,12 @@ func (d *DBing) probePostgres(ctx context.Context, conn net.Conn, targetHost str
 	switch reply[0] {
 	case 'S':
 		// SSL Supported: perform TLS handshake to extract TLS version and cipher suite
+		// #nosec G402 -- diagnostic Postgres SSL prober measuring handshake latency
+		// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- diagnostic prober measuring latency
 		tlsConn := tls.Client(conn, &tls.Config{
-			ServerName: targetHost,
-			// #nosec G402 -- diagnostic Postgres SSL prober measuring handshake latency
+			ServerName:         targetHost,
 			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
 		})
 		if err := tlsConn.HandshakeContext(ctx); err == nil {
 			state := tlsConn.ConnectionState()

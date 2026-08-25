@@ -67,7 +67,7 @@ func (r *Rsyncing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(r.timeout))
 	reader := bufio.NewReader(conn)

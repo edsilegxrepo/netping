@@ -68,11 +68,11 @@ vet:
 
 lint:
 	@echo "[+] Running golangci-lint"
-	@golangci-lint run ./...
+	@golangci-lint run --no-config ./...
 
 sec:
 	@echo "[+] Running Gosec"
-	@gosec -exclude=G104 -quiet ./...
+	@gosec ./...
 
 test:
 	@echo "[+] Running all unit and integration tests with race detector"

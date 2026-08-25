@@ -74,7 +74,7 @@ func (t *TLSing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer tcpConn.Close()
+	defer func() { _ = tcpConn.Close() }()
 
 	if realTCP, ok := tcpConn.(*net.TCPConn); ok && t.fastClose {
 		_ = realTCP.SetLinger(0)
@@ -85,7 +85,9 @@ func (t *TLSing) Ping(ctx context.Context) ProbeResult {
 	tlsConfig := &tls.Config{
 		ServerName: targetHost,
 		// #nosec G402 -- user-configurable TLS certificate verification for latency probing
+		// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- user-configurable TLS verification flag
 		InsecureSkipVerify: t.skipVerify,
+		MinVersion:         tls.VersionTLS12,
 	}
 
 	tlsConn := tls.Client(tcpConn, tlsConfig)

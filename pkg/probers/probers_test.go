@@ -44,7 +44,7 @@ func startTCPTestServer(t *testing.T) (net.Listener, uint16) {
 			if err != nil {
 				return
 			}
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -53,7 +53,7 @@ func startTCPTestServer(t *testing.T) (net.Listener, uint16) {
 
 func TestTcping(t *testing.T) {
 	ln, port := startTCPTestServer(t)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	opts := TCPOptions{
 		IP:      netip.MustParseAddr("127.0.0.1"),
@@ -96,7 +96,7 @@ func TestHTTPing(t *testing.T) {
 func TestUDPing(t *testing.T) {
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer pc.Close()
+	defer func() { _ = pc.Close() }()
 
 	go func() {
 		buf := make([]byte, 1024)
@@ -130,7 +130,7 @@ func TestWSing(t *testing.T) {
 	// Simple mock WebSocket server
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -139,7 +139,7 @@ func TestWSing(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				reader := bufio.NewReader(c)
 				var secKey string
 				for {
@@ -187,7 +187,7 @@ func TestWSing(t *testing.T) {
 func TestDNSQueryProber(t *testing.T) {
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer pc.Close()
+	defer func() { _ = pc.Close() }()
 
 	go func() {
 		buf := make([]byte, 512)
@@ -226,7 +226,7 @@ func TestDNSQueryProber(t *testing.T) {
 func TestRedising(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -235,7 +235,7 @@ func TestRedising(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				reader := bufio.NewReader(c)
 				for {
 					line, err := reader.ReadString('\n')
@@ -243,10 +243,10 @@ func TestRedising(t *testing.T) {
 						break
 					}
 					if strings.Contains(line, "PING") {
-						c.Write([]byte("+PONG\r\n"))
+						_, _ = c.Write([]byte("+PONG\r\n"))
 					} else if strings.Contains(line, "INFO") {
 						infoData := "redis_version:7.2.4\r\nrole:master\r\nconnected_clients:3\r\nused_memory_human:14.2M\r\n"
-						c.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(infoData), infoData)))
+						_, _ = fmt.Fprintf(c, "$%d\r\n%s\r\n", len(infoData), infoData)
 						break
 					}
 				}
@@ -274,7 +274,7 @@ func TestRedising(t *testing.T) {
 func TestSSHing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -283,7 +283,7 @@ func TestSSHing(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				_, _ = c.Write([]byte("SSH-2.0-OpenSSH_9.0\r\n"))
 				buf := make([]byte, 64)
 				_, _ = c.Read(buf)
@@ -308,7 +308,7 @@ func TestSSHing(t *testing.T) {
 func TestDBing_Postgres(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -317,7 +317,7 @@ func TestDBing_Postgres(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 8)
 				_, _ = c.Read(buf)
 				_, _ = c.Write([]byte("S")) // SSL supported
@@ -343,7 +343,7 @@ func TestDBing_Postgres(t *testing.T) {
 func TestDBing_MySQL(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -352,7 +352,7 @@ func TestDBing_MySQL(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				// MySQL HandshakeV10: proto 0x0a, version "8.0.36\0", thread_id 1
 				payload := append([]byte{0x0a}, append([]byte("8.0.36\x00"), make([]byte, 24)...)...)
 				hdr := []byte{byte(len(payload)), 0x00, 0x00, 0x00}
@@ -380,7 +380,7 @@ func TestDBing_MySQL(t *testing.T) {
 func TestDBing_MSSQL(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -389,7 +389,7 @@ func TestDBing_MSSQL(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 64)
 				_, _ = c.Read(buf)
 				// TDS PRELOGIN response: 8-byte header + option table + payload
@@ -427,7 +427,7 @@ func TestDBing_MSSQL(t *testing.T) {
 func TestDBing_Oracle(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -436,7 +436,7 @@ func TestDBing_Oracle(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 512)
 				_, _ = c.Read(buf)
 				// TNS REFUSE packet: 8-byte header (type 0x04) + error string with VSN and ERR
@@ -468,7 +468,7 @@ func TestDBing_Oracle(t *testing.T) {
 func TestDBing_MongoDB(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -477,7 +477,7 @@ func TestDBing_MongoDB(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 128)
 				_, _ = c.Read(buf)
 				// OP_MSG response: 16-byte header + 4-byte flags + 1-byte kind + BSON doc
@@ -511,7 +511,7 @@ func TestDBing_MongoDB(t *testing.T) {
 func TestDBing_Cassandra(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -520,7 +520,7 @@ func TestDBing_Cassandra(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 64)
 				_, _ = c.Read(buf)
 				_, _ = c.Write([]byte{0x84, 0x00, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00}) // CQL READY
@@ -546,7 +546,7 @@ func TestDBing_Cassandra(t *testing.T) {
 func TestDBing_SAPHANA(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -555,7 +555,7 @@ func TestDBing_SAPHANA(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 512)
 				_, _ = c.Read(buf) // 8-byte init
 				// 8-byte init response (Major 4 Minor 1)
@@ -591,7 +591,7 @@ func TestDBing_SAPHANA(t *testing.T) {
 func TestMemcacheding(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -600,7 +600,7 @@ func TestMemcacheding(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				reader := bufio.NewReader(c)
 				for {
 					line, err := reader.ReadString('\n')
@@ -609,9 +609,9 @@ func TestMemcacheding(t *testing.T) {
 					}
 					lineTrim := strings.TrimSpace(line)
 					if lineTrim == "version" {
-						c.Write([]byte("VERSION 1.6.22\r\n"))
+						_, _ = c.Write([]byte("VERSION 1.6.22\r\n"))
 					} else if lineTrim == "stats" {
-						c.Write([]byte("STAT curr_connections 4\r\nSTAT curr_items 1500\r\nSTAT bytes 10485760\r\nSTAT limit_maxbytes 67108864\r\nSTAT get_hits 950\r\nSTAT get_misses 50\r\nSTAT uptime 86400\r\nEND\r\n"))
+						_, _ = c.Write([]byte("STAT curr_connections 4\r\nSTAT curr_items 1500\r\nSTAT bytes 10485760\r\nSTAT limit_maxbytes 67108864\r\nSTAT get_hits 950\r\nSTAT get_misses 50\r\nSTAT uptime 86400\r\nEND\r\n"))
 						break
 					}
 				}
@@ -640,7 +640,7 @@ func TestMemcacheding(t *testing.T) {
 func TestMailing_SMTP(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -649,7 +649,7 @@ func TestMailing_SMTP(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				_, _ = c.Write([]byte("220 mail.example.com ESMTP\r\n"))
 				reader := bufio.NewReader(c)
 				_, _ = reader.ReadString('\n')
@@ -676,7 +676,7 @@ func TestMailing_SMTP(t *testing.T) {
 func TestMailing_IMAP(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -685,7 +685,7 @@ func TestMailing_IMAP(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				_, _ = c.Write([]byte("* OK IMAP4rev1 Server Ready\r\n"))
 				reader := bufio.NewReader(c)
 				_, _ = reader.ReadString('\n')
@@ -712,7 +712,7 @@ func TestMailing_IMAP(t *testing.T) {
 func TestLDAPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -721,7 +721,7 @@ func TestLDAPing(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 32)
 				_, _ = c.Read(buf)
 				// LDAP BindResponse ASN.1 sequence
@@ -748,7 +748,7 @@ func TestLDAPing(t *testing.T) {
 func TestMailing_POP3(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -757,7 +757,7 @@ func TestMailing_POP3(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				_, _ = c.Write([]byte("+OK POP3 server ready\r\n"))
 				reader := bufio.NewReader(c)
 				_, _ = reader.ReadString('\n')
@@ -886,7 +886,7 @@ func TestStorageing(t *testing.T) {
 func TestQueueing_Kafka(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -895,7 +895,7 @@ func TestQueueing_Kafka(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 32)
 				_, _ = c.Read(buf)
 				// Response: 4 bytes length (8), 4 bytes correlation ID (1), 2 bytes error code (0)
@@ -922,7 +922,7 @@ func TestQueueing_Kafka(t *testing.T) {
 func TestQueueing_RabbitMQ(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -931,7 +931,7 @@ func TestQueueing_RabbitMQ(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 8)
 				_, _ = c.Read(buf)
 				// Response: AMQP 0-9-1 Connection.Start Method frame (starts with 0x01)
@@ -1001,7 +1001,7 @@ func TestProber_RetryWithExponentialBackoff(t *testing.T) {
 func TestSMBing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1012,7 +1012,7 @@ func TestSMBing(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		buf := make([]byte, 256)
 		n, err := conn.Read(buf)
@@ -1055,7 +1055,7 @@ func TestSMBing(t *testing.T) {
 
 		payloadLen := len(respBody)
 		tcpHeader := []byte{0x00, byte((payloadLen >> 16) & 0xff), byte((payloadLen >> 8) & 0xff), byte(payloadLen & 0xff)}
-		conn.Write(append(tcpHeader, respBody...))
+		_, _ = conn.Write(append(tcpHeader, respBody...))
 	}()
 
 	smb := NewSMBing(SMBOptions{
@@ -1075,7 +1075,7 @@ func TestSMBing(t *testing.T) {
 func TestSSHing_KEXINIT(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1086,10 +1086,10 @@ func TestSSHing_KEXINIT(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Send SSH server banner
-		conn.Write([]byte("SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu0.1\r\n"))
+		_, _ = conn.Write([]byte("SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu0.1\r\n"))
 
 		// Read client banner
 		buf := make([]byte, 128)
@@ -1105,7 +1105,7 @@ func TestSSHing_KEXINIT(t *testing.T) {
 
 		// helper to write SSH name-list
 		writeNameList := func(list string) {
-			binary.Write(&payload, binary.BigEndian, uint32(len(list)))
+			_ = binary.Write(&payload, binary.BigEndian, uint32(len(list)))
 			payload.WriteString(list)
 		}
 
@@ -1120,7 +1120,7 @@ func TestSSHing_KEXINIT(t *testing.T) {
 		writeNameList("")                                         // lang c2s
 		writeNameList("")                                         // lang s2c
 		payload.WriteByte(0)                                      // first_kex_packet_follows = false
-		binary.Write(&payload, binary.BigEndian, uint32(0))       // reserved
+		_ = binary.Write(&payload, binary.BigEndian, uint32(0))   // reserved
 
 		paddingLen := byte(8 - ((payload.Len() + 5) % 8))
 		if paddingLen < 4 {
@@ -1129,12 +1129,12 @@ func TestSSHing_KEXINIT(t *testing.T) {
 		packetLen := uint32(payload.Len() + 1 + int(paddingLen))
 
 		var packet bytes.Buffer
-		binary.Write(&packet, binary.BigEndian, packetLen)
+		_ = binary.Write(&packet, binary.BigEndian, packetLen)
 		packet.WriteByte(paddingLen)
 		packet.Write(payload.Bytes())
 		packet.Write(make([]byte, paddingLen))
 
-		conn.Write(packet.Bytes())
+		_, _ = conn.Write(packet.Bytes())
 	}()
 
 	sshing := NewSSHing(SSHOptions{
@@ -1154,7 +1154,7 @@ func TestSSHing_KEXINIT(t *testing.T) {
 func TestRsyncing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1165,10 +1165,10 @@ func TestRsyncing(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Send Rsync daemon greeting
-		conn.Write([]byte("@RSYNCD: 31.0 digest=md4,md5,sha1,sha256,sha512\n"))
+		_, _ = conn.Write([]byte("@RSYNCD: 31.0 digest=md4,md5,sha1,sha256,sha512\n"))
 
 		reader := bufio.NewReader(conn)
 		_, _ = reader.ReadString('\n') // read client greeting
@@ -1176,7 +1176,7 @@ func TestRsyncing(t *testing.T) {
 		// Read #list command and reply with module list
 		line, _ := reader.ReadString('\n')
 		if strings.TrimSpace(line) == "#list" {
-			conn.Write([]byte("backup\tServer backup repository\nftp\tPublic FTP mirror\n@RSYNCD: EXIT\n"))
+			_, _ = conn.Write([]byte("backup\tServer backup repository\nftp\tPublic FTP mirror\n@RSYNCD: EXIT\n"))
 		}
 	}()
 
@@ -1197,7 +1197,7 @@ func TestRsyncing(t *testing.T) {
 func TestFTPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1208,10 +1208,10 @@ func TestFTPing(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Send 220 banner
-		conn.Write([]byte("220-Welcome to Pure-FTPd\r\n220 Ready.\r\n"))
+		_, _ = conn.Write([]byte("220-Welcome to Pure-FTPd\r\n220 Ready.\r\n"))
 
 		reader := bufio.NewReader(conn)
 		for {
@@ -1221,9 +1221,9 @@ func TestFTPing(t *testing.T) {
 			}
 			cmdTrim := strings.TrimSpace(cmd)
 			if cmdTrim == "FEAT" {
-				conn.Write([]byte("211-Extensions supported:\r\n AUTH TLS\r\n UTF8\r\n SIZE\r\n MDTM\r\n211 End.\r\n"))
+				_, _ = conn.Write([]byte("211-Extensions supported:\r\n AUTH TLS\r\n UTF8\r\n SIZE\r\n MDTM\r\n211 End.\r\n"))
 			} else if cmdTrim == "QUIT" {
-				conn.Write([]byte("221 Goodbye.\r\n"))
+				_, _ = conn.Write([]byte("221 Goodbye.\r\n"))
 				break
 			}
 		}
@@ -1305,7 +1305,7 @@ func TestStorageing_MockS3BlobGCS(t *testing.T) {
 func TestQueueing_MockRabbitMQ(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1316,7 +1316,7 @@ func TestQueueing_MockRabbitMQ(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		protoHeader := make([]byte, 8)
 		_, _ = conn.Read(protoHeader)
@@ -1334,7 +1334,7 @@ func TestQueueing_MockRabbitMQ(t *testing.T) {
 			'v', 'e', 'r', 's', 'i', 'o', 'n', 'S', 0x00, 0x00, 0x00, 0x05, '3', '.', '1', '2',
 			0xce, // Frame end
 		}
-		conn.Write(frame)
+		_, _ = conn.Write(frame)
 	}()
 
 	q := NewQueueing(QueueOptions{
@@ -1352,7 +1352,7 @@ func TestQueueing_MockRabbitMQ(t *testing.T) {
 func TestQueueing_MockKafka(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1363,7 +1363,7 @@ func TestQueueing_MockKafka(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		reqHeader := make([]byte, 19)
 		_, _ = conn.Read(reqHeader)
@@ -1393,7 +1393,7 @@ func TestQueueing_MockKafka(t *testing.T) {
 func TestSSHing_MockServer(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1404,9 +1404,9 @@ func TestSSHing_MockServer(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
-		conn.Write([]byte("SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13\r\n"))
+		_, _ = conn.Write([]byte("SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13\r\n"))
 	}()
 
 	ssh := NewSSHing(SSHOptions{
@@ -1423,7 +1423,7 @@ func TestSSHing_MockServer(t *testing.T) {
 func TestSMBing_MockServer(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1434,7 +1434,7 @@ func TestSMBing_MockServer(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		buf := make([]byte, 256)
 		_, _ = conn.Read(buf)
@@ -1448,7 +1448,7 @@ func TestSMBing_MockServer(t *testing.T) {
 		copy(resp[4:8], []byte{0xfe, 'S', 'M', 'B'})           // SMB2 magic
 		binary.LittleEndian.PutUint16(resp[8:10], 64)          // StructureSize 64
 		binary.LittleEndian.PutUint16(resp[70-4:72-4], 0x0311) // Dialect 3.1.1
-		conn.Write(resp)
+		_, _ = conn.Write(resp)
 	}()
 
 	smb := NewSMBing(SMBOptions{
@@ -1497,7 +1497,7 @@ func TestTLSing_MockTLSServer(t *testing.T) {
 func TestMemcacheding_MockServer(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1508,12 +1508,12 @@ func TestMemcacheding_MockServer(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		reader := bufio.NewReader(conn)
 		line, _ := reader.ReadString('\n')
 		if strings.HasPrefix(line, "version") {
-			conn.Write([]byte("VERSION 1.6.22\r\n"))
+			_, _ = conn.Write([]byte("VERSION 1.6.22\r\n"))
 		}
 	}()
 
@@ -1538,7 +1538,7 @@ func (d *dummyPrinter) PrintError(format string, args ...any)  {}
 
 func TestProber_RetryExecution(t *testing.T) {
 	ln, port := startTCPTestServer(t)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	st := stats.NewStatistics(stats.Options{
 		Hostname: "127.0.0.1",
@@ -1571,7 +1571,7 @@ func TestProber_RetryExecution(t *testing.T) {
 func TestDBing_MockMySQL(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1582,7 +1582,7 @@ func TestDBing_MockMySQL(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// MySQL HandshakeV10 packet: 3 bytes length, 1 byte sequence (0), protocol 10, version "8.0.36\x00"
 		versionStr := "8.0.36-MySQL"
@@ -1603,7 +1603,7 @@ func TestDBing_MockMySQL(t *testing.T) {
 		pkt[3] = 0x00 // seq 0
 		copy(pkt[4:], payload)
 
-		conn.Write(pkt)
+		_, _ = conn.Write(pkt)
 	}()
 
 	db := NewDBing(DBOptions{
@@ -1621,7 +1621,7 @@ func TestDBing_MockMySQL(t *testing.T) {
 func TestDBing_MockPostgreSQL(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1632,18 +1632,18 @@ func TestDBing_MockPostgreSQL(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		sslReq := make([]byte, 8)
 		_, _ = conn.Read(sslReq)
-		conn.Write([]byte{'N'}) // No SSL
+		_, _ = conn.Write([]byte{'N'}) // No SSL
 
 		startupBuf := make([]byte, 256)
 		_, _ = conn.Read(startupBuf)
 
 		// Send ErrorResponse packet: 'E', 4-byte length, severity 'S' "FATAL", 'M' "database netping does not exist", '\0'
 		errPkt := []byte{'E', 0x00, 0x00, 0x00, 0x20, 'S', 'F', 'A', 'T', 'A', 'L', 0x00, 'M', 'P', 'o', 's', 't', 'g', 'r', 'e', 'S', 'Q', 'L', ' ', 'O', 'K', 0x00, 0x00}
-		conn.Write(errPkt)
+		_, _ = conn.Write(errPkt)
 	}()
 
 	db := NewDBing(DBOptions{
@@ -1661,7 +1661,7 @@ func TestDBing_MockPostgreSQL(t *testing.T) {
 func TestMailing_MockSMTP(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1672,9 +1672,9 @@ func TestMailing_MockSMTP(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
-		conn.Write([]byte("220 mail.example.com ESMTP Postfix\r\n"))
+		_, _ = conn.Write([]byte("220 mail.example.com ESMTP Postfix\r\n"))
 
 		reader := bufio.NewReader(conn)
 		for {
@@ -1684,9 +1684,9 @@ func TestMailing_MockSMTP(t *testing.T) {
 			}
 			lineTrim := strings.TrimSpace(line)
 			if strings.HasPrefix(lineTrim, "EHLO") {
-				conn.Write([]byte("250-mail.example.com\r\n250-STARTTLS\r\n250-AUTH PLAIN LOGIN\r\n250 HELP\r\n"))
+				_, _ = conn.Write([]byte("250-mail.example.com\r\n250-STARTTLS\r\n250-AUTH PLAIN LOGIN\r\n250 HELP\r\n"))
 			} else if lineTrim == "QUIT" {
-				conn.Write([]byte("221 2.0.0 Bye\r\n"))
+				_, _ = conn.Write([]byte("221 2.0.0 Bye\r\n"))
 				break
 			}
 		}
@@ -1708,7 +1708,7 @@ func TestMailing_MockSMTP(t *testing.T) {
 func TestMailing_MockIMAP(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1719,14 +1719,14 @@ func TestMailing_MockIMAP(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
-		conn.Write([]byte("* OK [CAPABILITY IMAP4rev1 SASL-IR STARTTLS AUTH=PLAIN] Dovecot ready.\r\n"))
+		_, _ = conn.Write([]byte("* OK [CAPABILITY IMAP4rev1 SASL-IR STARTTLS AUTH=PLAIN] Dovecot ready.\r\n"))
 
 		reader := bufio.NewReader(conn)
 		line, _ := reader.ReadString('\n')
 		if strings.Contains(line, "CAPABILITY") {
-			conn.Write([]byte("* CAPABILITY IMAP4rev1 SASL-IR STARTTLS AUTH=PLAIN\r\nA001 OK Capability completed.\r\n"))
+			_, _ = conn.Write([]byte("* CAPABILITY IMAP4rev1 SASL-IR STARTTLS AUTH=PLAIN\r\nA001 OK Capability completed.\r\n"))
 		}
 	}()
 
@@ -1746,7 +1746,7 @@ func TestMailing_MockIMAP(t *testing.T) {
 func TestMailing_MockPOP3(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1757,9 +1757,9 @@ func TestMailing_MockPOP3(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
-		conn.Write([]byte("+OK Dovecot ready.\r\n"))
+		_, _ = conn.Write([]byte("+OK Dovecot ready.\r\n"))
 
 		reader := bufio.NewReader(conn)
 		for {
@@ -1769,9 +1769,9 @@ func TestMailing_MockPOP3(t *testing.T) {
 			}
 			lineTrim := strings.TrimSpace(line)
 			if lineTrim == "CAPA" {
-				conn.Write([]byte("+OK\r\nSTLS\r\nTOP\r\nUSER\r\nSASL PLAIN\r\n.\r\n"))
+				_, _ = conn.Write([]byte("+OK\r\nSTLS\r\nTOP\r\nUSER\r\nSASL PLAIN\r\n.\r\n"))
 			} else if lineTrim == "QUIT" {
-				conn.Write([]byte("+OK Logging out\r\n"))
+				_, _ = conn.Write([]byte("+OK Logging out\r\n"))
 				break
 			}
 		}
@@ -1793,7 +1793,7 @@ func TestMailing_MockPOP3(t *testing.T) {
 func TestDBing_MockMSSQL(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1804,7 +1804,7 @@ func TestDBing_MockMSSQL(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		prelogin := make([]byte, 32)
 		_, _ = conn.Read(prelogin)
@@ -1819,7 +1819,7 @@ func TestDBing_MockMSSQL(t *testing.T) {
 			0x00, // ENCRYPT_OFF
 		}
 		header := []byte{0x04, 0x01, 0x00, byte(8 + len(body)), 0x00, 0x00, 0x00, 0x00}
-		conn.Write(append(header, body...))
+		_, _ = conn.Write(append(header, body...))
 	}()
 
 	db := NewDBing(DBOptions{
@@ -1838,7 +1838,7 @@ func TestDBing_MockMSSQL(t *testing.T) {
 func TestDBing_MockOracle(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1849,7 +1849,7 @@ func TestDBing_MockOracle(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		tnsReq := make([]byte, 256)
 		_, _ = conn.Read(tnsReq)
@@ -1862,7 +1862,7 @@ func TestDBing_MockOracle(t *testing.T) {
 			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		}
-		conn.Write(tnsAccept)
+		_, _ = conn.Write(tnsAccept)
 	}()
 
 	db := NewDBing(DBOptions{
@@ -1882,7 +1882,7 @@ func TestDBing_MockOracle(t *testing.T) {
 func TestDBing_MockMongoDB(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1893,7 +1893,7 @@ func TestDBing_MockMongoDB(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		helloBuf := make([]byte, 128)
 		_, _ = conn.Read(helloBuf)
@@ -1926,7 +1926,7 @@ func TestDBing_MockMongoDB(t *testing.T) {
 		binary.LittleEndian.PutUint32(msgHeader[12:16], 2013) // OP_MSG (2013)
 		binary.LittleEndian.PutUint32(msgHeader[16:20], 0)    // FlagBits 0
 
-		conn.Write(append(msgHeader, section0...))
+		_, _ = conn.Write(append(msgHeader, section0...))
 	}()
 
 	db := NewDBing(DBOptions{
@@ -1945,7 +1945,7 @@ func TestDBing_MockMongoDB(t *testing.T) {
 func TestDBing_MockCassandra(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1956,14 +1956,14 @@ func TestDBing_MockCassandra(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		startup := make([]byte, 64)
 		_, _ = conn.Read(startup)
 
 		// CQL v4 READY frame: 0x84 (v4 response), 0x00 (flags), 0x00 0x01 (stream 1), 0x02 (READY), 0x00 0x00 0x00 0x00 (len 0)
 		readyFrame := []byte{0x84, 0x00, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00}
-		conn.Write(readyFrame)
+		_, _ = conn.Write(readyFrame)
 	}()
 
 	db := NewDBing(DBOptions{
@@ -1981,7 +1981,7 @@ func TestDBing_MockCassandra(t *testing.T) {
 func TestDBing_MockSAPHANA(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -1992,14 +1992,14 @@ func TestDBing_MockSAPHANA(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		initBuf := make([]byte, 32)
 		_, _ = conn.Read(initBuf)
 
 		// SAP HANA Init reply: Major 4, Minor 20 (Proto 4.20)
 		reply := []byte{0x04, 0x14, 0x00, 0x04, 0x01, 0x00, 0x00, 0x01}
-		conn.Write(reply)
+		_, _ = conn.Write(reply)
 	}()
 
 	db := NewDBing(DBOptions{
@@ -2017,7 +2017,7 @@ func TestDBing_MockSAPHANA(t *testing.T) {
 func TestDNSQueryProber_UDP(t *testing.T) {
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer pc.Close()
+	defer func() { _ = pc.Close() }()
 
 	portNum := uint16(pc.LocalAddr().(*net.UDPAddr).Port)
 
@@ -2039,7 +2039,7 @@ func TestDNSQueryProber_UDP(t *testing.T) {
 		ans := []byte{0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x2c, 0x00, 0x04, 192, 0, 2, 1}
 		copy(resp[n:], ans)
 
-		pc.WriteTo(resp, addr)
+		_, _ = pc.WriteTo(resp, addr)
 	}()
 
 	dq := NewDNSQueryProber(DNSQueryOptions{
@@ -2075,7 +2075,7 @@ func TestDNSQueryProber_DoH(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/dns-message")
 		w.WriteHeader(http.StatusOK)
-		w.Write(resp)
+		_, _ = w.Write(resp)
 	}))
 	defer ts.Close()
 
@@ -2124,7 +2124,7 @@ func TestGRPCing_MockServer(t *testing.T) {
 func TestLDAPing_MockServer(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -2135,7 +2135,7 @@ func TestLDAPing_MockServer(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		bindReq := make([]byte, 64)
 		_, _ = conn.Read(bindReq)
@@ -2148,7 +2148,7 @@ func TestLDAPing_MockServer(t *testing.T) {
 		//     MatchedDN: "" (OCTET STRING 0) (0x04 0x00)
 		//     DiagnosticMessage: "" (OCTET STRING 0) (0x04 0x00)
 		bindResp := []byte{0x30, 0x0c, 0x02, 0x01, 0x01, 0x61, 0x07, 0x0a, 0x01, 0x00, 0x04, 0x00, 0x04, 0x00}
-		conn.Write(bindResp)
+		_, _ = conn.Write(bindResp)
 	}()
 
 	ldapProber := NewLDAPing(LDAPOptions{
@@ -2195,7 +2195,7 @@ func TestWSing_MockServer(t *testing.T) {
 func TestFTPing_MockServer(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -2206,9 +2206,9 @@ func TestFTPing_MockServer(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
-		conn.Write([]byte("220 ProFTPD Server ready.\r\n"))
+		_, _ = conn.Write([]byte("220 ProFTPD Server ready.\r\n"))
 
 		reader := bufio.NewReader(conn)
 		for {
@@ -2218,9 +2218,9 @@ func TestFTPing_MockServer(t *testing.T) {
 			}
 			lineTrim := strings.TrimSpace(line)
 			if strings.HasPrefix(lineTrim, "FEAT") {
-				conn.Write([]byte("211-Features:\r\n AUTH TLS\r\n UTF8\r\n211 End\r\n"))
+				_, _ = conn.Write([]byte("211-Features:\r\n AUTH TLS\r\n UTF8\r\n211 End\r\n"))
 			} else if strings.HasPrefix(lineTrim, "QUIT") {
-				conn.Write([]byte("221 Goodbye.\r\n"))
+				_, _ = conn.Write([]byte("221 Goodbye.\r\n"))
 				break
 			}
 		}
@@ -2240,7 +2240,7 @@ func TestFTPing_MockServer(t *testing.T) {
 func TestRsyncing_MockServer(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -2251,14 +2251,14 @@ func TestRsyncing_MockServer(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
-		conn.Write([]byte("@RSYNCD: 31.0\n"))
+		_, _ = conn.Write([]byte("@RSYNCD: 31.0\n"))
 
 		reader := bufio.NewReader(conn)
 		line, _ := reader.ReadString('\n')
 		if strings.HasPrefix(line, "@RSYNCD:") {
-			conn.Write([]byte("@RSYNCD: OK\n"))
+			_, _ = conn.Write([]byte("@RSYNCD: OK\n"))
 		}
 	}()
 
@@ -2276,7 +2276,7 @@ func TestRsyncing_MockServer(t *testing.T) {
 func TestRedising_MockServer(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	p, err := strconv.Atoi(parts[len(parts)-1])
@@ -2287,7 +2287,7 @@ func TestRedising_MockServer(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		reader := bufio.NewReader(conn)
 		for {
@@ -2296,10 +2296,10 @@ func TestRedising_MockServer(t *testing.T) {
 				break
 			}
 			if strings.Contains(line, "PING") {
-				conn.Write([]byte("+PONG\r\n"))
+				_, _ = conn.Write([]byte("+PONG\r\n"))
 			} else if strings.Contains(line, "INFO") {
 				info := "# Server\r\nredis_version:7.2.4\r\nredis_mode:standalone\r\nos:Linux\r\n"
-				conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(info), info)))
+				_, _ = fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(info), info)
 			}
 		}
 	}()
@@ -2319,7 +2319,7 @@ func TestHTTPing_MockHTTPServer(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Server", "nginx/1.24.0")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hello, World!"))
+		_, _ = w.Write([]byte("Hello, World!"))
 	}))
 	defer ts.Close()
 
@@ -2371,16 +2371,16 @@ func TestHTTPing_SendDataAndExpectData(t *testing.T) {
 			body, _ := io.ReadAll(r.Body)
 			if string(body) == `{"health":"ping"}` {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"status":"healthy","uptime":3600}`))
+				_, _ = w.Write([]byte(`{"status":"healthy","uptime":3600}`))
 				return
 			}
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("bad payload"))
+			_, _ = w.Write([]byte("bad payload"))
 			return
 		}
 		if r.Method == http.MethodGet {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("pong-response-body-ready"))
+			_, _ = w.Write([]byte("pong-response-body-ready"))
 			return
 		}
 		// Default HEAD
@@ -2899,14 +2899,14 @@ func TestProber_FinalizeStatistics_Down(t *testing.T) {
 func TestQueue_Kafka_Mock(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Write response first so client never hangs waiting for server
 		resp := []byte{
@@ -2938,14 +2938,14 @@ func TestQueue_Kafka_Mock(t *testing.T) {
 func TestQueue_RabbitMQ_Mock(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Write AMQP Connection.Start frame first
 		resp := []byte{
@@ -2976,14 +2976,14 @@ func TestQueue_RabbitMQ_Mock(t *testing.T) {
 func TestRedis_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		r := bufio.NewReader(conn)
 		// Read PING
@@ -3016,14 +3016,14 @@ func TestRedis_MockPing(t *testing.T) {
 func TestMemcached_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		r := bufio.NewReader(conn)
 		// Read version command
@@ -3052,14 +3052,14 @@ func TestMemcached_MockPing(t *testing.T) {
 func TestPostgres_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Read SSLRequest (8 bytes)
 		sslReq := make([]byte, 8)
@@ -3102,14 +3102,14 @@ func TestPostgres_MockPing(t *testing.T) {
 func TestMySQL_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// MySQL Handshake error packet
 		errMsg := "Access denied for user 'netping'@'127.0.0.1'"
@@ -3139,14 +3139,14 @@ func TestMySQL_MockPing(t *testing.T) {
 func TestMail_SMTP_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		r := bufio.NewReader(conn)
 		// Send 220 banner
@@ -3174,14 +3174,14 @@ func TestMail_SMTP_MockPing(t *testing.T) {
 func TestMail_IMAP_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		r := bufio.NewReader(conn)
 		// Send IMAP banner
@@ -3209,14 +3209,14 @@ func TestMail_IMAP_MockPing(t *testing.T) {
 func TestMail_POP3_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		r := bufio.NewReader(conn)
 		// Send POP3 banner
@@ -3244,14 +3244,14 @@ func TestMail_POP3_MockPing(t *testing.T) {
 func TestCassandra_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Read STARTUP frame (22 bytes)
 		buf := make([]byte, 22)
@@ -3280,14 +3280,14 @@ func TestCassandra_MockPing(t *testing.T) {
 func TestMSSQL_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Read PRELOGIN (32 bytes)
 		buf := make([]byte, 32)
@@ -3317,14 +3317,14 @@ func TestMSSQL_MockPing(t *testing.T) {
 func TestFTP_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		r := bufio.NewReader(conn)
 		// 220 banner
@@ -3355,14 +3355,14 @@ func TestFTP_MockPing(t *testing.T) {
 func TestWS_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		r := bufio.NewReader(conn)
 		// Read HTTP Upgrade request until empty line
@@ -3405,14 +3405,14 @@ func TestWS_MockPing(t *testing.T) {
 func TestLDAP_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Read BindRequest (14 bytes)
 		buf := make([]byte, 14)
@@ -3439,14 +3439,14 @@ func TestLDAP_MockPing(t *testing.T) {
 func TestRsync_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		r := bufio.NewReader(conn)
 		// Send server greeting
@@ -3486,14 +3486,14 @@ func TestLDAP_ExtractStringAttr(t *testing.T) {
 func TestTCP_Ping_SendData_ExpectData(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		buf := make([]byte, 4)
 		_, _ = io.ReadFull(conn, buf)
@@ -3520,7 +3520,7 @@ func TestTCP_Ping_SendData_ExpectData(t *testing.T) {
 func TestUDP_Ping_SendData_ExpectData(t *testing.T) {
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	assert.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	go func() {
 		buf := make([]byte, 1024)
@@ -3546,14 +3546,14 @@ func TestUDP_Ping_SendData_ExpectData(t *testing.T) {
 func TestCassandra_Authenticate(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Read STARTUP
 		buf := make([]byte, 22)
@@ -3584,14 +3584,14 @@ func TestCassandra_Authenticate(t *testing.T) {
 func TestMongoDB_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Build BSON document: version string "7.0.5"
 		var doc bytes.Buffer
@@ -3638,14 +3638,14 @@ func TestMongoDB_MockPing(t *testing.T) {
 func TestOracle_MockPing(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Read client connect
 		buf := make([]byte, 512)
@@ -3786,14 +3786,14 @@ func TestOracle_Refuse_Redirect(t *testing.T) {
 	// Test REFUSE packet
 	ln1, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln1.Close()
+	defer func() { _ = ln1.Close() }()
 
 	go func() {
 		conn, err := ln1.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		buf := make([]byte, 512)
 		_, _ = conn.Read(buf)
@@ -3824,14 +3824,14 @@ func TestOracle_Refuse_Redirect(t *testing.T) {
 	// Test REDIRECT packet
 	ln2, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln2.Close()
+	defer func() { _ = ln2.Close() }()
 
 	go func() {
 		conn, err := ln2.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		buf := make([]byte, 512)
 		_, _ = conn.Read(buf)

@@ -56,7 +56,7 @@ func NewCSVPrinter(filePath string) (*CSVPrinter, error) {
 	// #nosec G304 -- creates user-specified CSV stats file
 	statsFile, err := os.OpenFile(statsFilename, fileFlag, filePermission)
 	if err != nil {
-		probeFile.Close()
+		_ = probeFile.Close()
 		return nil, fmt.Errorf("error creating the stats CSV file %s: %w", statsFilename, err)
 	}
 
@@ -85,7 +85,7 @@ func NewTSVPrinter(filePath string) (*CSVPrinter, error) {
 	// #nosec G304 -- creates user-specified TSV stats file
 	statsFile, err := os.OpenFile(statsFilename, fileFlag, filePermission)
 	if err != nil {
-		probeFile.Close()
+		_ = probeFile.Close()
 		return nil, fmt.Errorf("error creating the stats TSV file %s: %w", statsFilename, err)
 	}
 
@@ -133,7 +133,7 @@ func (p *CSVPrinter) Done() {
 	}
 
 	if p.ProbeFile != nil {
-		p.ProbeFile.Close()
+		_ = p.ProbeFile.Close()
 		p.ProbeFile = nil
 	}
 
@@ -142,7 +142,7 @@ func (p *CSVPrinter) Done() {
 	}
 
 	if p.StatsFile != nil {
-		p.StatsFile.Close()
+		_ = p.StatsFile.Close()
 		p.StatsFile = nil
 	}
 }

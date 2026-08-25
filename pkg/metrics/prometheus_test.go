@@ -34,13 +34,13 @@ func TestPrometheusExporter(t *testing.T) {
 	defer cancel()
 
 	srv := StartMetricsServer(ctx, "127.0.0.1:19183", s)
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 
 	time.Sleep(100 * time.Millisecond)
 
 	resp, err := http.Get("http://127.0.0.1:19183/metrics")
 	assert.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)
@@ -73,13 +73,13 @@ func TestMultiPrometheusExporter(t *testing.T) {
 	defer cancel()
 
 	srv := StartMultiMetricsServer(ctx, "127.0.0.1:19184", []*stats.Statistics{s1, s2})
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 
 	time.Sleep(100 * time.Millisecond)
 
 	resp, err := http.Get("http://127.0.0.1:19184/metrics")
 	assert.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)

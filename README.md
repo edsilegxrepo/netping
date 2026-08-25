@@ -2,7 +2,7 @@
 
 `netping` is an enterprise-grade, multi-protocol network latency prober, active telemetry collector, and diagnostics suite written in Go. Designed as the modern evolution of TCP socket ping utilities, `netping` spans Layer 3 through Layer 7, providing deep protocol negotiation analysis, visual interactive terminal and web dashboards, continuous SLA monitoring, and structured log streaming.
 
-For complete architectural specifications, concurrency mechanics, and dependency models, see [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/MODERNIZATION.md`](docs/MODERNIZATION.md).
+For complete architectural specifications, concurrency mechanics, and dependency models, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ---
 

@@ -182,6 +182,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- static compile-time embedded dashboard HTML
 	_, _ = w.Write(dashboardHTML)
 }
 
@@ -411,6 +412,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				continue
 			}
+			// nosemgrep: go.lang.security.audit.xss.no-fprintf-to-responsewriter.no-fprintf-to-responsewriter -- text/event-stream SSE payload
 			_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
 		}
@@ -739,7 +741,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 
 	if format == printers.FormatSQLite3 {
 		tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("netping_%d.db", time.Now().UnixNano()))
-		defer os.Remove(tmpFile)
+		defer func() { _ = os.Remove(tmpFile) }()
 		var exportErr error
 		if isFleet {
 			exportErr = printers.ExportMultiTarget(fleetTargets, s.startTime, history, format, tmpFile)
@@ -756,7 +758,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to read export: %v", err), http.StatusInternalServerError)
 			return
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.Copy(w, f)
 		return

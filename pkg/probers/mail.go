@@ -122,10 +122,12 @@ func (m *Mailing) Ping(ctx context.Context) ProbeResult {
 	var err error
 
 	if m.useTLS {
+		// #nosec G402 -- diagnostic mail TLS prober measuring latency
+		// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- diagnostic prober measuring latency
 		tlsConfig := &tls.Config{
-			ServerName: targetHost,
-			// #nosec G402 -- diagnostic mail TLS prober measuring latency
+			ServerName:         targetHost,
 			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
 		}
 		tlsDialer := &tls.Dialer{
 			NetDialer: m.dialer,
@@ -142,7 +144,7 @@ func (m *Mailing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(m.timeout))
 	reader := bufio.NewReader(conn)
@@ -244,10 +246,12 @@ func (m *Mailing) Ping(ctx context.Context) ProbeResult {
 				}
 			}
 
+			// #nosec G402 -- diagnostic STARTTLS prober measuring handshake latency
+			// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- diagnostic prober measuring latency
 			tlsConn := tls.Client(conn, &tls.Config{
-				ServerName: targetHost,
-				// #nosec G402 -- diagnostic STARTTLS prober measuring handshake latency
+				ServerName:         targetHost,
 				InsecureSkipVerify: true,
+				MinVersion:         tls.VersionTLS12,
 			})
 			if err := tlsConn.HandshakeContext(ctx); err != nil {
 				return ProbeResult{

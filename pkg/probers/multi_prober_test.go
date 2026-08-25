@@ -16,11 +16,11 @@ import (
 func TestMultiProber_Execution(t *testing.T) {
 	ln1, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln1.Close()
+	defer func() { _ = ln1.Close() }()
 
 	ln2, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln2.Close()
+	defer func() { _ = ln2.Close() }()
 
 	parts1 := strings.Split(ln1.Addr().String(), ":")
 	port1, _ := strconv.Atoi(parts1[len(parts1)-1])
@@ -67,7 +67,7 @@ func TestMultiProber_Execution(t *testing.T) {
 func TestMultiProber_ContextCancellation(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	parts := strings.Split(ln.Addr().String(), ":")
 	port, _ := strconv.Atoi(parts[len(parts)-1])
@@ -109,14 +109,12 @@ func TestMultiProber_ContextCancellation(t *testing.T) {
 }
 
 func TestMultiProber_Concurrency_Throttling(t *testing.T) {
-	var listeners []net.Listener
 	var workers []TargetWorker
 
 	for i := 0; i < 4; i++ {
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		assert.NoError(t, err)
-		defer ln.Close()
-		listeners = append(listeners, ln)
+		defer func() { _ = ln.Close() }()
 
 		parts := strings.Split(ln.Addr().String(), ":")
 		port, _ := strconv.Atoi(parts[len(parts)-1])

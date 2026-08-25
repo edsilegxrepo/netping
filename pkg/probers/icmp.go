@@ -58,7 +58,7 @@ func (i ICMPing) Ping(ctx context.Context) ProbeResult {
 			}
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(i.timeout))
 

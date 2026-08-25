@@ -884,7 +884,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		// Structural Parsing: CSV Probe Records
 		fProbe, err := os.Open(csvFile)
 		require.NoError(t, err)
-		defer fProbe.Close()
+		defer func() { _ = fProbe.Close() }()
 
 		rProbe := csv.NewReader(fProbe)
 		probeRecords, err := rProbe.ReadAll()
@@ -912,7 +912,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		statsCSVFile := filepath.Join(tempDir, "fleet_probes_stats.csv")
 		fStats, err := os.Open(statsCSVFile)
 		require.NoError(t, err)
-		defer fStats.Close()
+		defer func() { _ = fStats.Close() }()
 
 		rStats := csv.NewReader(fStats)
 		statsRecords, err := rStats.ReadAll()
@@ -985,7 +985,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		// Structural Parsing: TSV Probe Records
 		fTSV, err := os.Open(tsvFile)
 		require.NoError(t, err)
-		defer fTSV.Close()
+		defer func() { _ = fTSV.Close() }()
 
 		rTSV := csv.NewReader(fTSV)
 		rTSV.Comma = '\t'
@@ -1007,7 +1007,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		statsTSVFile := filepath.Join(tempDir, "fleet_probes_stats.tsv")
 		fStatsTSV, err := os.Open(statsTSVFile)
 		require.NoError(t, err)
-		defer fStatsTSV.Close()
+		defer func() { _ = fStatsTSV.Close() }()
 
 		rStatsTSV := csv.NewReader(fStatsTSV)
 		rStatsTSV.Comma = '\t'
@@ -1080,7 +1080,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		// SQL Verification: Open SQLite connection and query table rows
 		conn, err := sqlite.OpenConn(dbFile, sqlite.OpenReadOnly)
 		require.NoError(t, err, "Must be able to open generated SQLite3 database")
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Find user tables created in the database
 		var probeTable, statsTable string
@@ -1147,7 +1147,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		jsonFile := filepath.Join(tempDir, "fleet_probes_pretty.json")
 		f, err := os.Create(jsonFile)
 		require.NoError(t, err)
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		jsonPrinter := printers.NewJSONWriterPrinter(f, true)
 
@@ -1207,7 +1207,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		// Structural Parsing: Decode all JSON objects from the pretty file stream
 		fRead, err := os.Open(jsonFile)
 		require.NoError(t, err)
-		defer fRead.Close()
+		defer func() { _ = fRead.Close() }()
 
 		decoder := json.NewDecoder(fRead)
 		eventCount := 0
@@ -1246,7 +1246,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		jsonlFile := filepath.Join(tempDir, "fleet_probes.jsonl")
 		fJSONL, err := os.Create(jsonlFile)
 		require.NoError(t, err)
-		defer fJSONL.Close()
+		defer func() { _ = fJSONL.Close() }()
 
 		jsonlPrinter := printers.NewJSONWriterPrinter(fJSONL, false)
 
@@ -1306,7 +1306,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		// Structural Parsing: Line-by-line validation of JSONL
 		fRead, err := os.Open(jsonlFile)
 		require.NoError(t, err)
-		defer fRead.Close()
+		defer func() { _ = fRead.Close() }()
 
 		scanner := bufio.NewScanner(fRead)
 		lineCount := 0
@@ -1346,7 +1346,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		ndjsonFile := filepath.Join(tempDir, "fleet_probes.ndjson")
 		fNDJSON, err := os.Create(ndjsonFile)
 		require.NoError(t, err)
-		defer fNDJSON.Close()
+		defer func() { _ = fNDJSON.Close() }()
 
 		ndjsonPrinter := printers.NewJSONWriterPrinter(fNDJSON, false)
 
@@ -1406,7 +1406,7 @@ func TestLive_MultiTarget_Outputs_AllFormats_E2E(t *testing.T) {
 		// Structural Parsing: Line-by-line validation of NDJSON
 		fRead, err := os.Open(ndjsonFile)
 		require.NoError(t, err)
-		defer fRead.Close()
+		defer func() { _ = fRead.Close() }()
 
 		scanner := bufio.NewScanner(fRead)
 		lineCount := 0
@@ -1503,7 +1503,7 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	t.Run("GET_Index_Dashboard", func(t *testing.T) {
 		resp, err := client.Get(baseURL + "/")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		body, _ := io.ReadAll(resp.Body)
 		assert.Contains(t, string(body), "netping Enterprise Dashboard")
@@ -1514,7 +1514,7 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	t.Run("GET_Health", func(t *testing.T) {
 		resp, err := client.Get(baseURL + "/api/v1/health")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		var h map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&h))
@@ -1526,7 +1526,7 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	t.Run("GET_Metrics", func(t *testing.T) {
 		resp, err := client.Get(baseURL + "/api/v1/metrics")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		var m map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&m))
@@ -1537,7 +1537,7 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	t.Run("GET_Targets", func(t *testing.T) {
 		resp, err := client.Get(baseURL + "/api/v1/targets")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		var tgts map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&tgts))
@@ -1548,7 +1548,7 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	t.Run("GET_Probes", func(t *testing.T) {
 		resp, err := client.Get(baseURL + "/api/v1/probes?limit=3")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		var probes map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&probes))
@@ -1562,12 +1562,12 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	t.Run("GET_Swagger_And_OpenAPI", func(t *testing.T) {
 		respDocs, err := client.Get(baseURL + "/docs")
 		require.NoError(t, err)
-		defer respDocs.Body.Close()
+		defer func() { _ = respDocs.Body.Close() }()
 		assert.Equal(t, http.StatusOK, respDocs.StatusCode)
 
 		respSpec, err := client.Get(baseURL + "/api/openapi.json")
 		require.NoError(t, err)
-		defer respSpec.Body.Close()
+		defer func() { _ = respSpec.Body.Close() }()
 		assert.Equal(t, http.StatusOK, respSpec.StatusCode)
 		var spec map[string]interface{}
 		require.NoError(t, json.NewDecoder(respSpec.Body).Decode(&spec))
@@ -1578,12 +1578,12 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	t.Run("GET_POST_Config_History", func(t *testing.T) {
 		respGet, err := client.Get(baseURL + "/api/v1/config/history")
 		require.NoError(t, err)
-		defer respGet.Body.Close()
+		defer func() { _ = respGet.Body.Close() }()
 		assert.Equal(t, http.StatusOK, respGet.StatusCode)
 
 		respPost, err := client.Post(baseURL+"/api/v1/config/history", "application/json", strings.NewReader(`{"limit": 250000}`))
 		require.NoError(t, err)
-		defer respPost.Body.Close()
+		defer func() { _ = respPost.Body.Close() }()
 		assert.Equal(t, http.StatusOK, respPost.StatusCode)
 		var res map[string]interface{}
 		require.NoError(t, json.NewDecoder(respPost.Body).Decode(&res))
@@ -1594,13 +1594,13 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	t.Run("GET_Export_Streaming", func(t *testing.T) {
 		respJSON, err := client.Get(baseURL + "/api/v1/export?format=json")
 		require.NoError(t, err)
-		defer respJSON.Body.Close()
+		defer func() { _ = respJSON.Body.Close() }()
 		assert.Equal(t, http.StatusOK, respJSON.StatusCode)
 		assert.Equal(t, "application/json", respJSON.Header.Get("Content-Type"))
 
 		respCSV, err := client.Get(baseURL + "/api/v1/export?format=csv")
 		require.NoError(t, err)
-		defer respCSV.Body.Close()
+		defer func() { _ = respCSV.Body.Close() }()
 		assert.Equal(t, http.StatusOK, respCSV.StatusCode)
 		assert.Equal(t, "text/csv", respCSV.Header.Get("Content-Type"))
 	})
@@ -1613,7 +1613,7 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 
 		resp, err := client.Post(baseURL+"/api/v1/export", "application/json", strings.NewReader(reqBody))
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 		require.Eventually(t, func() bool {
@@ -1626,7 +1626,7 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	t.Run("POST_Reset_Telemetry", func(t *testing.T) {
 		resp, err := client.Post(baseURL+"/api/v1/reset", "application/json", nil)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, 0, broadcaster.GetHistoryCount())
 	})

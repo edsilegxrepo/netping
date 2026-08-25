@@ -79,10 +79,12 @@ func NewDNSQueryProber(opts DNSQueryOptions) *DNSQueryProber {
 	if opts.IsDoH {
 		tr := &http.Transport{
 			DisableKeepAlives: true,
+			// #nosec G402 -- diagnostic DoH prober measuring endpoint latency
+			// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- diagnostic prober measuring latency
 			TLSClientConfig: &tls.Config{
-				ServerName: opts.Nameserver,
-				// #nosec G402 -- diagnostic DoH prober measuring endpoint latency
+				ServerName:         opts.Nameserver,
 				InsecureSkipVerify: true,
+				MinVersion:         tls.VersionTLS12,
 			},
 			DialContext: d.DialContext,
 		}
@@ -342,7 +344,7 @@ func (d *DNSQueryProber) Ping(ctx context.Context) ProbeResult {
 				Err: err,
 			}
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			return ProbeResult{
@@ -399,10 +401,12 @@ func (d *DNSQueryProber) Ping(ctx context.Context) ProbeResult {
 
 	if d.isDoT {
 		// DoT (RFC 7858 - DNS over TLS)
+		// #nosec G402 -- diagnostic DoT prober measuring endpoint latency
+		// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- diagnostic prober measuring latency
 		tlsConfig := &tls.Config{
-			ServerName: target,
-			// #nosec G402 -- diagnostic DoT prober measuring endpoint latency
+			ServerName:         target,
 			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
 		}
 		tlsDialer := &tls.Dialer{
 			NetDialer: d.dialer,
@@ -415,7 +419,7 @@ func (d *DNSQueryProber) Ping(ctx context.Context) ProbeResult {
 				Err: err,
 			}
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.SetDeadline(time.Now().Add(d.timeout))
 
@@ -499,7 +503,7 @@ func (d *DNSQueryProber) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(d.timeout))
 

@@ -14,6 +14,7 @@
 package metrics
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -45,36 +46,39 @@ func StartMetricsServer(ctx context.Context, addr string, s *stats.Statistics) *
 			lossRatio = float32(s.TotalUnsuccessfulProbes) / float32(total)
 		}
 
+		var buf bytes.Buffer
+		fmt.Fprintf(&buf, "# HELP tcping_up Target reachability (1 = up, 0 = down)\n")
+		fmt.Fprintf(&buf, "# TYPE tcping_up gauge\n")
+		fmt.Fprintf(&buf, "tcping_up{target=%q,ip=%q,port=\"%d\"} %d\n\n", target, ip, port, up)
+
+		fmt.Fprintf(&buf, "# HELP tcping_probe_duration_seconds Latest round-trip latency in seconds\n")
+		fmt.Fprintf(&buf, "# TYPE tcping_probe_duration_seconds gauge\n")
+		fmt.Fprintf(&buf, "tcping_probe_duration_seconds{target=%q,ip=%q,port=\"%d\"} %f\n\n", target, ip, port, float64(s.LatestRTT)/1000.0)
+
+		fmt.Fprintf(&buf, "# HELP tcping_jitter_seconds Packet jitter in seconds\n")
+		fmt.Fprintf(&buf, "# TYPE tcping_jitter_seconds gauge\n")
+		fmt.Fprintf(&buf, "tcping_jitter_seconds{target=%q,ip=%q,port=\"%d\"} %f\n\n", target, ip, port, float64(s.RTTResults.Jitter)/1000.0)
+
+		fmt.Fprintf(&buf, "# HELP tcping_packet_loss_ratio Packet loss ratio between 0 and 1\n")
+		fmt.Fprintf(&buf, "# TYPE tcping_packet_loss_ratio gauge\n")
+		fmt.Fprintf(&buf, "tcping_packet_loss_ratio{target=%q,ip=%q,port=\"%d\"} %f\n\n", target, ip, port, lossRatio)
+
+		fmt.Fprintf(&buf, "# HELP tcping_probes_total Total number of probes sent\n")
+		fmt.Fprintf(&buf, "# TYPE tcping_probes_total counter\n")
+		fmt.Fprintf(&buf, "tcping_probes_total{target=%q,ip=%q,port=\"%d\",status=\"success\"} %d\n", target, ip, port, s.TotalSuccessfulProbes)
+		fmt.Fprintf(&buf, "tcping_probes_total{target=%q,ip=%q,port=\"%d\",status=\"failure\"} %d\n\n", target, ip, port, s.TotalUnsuccessfulProbes)
+
+		fmt.Fprintf(&buf, "# HELP tcping_uptime_seconds Total accumulated uptime in seconds\n")
+		fmt.Fprintf(&buf, "# TYPE tcping_uptime_seconds counter\n")
+		fmt.Fprintf(&buf, "tcping_uptime_seconds{target=%q,ip=%q,port=\"%d\"} %f\n\n", target, ip, port, s.TotalUptime.Seconds())
+
+		fmt.Fprintf(&buf, "# HELP tcping_downtime_seconds Total accumulated downtime in seconds\n")
+		fmt.Fprintf(&buf, "# TYPE tcping_downtime_seconds counter\n")
+		fmt.Fprintf(&buf, "tcping_downtime_seconds{target=%q,ip=%q,port=\"%d\"} %f\n", target, ip, port, s.TotalDowntime.Seconds())
+
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-
-		fmt.Fprintf(w, "# HELP tcping_up Target reachability (1 = up, 0 = down)\n")
-		fmt.Fprintf(w, "# TYPE tcping_up gauge\n")
-		fmt.Fprintf(w, "tcping_up{target=%q,ip=%q,port=\"%d\"} %d\n\n", target, ip, port, up)
-
-		fmt.Fprintf(w, "# HELP tcping_probe_duration_seconds Latest round-trip latency in seconds\n")
-		fmt.Fprintf(w, "# TYPE tcping_probe_duration_seconds gauge\n")
-		fmt.Fprintf(w, "tcping_probe_duration_seconds{target=%q,ip=%q,port=\"%d\"} %f\n\n", target, ip, port, float64(s.LatestRTT)/1000.0)
-
-		fmt.Fprintf(w, "# HELP tcping_jitter_seconds Packet jitter in seconds\n")
-		fmt.Fprintf(w, "# TYPE tcping_jitter_seconds gauge\n")
-		fmt.Fprintf(w, "tcping_jitter_seconds{target=%q,ip=%q,port=\"%d\"} %f\n\n", target, ip, port, float64(s.RTTResults.Jitter)/1000.0)
-
-		fmt.Fprintf(w, "# HELP tcping_packet_loss_ratio Packet loss ratio between 0 and 1\n")
-		fmt.Fprintf(w, "# TYPE tcping_packet_loss_ratio gauge\n")
-		fmt.Fprintf(w, "tcping_packet_loss_ratio{target=%q,ip=%q,port=\"%d\"} %f\n\n", target, ip, port, lossRatio)
-
-		fmt.Fprintf(w, "# HELP tcping_probes_total Total number of probes sent\n")
-		fmt.Fprintf(w, "# TYPE tcping_probes_total counter\n")
-		fmt.Fprintf(w, "tcping_probes_total{target=%q,ip=%q,port=\"%d\",status=\"success\"} %d\n", target, ip, port, s.TotalSuccessfulProbes)
-		fmt.Fprintf(w, "tcping_probes_total{target=%q,ip=%q,port=\"%d\",status=\"failure\"} %d\n\n", target, ip, port, s.TotalUnsuccessfulProbes)
-
-		fmt.Fprintf(w, "# HELP tcping_uptime_seconds Total accumulated uptime in seconds\n")
-		fmt.Fprintf(w, "# TYPE tcping_uptime_seconds counter\n")
-		fmt.Fprintf(w, "tcping_uptime_seconds{target=%q,ip=%q,port=\"%d\"} %f\n\n", target, ip, port, s.TotalUptime.Seconds())
-
-		fmt.Fprintf(w, "# HELP tcping_downtime_seconds Total accumulated downtime in seconds\n")
-		fmt.Fprintf(w, "# TYPE tcping_downtime_seconds counter\n")
-		fmt.Fprintf(w, "tcping_downtime_seconds{target=%q,ip=%q,port=\"%d\"} %f\n", target, ip, port, s.TotalDowntime.Seconds())
+		// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- text/plain Prometheus metrics output
+		_, _ = w.Write(buf.Bytes())
 	})
 
 	srv := &http.Server{
@@ -103,10 +107,9 @@ func StartMultiMetricsServer(ctx context.Context, addr string, statsList []*stat
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-
-		fmt.Fprintf(w, "# HELP netping_up Target reachability (1 = up, 0 = down)\n")
-		fmt.Fprintf(w, "# TYPE netping_up gauge\n")
+		var buf bytes.Buffer
+		fmt.Fprintf(&buf, "# HELP netping_up Target reachability (1 = up, 0 = down)\n")
+		fmt.Fprintf(&buf, "# TYPE netping_up gauge\n")
 		for _, s := range statsList {
 			s.Mu.RLock()
 			target := s.Hostname
@@ -117,12 +120,12 @@ func StartMultiMetricsServer(ctx context.Context, addr string, statsList []*stat
 				up = 1
 			}
 			s.Mu.RUnlock()
-			fmt.Fprintf(w, "netping_up{target=%q,ip=%q,port=\"%d\"} %d\n", target, ip, port, up)
+			fmt.Fprintf(&buf, "netping_up{target=%q,ip=%q,port=\"%d\"} %d\n", target, ip, port, up)
 		}
-		fmt.Fprintln(w)
+		fmt.Fprintln(&buf)
 
-		fmt.Fprintf(w, "# HELP netping_probe_duration_seconds Latest round-trip latency in seconds\n")
-		fmt.Fprintf(w, "# TYPE netping_probe_duration_seconds gauge\n")
+		fmt.Fprintf(&buf, "# HELP netping_probe_duration_seconds Latest round-trip latency in seconds\n")
+		fmt.Fprintf(&buf, "# TYPE netping_probe_duration_seconds gauge\n")
 		for _, s := range statsList {
 			s.Mu.RLock()
 			target := s.Hostname
@@ -130,12 +133,12 @@ func StartMultiMetricsServer(ctx context.Context, addr string, statsList []*stat
 			port := s.Port
 			lat := float64(s.LatestRTT) / 1000.0
 			s.Mu.RUnlock()
-			fmt.Fprintf(w, "netping_probe_duration_seconds{target=%q,ip=%q,port=\"%d\"} %f\n", target, ip, port, lat)
+			fmt.Fprintf(&buf, "netping_probe_duration_seconds{target=%q,ip=%q,port=\"%d\"} %f\n", target, ip, port, lat)
 		}
-		fmt.Fprintln(w)
+		fmt.Fprintln(&buf)
 
-		fmt.Fprintf(w, "# HELP netping_packet_loss_ratio Packet loss ratio between 0 and 1\n")
-		fmt.Fprintf(w, "# TYPE netping_packet_loss_ratio gauge\n")
+		fmt.Fprintf(&buf, "# HELP netping_packet_loss_ratio Packet loss ratio between 0 and 1\n")
+		fmt.Fprintf(&buf, "# TYPE netping_packet_loss_ratio gauge\n")
 		for _, s := range statsList {
 			s.Mu.RLock()
 			target := s.Hostname
@@ -147,12 +150,12 @@ func StartMultiMetricsServer(ctx context.Context, addr string, statsList []*stat
 				lossRatio = float32(s.TotalUnsuccessfulProbes) / float32(total)
 			}
 			s.Mu.RUnlock()
-			fmt.Fprintf(w, "netping_packet_loss_ratio{target=%q,ip=%q,port=\"%d\"} %f\n", target, ip, port, lossRatio)
+			fmt.Fprintf(&buf, "netping_packet_loss_ratio{target=%q,ip=%q,port=\"%d\"} %f\n", target, ip, port, lossRatio)
 		}
-		fmt.Fprintln(w)
+		fmt.Fprintln(&buf)
 
-		fmt.Fprintf(w, "# HELP netping_probes_total Total number of probes sent\n")
-		fmt.Fprintf(w, "# TYPE netping_probes_total counter\n")
+		fmt.Fprintf(&buf, "# HELP netping_probes_total Total number of probes sent\n")
+		fmt.Fprintf(&buf, "# TYPE netping_probes_total counter\n")
 		for _, s := range statsList {
 			s.Mu.RLock()
 			target := s.Hostname
@@ -161,9 +164,13 @@ func StartMultiMetricsServer(ctx context.Context, addr string, statsList []*stat
 			succ := s.TotalSuccessfulProbes
 			fail := s.TotalUnsuccessfulProbes
 			s.Mu.RUnlock()
-			fmt.Fprintf(w, "netping_probes_total{target=%q,ip=%q,port=\"%d\",status=\"success\"} %d\n", target, ip, port, succ)
-			fmt.Fprintf(w, "netping_probes_total{target=%q,ip=%q,port=\"%d\",status=\"failure\"} %d\n", target, ip, port, fail)
+			fmt.Fprintf(&buf, "netping_probes_total{target=%q,ip=%q,port=\"%d\",status=\"success\"} %d\n", target, ip, port, succ)
+			fmt.Fprintf(&buf, "netping_probes_total{target=%q,ip=%q,port=\"%d\",status=\"failure\"} %d\n", target, ip, port, fail)
 		}
+
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- text/plain Prometheus metrics output
+		_, _ = w.Write(buf.Bytes())
 	})
 
 	srv := &http.Server{

@@ -421,7 +421,7 @@ func resolveTriggerTarget(req TriggerRequest) (string, uint16, consts.Protocol, 
 	if h, p, err := net.SplitHostPort(rawTarget); err == nil {
 		host = h
 		if port == 0 {
-			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 && parsed <= 65535 {
+			if parsed, err := strconv.ParseUint(p, 10, 16); err == nil && parsed > 0 {
 				port = uint16(parsed)
 			}
 		}
@@ -429,7 +429,7 @@ func resolveTriggerTarget(req TriggerRequest) (string, uint16, consts.Protocol, 
 
 	proto, defPortStr, _ := resolveProtocolAndDefaultPort(protoStr)
 	if port == 0 {
-		if defP, err := strconv.Atoi(defPortStr); err == nil && defP > 0 && defP <= 65535 {
+		if defP, err := strconv.ParseUint(defPortStr, 10, 16); err == nil && defP > 0 {
 			port = uint16(defP)
 		} else {
 			port = 443

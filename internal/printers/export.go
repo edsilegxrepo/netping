@@ -164,6 +164,7 @@ func SaveFileAsync(filePath string, data []byte) error {
 	}
 
 	// #nosec G204 -- invokes self-executable for isolated background disk write
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- self-executable path from os.Executable() used for background save
 	cmd := exec.Command(exe, "--internal-async-save", cleanPath)
 	cmd.Stdin = bytes.NewReader(data)
 	setDetachedProcess(cmd)
@@ -213,7 +214,7 @@ func exportSingleTargetSQLite(target string, port uint16, protocol string, st *s
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, _ = db.Exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
 
@@ -260,7 +261,7 @@ func exportSingleTargetSQLite(target string, port uint16, protocol string, st *s
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, p := range history {
 		isSucc := 0
@@ -357,28 +358,28 @@ func ExportSingleTargetToWriter(w io.Writer, target string, port uint16, protoco
 
 	case FormatPlainText:
 		bw := bufio.NewWriter(w)
-		defer bw.Flush()
-		bw.WriteString("================================================================================\n")
-		bw.WriteString("                           NETPING PROBE REPORT                                 \n")
-		bw.WriteString("================================================================================\n\n")
-		fmt.Fprintf(bw, "Target:         %s:%d\n", cleanTarget, port)
-		fmt.Fprintf(bw, "Protocol:       %s\n", cleanProtocol)
-		fmt.Fprintf(bw, "IP:             %s\n", ipStr)
-		fmt.Fprintf(bw, "Exported At:    %s\n", time.Now().Format(time.RFC1123))
-		fmt.Fprintf(bw, "Total Duration: %s\n\n", duration)
+		defer func() { _ = bw.Flush() }()
+		_, _ = bw.WriteString("================================================================================\n")
+		_, _ = bw.WriteString("                           NETPING PROBE REPORT                                 \n")
+		_, _ = bw.WriteString("================================================================================\n\n")
+		_, _ = fmt.Fprintf(bw, "Target:         %s:%d\n", cleanTarget, port)
+		_, _ = fmt.Fprintf(bw, "Protocol:       %s\n", cleanProtocol)
+		_, _ = fmt.Fprintf(bw, "IP:             %s\n", ipStr)
+		_, _ = fmt.Fprintf(bw, "Exported At:    %s\n", time.Now().Format(time.RFC1123))
+		_, _ = fmt.Fprintf(bw, "Total Duration: %s\n\n", duration)
 
-		bw.WriteString("SUMMARY STATISTICS:\n")
-		fmt.Fprintf(bw, "  Probes Sent:     %d\n", total)
-		fmt.Fprintf(bw, "  Probes Recv:     %d\n", succ)
-		fmt.Fprintf(bw, "  Probes Failed:   %d\n", fail)
-		fmt.Fprintf(bw, "  Packet Loss:     %.1f%%\n", loss)
-		fmt.Fprintf(bw, "  Min Latency:     %.2f ms\n", rttRes.Min)
-		fmt.Fprintf(bw, "  Avg Latency:     %.2f ms\n", rttRes.Average)
-		fmt.Fprintf(bw, "  Max Latency:     %.2f ms\n\n", rttRes.Max)
+		_, _ = bw.WriteString("SUMMARY STATISTICS:\n")
+		_, _ = fmt.Fprintf(bw, "  Probes Sent:     %d\n", total)
+		_, _ = fmt.Fprintf(bw, "  Probes Recv:     %d\n", succ)
+		_, _ = fmt.Fprintf(bw, "  Probes Failed:   %d\n", fail)
+		_, _ = fmt.Fprintf(bw, "  Packet Loss:     %.1f%%\n", loss)
+		_, _ = fmt.Fprintf(bw, "  Min Latency:     %.2f ms\n", rttRes.Min)
+		_, _ = fmt.Fprintf(bw, "  Avg Latency:     %.2f ms\n", rttRes.Average)
+		_, _ = fmt.Fprintf(bw, "  Max Latency:     %.2f ms\n\n", rttRes.Max)
 
-		bw.WriteString("PROBE EVENT HISTORY:\n")
-		fmt.Fprintf(bw, "%-20s %-6s %-10s %-12s %-16s %s\n", "TIMESTAMP", "SEQ", "STATUS", "RTT (ms)", "IP", "DETAILS")
-		bw.WriteString(strings.Repeat("-", 80) + "\n")
+		_, _ = bw.WriteString("PROBE EVENT HISTORY:\n")
+		_, _ = fmt.Fprintf(bw, "%-20s %-6s %-10s %-12s %-16s %s\n", "TIMESTAMP", "SEQ", "STATUS", "RTT (ms)", "IP", "DETAILS")
+		_, _ = bw.WriteString(strings.Repeat("-", 80) + "\n")
 		for _, p := range history {
 			status := "SUCCESS"
 			if !p.IsSuccess {
@@ -388,7 +389,7 @@ func ExportSingleTargetToWriter(w io.Writer, target string, port uint16, protoco
 			if p.Error != "" {
 				details = "Error: " + p.Error
 			}
-			fmt.Fprintf(bw, "%-20s %-6d %-10s %-12.2f %-16s %s\n",
+			_, _ = fmt.Fprintf(bw, "%-20s %-6d %-10s %-12.2f %-16s %s\n",
 				p.Timestamp.Format("2006-01-02 15:04:05"),
 				p.Seq,
 				status,
@@ -462,7 +463,7 @@ func exportMultiTargetSQLite(targets []FleetTarget, startTime time.Time, history
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, _ = db.Exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
 
@@ -503,7 +504,7 @@ func exportMultiTargetSQLite(targets []FleetTarget, startTime time.Time, history
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	elapsed := time.Since(startTime).Round(time.Second).String()
 	for _, s := range summaries {
@@ -512,7 +513,7 @@ func exportMultiTargetSQLite(targets []FleetTarget, startTime time.Time, history
 
 	probeStmt, err := tx.Prepare(`INSERT INTO probes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err == nil {
-		defer probeStmt.Close()
+		defer func() { _ = probeStmt.Close() }()
 		for _, p := range history {
 			isSucc := 0
 			if p.IsSuccess {
@@ -637,28 +638,28 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 
 	case FormatPlainText:
 		bw := bufio.NewWriter(w)
-		defer bw.Flush()
-		bw.WriteString("================================================================================\n")
-		bw.WriteString("                        NETPING FLEET PROBE REPORT                              \n")
-		bw.WriteString("================================================================================\n\n")
-		fmt.Fprintf(bw, "Exported At:    %s\n", time.Now().Format(time.RFC1123))
-		fmt.Fprintf(bw, "Total Duration: %s\n", elapsed)
-		fmt.Fprintf(bw, "Total Targets:  %d\n\n", len(targets))
+		defer func() { _ = bw.Flush() }()
+		_, _ = bw.WriteString("================================================================================\n")
+		_, _ = bw.WriteString("                        NETPING FLEET PROBE REPORT                              \n")
+		_, _ = bw.WriteString("================================================================================\n\n")
+		_, _ = fmt.Fprintf(bw, "Exported At:    %s\n", time.Now().Format(time.RFC1123))
+		_, _ = fmt.Fprintf(bw, "Total Duration: %s\n", elapsed)
+		_, _ = fmt.Fprintf(bw, "Total Targets:  %d\n\n", len(targets))
 
-		bw.WriteString("FLEET TARGET SUMMARY:\n")
-		fmt.Fprintf(bw, "%-28s %-10s %-16s %-6s %-6s %-8s %-10s %-10s %-10s\n",
+		_, _ = bw.WriteString("FLEET TARGET SUMMARY:\n")
+		_, _ = fmt.Fprintf(bw, "%-28s %-10s %-16s %-6s %-6s %-8s %-10s %-10s %-10s\n",
 			"TARGET", "PROTOCOL", "IP", "SENT", "RECV", "LOSS%", "LAST(ms)", "AVG(ms)", "MAX(ms)")
-		bw.WriteString(strings.Repeat("-", 110) + "\n")
+		_, _ = bw.WriteString(strings.Repeat("-", 110) + "\n")
 		for _, s := range summaries {
-			fmt.Fprintf(bw, "%-28s %-10s %-16s %-6d %-6d %-8s %-10.2f %-10.2f %-10.2f\n",
+			_, _ = fmt.Fprintf(bw, "%-28s %-10s %-16s %-6d %-6d %-8s %-10.2f %-10.2f %-10.2f\n",
 				s.Target, s.Protocol, s.IP, s.Sent, s.Recv, fmt.Sprintf("%.1f%%", s.LossPercent), s.LastRTTMs, s.AvgRTTMs, s.MaxRTTMs)
 		}
 
 		if len(history) > 0 {
-			bw.WriteString("\nPROBE EVENT HISTORY:\n")
-			fmt.Fprintf(bw, "%-20s %-6s %-24s %-8s %-16s %-10s %-10s %s\n",
+			_, _ = bw.WriteString("\nPROBE EVENT HISTORY:\n")
+			_, _ = fmt.Fprintf(bw, "%-20s %-6s %-24s %-8s %-16s %-10s %-10s %s\n",
 				"TIMESTAMP", "SEQ", "TARGET", "PROTO", "IP", "STATUS", "RTT(ms)", "DETAILS")
-			bw.WriteString(strings.Repeat("-", 110) + "\n")
+			_, _ = bw.WriteString(strings.Repeat("-", 110) + "\n")
 			for _, p := range history {
 				status := "SUCCESS"
 				if !p.IsSuccess {
@@ -668,7 +669,7 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 				if p.Error != "" {
 					details = "Error: " + p.Error
 				}
-				fmt.Fprintf(bw, "%-20s %-6d %-24s %-8s %-16s %-10s %-10.2f %s\n",
+				_, _ = fmt.Fprintf(bw, "%-20s %-6d %-24s %-8s %-16s %-10s %-10.2f %s\n",
 					p.Timestamp.Format("2006-01-02 15:04:05"),
 					p.Seq,
 					p.Target,

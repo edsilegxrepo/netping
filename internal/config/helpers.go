@@ -40,7 +40,7 @@ func convertAndValidatePort(port string) (uint16, error) {
 // ParseHostPort parses a target string into host and port, falling back to defaultPort if unassigned.
 func ParseHostPort(target string, defaultPort uint16) (string, uint16) {
 	if h, p, err := net.SplitHostPort(target); err == nil {
-		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 && parsed <= 65535 {
+		if parsed, err := strconv.ParseUint(p, 10, 16); err == nil && parsed > 0 {
 			return h, uint16(parsed)
 		}
 		return h, defaultPort
@@ -136,7 +136,7 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 			h, p := ParseHostPort(targetPart, 0)
 			if p == 0 {
 				_, defPortStr, _ := ResolveProtocolAndPort(string(proto), "", "")
-				if parsedPort, err := strconv.Atoi(defPortStr); err == nil && parsedPort > 0 && parsedPort <= 65535 {
+				if parsedPort, err := strconv.ParseUint(defPortStr, 10, 16); err == nil && parsedPort > 0 {
 					p = uint16(parsedPort)
 				} else {
 					p = 443
@@ -244,77 +244,80 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 
 // PrintUsage prints how netping should be run with clean categorized sections to the given writer
 func PrintUsage(w io.Writer) {
-	fmt.Fprintf(w, "\nnetping version %s - Multi-Protocol Latency & Diagnostics Prober\n\n", version)
-	fmt.Fprintln(w, "USAGE:")
-	fmt.Fprintln(w, "  netping --host <hosts> --port <ports> [options]")
-	fmt.Fprintln(w, "  netping --uri <uri1,uri2,...> [options]")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "EXAMPLES:")
-	fmt.Fprintln(w, "  netping --host example.com --port 443")
-	fmt.Fprintln(w, "  netping --host web1,web2 --port 80,443 --protocol https")
-	fmt.Fprintln(w, "  netping --host db-server --port 5432 --protocol postgresql --diags")
-	fmt.Fprintln(w, "  netping --uri cloudflare.com:443 --dashboard")
-	fmt.Fprintln(w, "  netping --host 1.1.1.1,8.8.8.8 --port 53 --output-format csv --output-file ./dns.csv")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "TARGET CONFIGURATION:")
-	fmt.Fprintln(w, "  --host <hosts>             Target hostname(s) or IP(s), comma-separated for multi-target.")
-	fmt.Fprintln(w, "  --port <ports>             Target port(s), comma-separated for multi-port.")
-	fmt.Fprintln(w, "  --uri <uris>               Target URI(s) in host:port or scheme://host:port format.")
-	fmt.Fprintln(w, "  --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, ...).")
-	fmt.Fprintln(w, "  --service <name>           Service name / SID for Oracle database connections.")
-	fmt.Fprintln(w, "  --oracle-service <name>    Alias for --service.")
-	fmt.Fprintln(w, "  --dns-host <domains>       Domain(s) to resolve in DNS query mode (comma-separated).")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "PROBE EXECUTION & TIMING:")
-	fmt.Fprintln(w, "  --count <n>                Stop after <n> probes (default: unlimited).")
-	fmt.Fprintln(w, "  --interval <sec>           Interval between probes in seconds (default: 1.0).")
-	fmt.Fprintln(w, "  --timeout <sec>            Response timeout in seconds (default: 1.0).")
-	fmt.Fprintln(w, "  --concurrency <n>          Maximum parallel prober workers (0 = unconstrained).")
-	fmt.Fprintln(w, "  --ipv4                     Force IPv4 address resolution.")
-	fmt.Fprintln(w, "  --ipv6                     Force IPv6 address resolution.")
-	fmt.Fprintln(w, "  --interface <iface>        Bind to a specific network interface name or source IP.")
-	fmt.Fprintln(w, "  --dns-server <ip:port>     Custom DNS server to use for resolution.")
-	fmt.Fprintln(w, "  --resolve-every-probe      Re-resolve target DNS on every probe cycle.")
-	fmt.Fprintln(w, "  --retry-resolve <n>        Retry resolving target hostname after <n> consecutive failures.")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "SLA & ERROR HANDLING:")
-	fmt.Fprintln(w, "  --max-latency <ms>         Fail probe if latency exceeds threshold in milliseconds.")
-	fmt.Fprintln(w, "  --max-consecutive-fails <n> Stop probing after <n> consecutive failed probes.")
-	fmt.Fprintln(w, "  --retry <n>                Number of transient retry attempts per probe before failing.")
-	fmt.Fprintln(w, "  --retry-backoff <sec>      Initial retry backoff delay in seconds (default: 0.05).")
-	fmt.Fprintln(w, "  --retry-max-backoff <sec>  Maximum retry backoff delay in seconds (default: 2.0).")
-	fmt.Fprintln(w, "  --retry-jitter             Apply randomized jitter to exponential retry backoff.")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "PROTOCOL & PAYLOAD OPTIONS:")
-	fmt.Fprintln(w, "  --send <data>              Send specific payload string upon connection.")
-	fmt.Fprintln(w, "  --expect <data>            Expect specific response string in banner.")
-	fmt.Fprintln(w, "  --starttls                 Upgrade connection via STARTTLS (SMTP, IMAP, POP3).")
-	fmt.Fprintln(w, "  --fast-close               Use SO_LINGER=0 to avoid TIME_WAIT socket accumulation.")
-	fmt.Fprintln(w, "  --traceroute               Perform hop-by-hop Layer-4 route discovery.")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "DASHBOARD & WEB MONITORING:")
-	fmt.Fprintln(w, "  --dashboard                Open interactive live terminal TUI dashboard.")
-	fmt.Fprintln(w, "  --web                      Start embedded real-time web dashboard (default 127.0.0.1:3000).")
-	fmt.Fprintln(w, "  --web-addr <addr>          Custom listen address for web dashboard (e.g. :3000).")
-	fmt.Fprintln(w, "  --metrics-addr <addr>      Enable Prometheus metrics exporter on given address (e.g. :9100).")
-	fmt.Fprintln(w, "  --history-limit <n>        Maximum in-memory historical probe events retained (default: 1000000, max: 5000000).")
-	fmt.Fprintln(w, "  --sparkline                Render live terminal latency sparklines.")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "OUTPUT & REPORTING:")
-	fmt.Fprintln(w, "  --output-format <format>   Export format: json, pretty_json, csv, tsv, sqlite, txt.")
-	fmt.Fprintln(w, "  --output-file <path>       Destination file path to save output report.")
-	fmt.Fprintln(w, "  --quiet                    Quiet mode: suppress per-probe lines, show only final summary.")
-	fmt.Fprintln(w, "  --show-failures-only       Show only failed probes in live output.")
-	fmt.Fprintln(w, "  --show-source-address      Show source IP and port used for probes.")
-	fmt.Fprintln(w, "  --timestamp                Show timestamp for each probe in output.")
-	fmt.Fprintln(w, "  --diags, --diagnostics     Show detailed protocol negotiation diagnostics.")
-	fmt.Fprintln(w, "  --no-color                 Do not colorize terminal output.")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "GENERAL:")
-	fmt.Fprintln(w, "  --help                     Show this help message and exit.")
-	fmt.Fprintln(w, "  --version                  Show version and exit.")
-	fmt.Fprintln(w, "  --check-updates            Check for newer releases on GitHub and exit.")
-	fmt.Fprintln(w)
+	usageText := fmt.Sprintf(`
+netping version %s - Multi-Protocol Latency & Diagnostics Prober
+
+USAGE:
+  netping --host <hosts> --port <ports> [options]
+  netping --uri <uri1,uri2,...> [options]
+
+EXAMPLES:
+  netping --host example.com --port 443
+  netping --host web1,web2 --port 80,443 --protocol https
+  netping --host db-server --port 5432 --protocol postgresql --diags
+  netping --uri cloudflare.com:443 --dashboard
+  netping --host 1.1.1.1,8.8.8.8 --port 53 --output-format csv --output-file ./dns.csv
+
+TARGET CONFIGURATION:
+  --host <hosts>             Target hostname(s) or IP(s), comma-separated for multi-target.
+  --port <ports>             Target port(s), comma-separated for multi-port.
+  --uri <uris>               Target URI(s) in host:port or scheme://host:port format.
+  --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, ...).
+  --service <name>           Service name / SID for Oracle database connections.
+  --oracle-service <name>    Alias for --service.
+  --dns-host <domains>       Domain(s) to resolve in DNS query mode (comma-separated).
+
+PROBE EXECUTION & TIMING:
+  --count <n>                Stop after <n> probes (default: unlimited).
+  --interval <sec>           Interval between probes in seconds (default: 1.0).
+  --timeout <sec>            Response timeout in seconds (default: 1.0).
+  --concurrency <n>          Maximum parallel prober workers (0 = unconstrained).
+  --ipv4                     Force IPv4 address resolution.
+  --ipv6                     Force IPv6 address resolution.
+  --interface <iface>        Bind to a specific network interface name or source IP.
+  --dns-server <ip:port>     Custom DNS server to use for resolution.
+  --resolve-every-probe      Re-resolve target DNS on every probe cycle.
+  --retry-resolve <n>        Retry resolving target hostname after <n> consecutive failures.
+
+SLA & ERROR HANDLING:
+  --max-latency <ms>         Fail probe if latency exceeds threshold in milliseconds.
+  --max-consecutive-fails <n> Stop probing after <n> consecutive failed probes.
+  --retry <n>                Number of transient retry attempts per probe before failing.
+  --retry-backoff <sec>      Initial retry backoff delay in seconds (default: 0.05).
+  --retry-max-backoff <sec>  Maximum retry backoff delay in seconds (default: 2.0).
+  --retry-jitter             Apply randomized jitter to exponential retry backoff.
+
+PROTOCOL & PAYLOAD OPTIONS:
+  --send <data>              Send specific payload string upon connection.
+  --expect <data>            Expect specific response string in banner.
+  --starttls                 Upgrade connection via STARTTLS (SMTP, IMAP, POP3).
+  --fast-close               Use SO_LINGER=0 to avoid TIME_WAIT socket accumulation.
+  --traceroute               Perform hop-by-hop Layer-4 route discovery.
+
+DASHBOARD & WEB MONITORING:
+  --dashboard                Open interactive live terminal TUI dashboard.
+  --web                      Start embedded real-time web dashboard (default 127.0.0.1:3000).
+  --web-addr <addr>          Custom listen address for web dashboard (e.g. :3000).
+  --metrics-addr <addr>      Enable Prometheus metrics exporter on given address (e.g. :9100).
+  --history-limit <n>        Maximum in-memory historical probe events retained (default: 1000000, max: 5000000).
+  --sparkline                Render live terminal latency sparklines.
+
+OUTPUT & REPORTING:
+  --output-format <format>   Export format: json, pretty_json, csv, tsv, sqlite, txt.
+  --output-file <path>       Destination file path to save output report.
+  --quiet                    Quiet mode: suppress per-probe lines, show only final summary.
+  --show-failures-only       Show only failed probes in live output.
+  --show-source-address      Show source IP and port used for probes.
+  --timestamp                Show timestamp for each probe in output.
+  --diags, --diagnostics     Show detailed protocol negotiation diagnostics.
+  --no-color                 Do not colorize terminal output.
+
+GENERAL:
+  --help                     Show this help message and exit.
+  --version                  Show version and exit.
+  --check-updates            Check for newer releases on GitHub and exit.
+`, version)
+	_, _ = fmt.Fprint(w, usageText)
 }
 
 func usage() {
@@ -324,7 +327,7 @@ func usage() {
 
 // PrintVersion displays the version to the given writer
 func PrintVersion(w io.Writer) {
-	fmt.Fprintf(w, "netping version %s\n", version)
+	_, _ = fmt.Fprintf(w, "netping version %s\n", version)
 }
 
 // showVersion displays the version and exits
@@ -370,14 +373,14 @@ func CheckForUpdatesURL(url string, client *http.Client, w io.Writer) error {
 
 	resp, err := client.Get(url)
 	if err != nil {
-		fmt.Fprintf(w, "Check for updates failed: %s\n", err)
+		_, _ = fmt.Fprintf(w, "Check for updates failed: %s\n", err)
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-		fmt.Fprintf(w, "Check for updates failed: %s\n", err)
+		_, _ = fmt.Fprintf(w, "Check for updates failed: %s\n", err)
 		return err
 	}
 
@@ -386,7 +389,7 @@ func CheckForUpdatesURL(url string, client *http.Client, w io.Writer) error {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		fmt.Fprintf(w, "Failed to decode update response: %s\n", err)
+		_, _ = fmt.Fprintf(w, "Failed to decode update response: %s\n", err)
 		return err
 	}
 
@@ -395,13 +398,13 @@ func CheckForUpdatesURL(url string, client *http.Client, w io.Writer) error {
 
 	comparison := compareVersions(version, latestVer)
 	if comparison < 0 {
-		fmt.Fprintf(w, "Found newer version: %s\n", latestVer)
-		fmt.Fprintf(w, "Please update netping from the URL below:\n")
-		fmt.Fprintf(w, "https://github.com/%s/%s/releases/tag/%s\n", owner, repo, latestTagName)
+		_, _ = fmt.Fprintf(w, "Found newer version: %s\n", latestVer)
+		_, _ = fmt.Fprintf(w, "Please update netping from the URL below:\n")
+		_, _ = fmt.Fprintf(w, "https://github.com/%s/%s/releases/tag/%s\n", owner, repo, latestTagName)
 	} else if comparison > 0 {
-		fmt.Fprintf(w, "Current version %s is newer than the latest release %s\n", version, latestVer)
+		_, _ = fmt.Fprintf(w, "Current version %s is newer than the latest release %s\n", version, latestVer)
 	} else {
-		fmt.Fprintf(w, "You have the latest version: %s\n", version)
+		_, _ = fmt.Fprintf(w, "You have the latest version: %s\n", version)
 	}
 	return nil
 }

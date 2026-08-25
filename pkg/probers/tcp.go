@@ -77,7 +77,7 @@ func (t Tcping) Ping(ctx context.Context) ProbeResult {
 		_ = tcpConn.SetLinger(0)
 	}
 
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if t.sendData != "" {
 		_ = conn.SetDeadline(time.Now().Add(t.timeout))

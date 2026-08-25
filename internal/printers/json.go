@@ -99,7 +99,7 @@ func (p *JSONPrinter) Shutdown(s *stats.Statistics) {
 func (p *JSONPrinter) PrintStart(s *stats.Statistics) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.encoder.Encode(JSONData{
+	_ = p.encoder.Encode(JSONData{
 		Type:     startEvent,
 		Message:  fmt.Sprintf("TCPinging %s on port %d", s.Hostname, s.Port),
 		Hostname: s.Hostname,
@@ -214,7 +214,7 @@ func (p *JSONPrinter) PrintProbeSuccess(s *stats.Statistics) {
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.encoder.Encode(data)
+	_ = p.encoder.Encode(data)
 }
 
 // PrintProbeFailure prints failed probe attempts in JSON format.
@@ -275,14 +275,14 @@ func (p *JSONPrinter) PrintProbeFailure(s *stats.Statistics) {
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.encoder.Encode(data)
+	_ = p.encoder.Encode(data)
 }
 
 // PrintRetryingToResolve prints a message indicating retry attempt to resolve hostname.
 func (p *JSONPrinter) PrintRetryingToResolve(hostname string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.encoder.Encode(JSONData{
+	_ = p.encoder.Encode(JSONData{
 		Type:     retryEvent,
 		Message:  fmt.Sprintf("Retrying to resolve %s", hostname),
 		Hostname: hostname,
@@ -293,7 +293,7 @@ func (p *JSONPrinter) PrintRetryingToResolve(hostname string) {
 func (p *JSONPrinter) PrintTotalDownTime(s *stats.Statistics) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.encoder.Encode(JSONData{
+	_ = p.encoder.Encode(JSONData{
 		Type:          retrySuccessEvent,
 		Message:       fmt.Sprintf("No response received for %s", utils.DurationToString(s.DownTime)),
 		TotalDowntime: utils.DurationToString(s.DownTime),
@@ -304,7 +304,7 @@ func (p *JSONPrinter) PrintTotalDownTime(s *stats.Statistics) {
 func (p *JSONPrinter) PrintError(format string, args ...any) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.encoder.Encode(JSONData{
+	_ = p.encoder.Encode(JSONData{
 		Type:    errorEvent,
 		Message: fmt.Sprintf(format, args...),
 	})
@@ -382,5 +382,5 @@ func (p *JSONPrinter) PrintStatistics(s *stats.Statistics) {
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.encoder.Encode(data)
+	_ = p.encoder.Encode(data)
 }

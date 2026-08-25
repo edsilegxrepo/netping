@@ -80,6 +80,7 @@ func NewHTTPing(opts HTTPOptions) *HTTPing {
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: false,
 			ServerName:         opts.Hostname,
+			MinVersion:         tls.VersionTLS12,
 		},
 		DialContext: dialContext,
 	}
@@ -198,7 +199,7 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 			Err:       err,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	respBodyStr := string(bodyBytes)
 

@@ -61,6 +61,7 @@ func NewGRPCing(opts GRPCOptions) *GRPCing {
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: false,
 			ServerName:         opts.Hostname,
+			MinVersion:         tls.VersionTLS12,
 		},
 		DialContext: dialContext,
 	}
@@ -96,7 +97,7 @@ func (g *GRPCing) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	grpcStatus := resp.Header.Get("grpc-status")
 	if grpcStatus == "" {

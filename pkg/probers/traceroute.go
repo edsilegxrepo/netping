@@ -128,7 +128,7 @@ func probeTTL(ctx context.Context, targetAddr string, ttl int, timeout time.Dura
 
 	if err == nil {
 		remoteAddr := conn.RemoteAddr()
-		conn.Close()
+		_ = conn.Close()
 		return rtt, remoteAddr, true, nil
 	}
 

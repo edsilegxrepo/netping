@@ -23,7 +23,7 @@ func TestDynamicEngineTCPExecution(t *testing.T) {
 	// Start a local dummy TCP listener
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -234,7 +234,7 @@ func TestDynamicEngine_TracerouteExecution(t *testing.T) {
 func TestDynamicEngine_MultipleProbes(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {

@@ -82,10 +82,12 @@ func (m *Memcacheding) Ping(ctx context.Context) ProbeResult {
 
 	var tlsDetails string
 	if m.useTLS {
+		// #nosec G402 -- diagnostic Memcached TLS prober measuring latency
+		// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- diagnostic prober measuring latency
 		tlsConfig := &tls.Config{
-			ServerName: targetHost,
-			// #nosec G402 -- diagnostic Memcached TLS prober measuring latency
+			ServerName:         targetHost,
 			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
 		}
 		tlsDialer := &tls.Dialer{NetDialer: m.dialer, Config: tlsConfig}
 		conn, err = tlsDialer.DialContext(ctx, "tcp", addr)
@@ -104,7 +106,7 @@ func (m *Memcacheding) Ping(ctx context.Context) ProbeResult {
 			Err: err,
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(m.timeout))
 

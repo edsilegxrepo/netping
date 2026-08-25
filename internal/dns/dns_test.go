@@ -56,13 +56,13 @@ func TestCreateDNSResolver_OverridesAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start listener: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	accepted := make(chan struct{}, 1)
 	go func() {
 		if conn, err := ln.Accept(); err == nil {
 			accepted <- struct{}{}
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -75,7 +75,7 @@ func TestCreateDNSResolver_OverridesAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dial failed: %v", err)
 	}
-	conn.Close()
+	_ = conn.Close()
 
 	select {
 	case <-accepted:
@@ -91,13 +91,13 @@ func TestCreateDNSResolver_NoOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start listener: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	accepted := make(chan struct{}, 1)
 	go func() {
 		if conn, err := ln.Accept(); err == nil {
 			accepted <- struct{}{}
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -110,7 +110,7 @@ func TestCreateDNSResolver_NoOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dial failed: %v", err)
 	}
-	conn.Close()
+	_ = conn.Close()
 
 	select {
 	case <-accepted:

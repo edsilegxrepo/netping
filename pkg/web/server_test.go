@@ -523,3 +523,46 @@ func TestWebServer_TriggerAPI(t *testing.T) {
 	assert.Equal(t, http.StatusOK, wStatus.Code)
 	assert.Contains(t, wStatus.Body.String(), `"mode":"trigger"`)
 }
+
+func TestWebServer_URLPrefixAndSubpathRouting(t *testing.T) {
+	// 1. NormalizeURLPrefix tests
+	assert.Equal(t, "", NormalizeURLPrefix(""))
+	assert.Equal(t, "", NormalizeURLPrefix("/"))
+	assert.Equal(t, "/probe", NormalizeURLPrefix("probe"))
+	assert.Equal(t, "/probe", NormalizeURLPrefix("/probe"))
+	assert.Equal(t, "/probe", NormalizeURLPrefix("/probe/"))
+	assert.Equal(t, "/tools/netping", NormalizeURLPrefix("tools/netping/"))
+
+	// 2. Server with URL prefix
+	broadcaster := NewBroadcaster()
+	server := NewServer("127.0.0.1:0", nil, broadcaster)
+	server.SetURLPrefix("/probe")
+	assert.Equal(t, "/probe", server.URLPrefix())
+
+	// 2a. Request to exact prefix without slash -> 301 Redirect to /probe/
+	reqRedirect := httptest.NewRequest(http.MethodGet, "/probe", nil)
+	wRedirect := httptest.NewRecorder()
+	server.ServeHTTP(wRedirect, reqRedirect)
+	assert.Equal(t, http.StatusMovedPermanently, wRedirect.Code)
+	assert.Equal(t, "/probe/", wRedirect.Header().Get("Location"))
+
+	// 2b. Request to /probe/ -> 200 OK dashboard
+	reqIndex := httptest.NewRequest(http.MethodGet, "/probe/", nil)
+	wIndex := httptest.NewRecorder()
+	server.ServeHTTP(wIndex, reqIndex)
+	assert.Equal(t, http.StatusOK, wIndex.Code)
+	assert.Contains(t, wIndex.Header().Get("Content-Type"), "text/html")
+
+	// 2c. Request to /probe/api/v1/health -> 200 OK health JSON
+	reqHealth := httptest.NewRequest(http.MethodGet, "/probe/api/v1/health", nil)
+	wHealth := httptest.NewRecorder()
+	server.ServeHTTP(wHealth, reqHealth)
+	assert.Equal(t, http.StatusOK, wHealth.Code)
+	assert.Contains(t, wHealth.Body.String(), `"status":"healthy"`)
+
+	// 2d. Request to unmapped path -> 404
+	req404 := httptest.NewRequest(http.MethodGet, "/other/path", nil)
+	w404 := httptest.NewRecorder()
+	server.ServeHTTP(w404, req404)
+	assert.Equal(t, http.StatusNotFound, w404.Code)
+}

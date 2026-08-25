@@ -26,6 +26,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -41,9 +42,11 @@ var dashboardHTML []byte
 
 type Server struct {
 	addr            string
+	urlPrefix       string
 	stats           *stats.Statistics
 	broadcaster     *Broadcaster
 	httpServer      *http.Server
+	mux             *http.ServeMux
 	startTime       time.Time
 	targetsSupplier func() []printers.FleetTarget
 	validator       KeyValidator
@@ -65,6 +68,7 @@ func NewServer(addr string, st *stats.Statistics, broadcaster *Broadcaster) *Ser
 	}
 
 	mux := http.NewServeMux()
+	s.mux = mux
 
 	// Static SPA Dashboard
 	mux.HandleFunc("/", s.handleIndex)
@@ -114,7 +118,7 @@ func NewServer(addr string, st *stats.Statistics, broadcaster *Broadcaster) *Ser
 
 	s.httpServer = &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           s,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -123,10 +127,57 @@ func NewServer(addr string, st *stats.Statistics, broadcaster *Broadcaster) *Ser
 
 // Handler returns the underlying http.Handler for testing and embedding.
 func (s *Server) Handler() http.Handler {
-	if s.httpServer != nil {
-		return s.httpServer.Handler
+	return s
+}
+
+// NormalizeURLPrefix cleans and standardizes a URL subpath prefix (e.g. "probe" -> "/probe").
+func NormalizeURLPrefix(raw string) string {
+	clean := strings.TrimSpace(raw)
+	if clean == "" || clean == "/" {
+		return ""
 	}
-	return nil
+	if !strings.HasPrefix(clean, "/") {
+		clean = "/" + clean
+	}
+	return strings.TrimRight(clean, "/")
+}
+
+// SetURLPrefix configures a base subpath prefix when deployed behind a reverse proxy.
+func (s *Server) SetURLPrefix(prefix string) {
+	s.urlPrefix = NormalizeURLPrefix(prefix)
+}
+
+// URLPrefix returns the configured URL prefix.
+func (s *Server) URLPrefix() string {
+	return s.urlPrefix
+}
+
+// ServeHTTP delegates HTTP requests to the underlying ServeMux with subpath prefix stripping and redirects.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	prefix := s.urlPrefix
+
+	if prefix != "" {
+		if r.URL.Path == prefix {
+			http.Redirect(w, r, prefix+"/", http.StatusMovedPermanently)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, prefix+"/") {
+			r2 := new(http.Request)
+			*r2 = *r
+			r2.URL = new(url.URL)
+			*r2.URL = *r.URL
+			r2.URL.Path = strings.TrimPrefix(r.URL.Path, prefix)
+			if r2.URL.Path == "" {
+				r2.URL.Path = "/"
+			}
+			s.mux.ServeHTTP(w, r2)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+
+	s.mux.ServeHTTP(w, r)
 }
 
 // SetTargetsSupplier registers a fleet supplier callback to query active probers in O(1) time.
@@ -156,7 +207,11 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to bind web dashboard to %s: %w", s.addr, err)
 	}
 
-	fmt.Printf("\n\033[1;32m●\033[0m \033[1mWeb Dashboard & REST API live at:\033[0m \033[1;36mhttp://%s\033[0m\n\n", s.addr)
+	if s.urlPrefix != "" {
+		fmt.Printf("\n\033[1;32m●\033[0m \033[1mWeb Dashboard & REST API live at:\033[0m \033[1;36mhttp://%s%s\033[0m\n\n", s.addr, s.urlPrefix)
+	} else {
+		fmt.Printf("\n\033[1;32m●\033[0m \033[1mWeb Dashboard & REST API live at:\033[0m \033[1;36mhttp://%s\033[0m\n\n", s.addr)
+	}
 
 	// #nosec G118 -- background shutdown listener watching application lifecycle context
 	go func() {
@@ -395,6 +450,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("X-Accel-Buffering", "no")
 	flusher.Flush()
 
 	ch := s.broadcaster.Subscribe()
@@ -807,8 +863,11 @@ func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
   <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
   <script>
     window.onload = function() {
+      const specURL = window.location.pathname
+        .replace(/\/(docs|swagger|api\/docs)\/?$/i, '')
+        .replace(/\/+$/, '') + '/api/openapi.json';
       SwaggerUIBundle({
-        url: "/api/openapi.json",
+        url: specURL,
         dom_id: '#swagger-ui',
         presets: [
           SwaggerUIBundle.presets.apis,

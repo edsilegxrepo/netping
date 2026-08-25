@@ -1031,12 +1031,12 @@
           <span>⚡ netping REST API & OpenAPI Specifications</span>
         </div>
         <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <a href="/docs" target="_blank" class="btn btn-api" onclick="closeApiSpecsModal()" style="font-size: 0.75rem; padding: 0.25rem 0.65rem;" title="Open in dedicated browser tab">Open in New Tab ↗</a>
+          <a id="apiDocsTabLink" href="./docs" target="_blank" class="btn btn-api" onclick="closeApiSpecsModal()" style="font-size: 0.75rem; padding: 0.25rem 0.65rem;" title="Open in dedicated browser tab">Open in New Tab ↗</a>
           <button class="modal-close" onclick="closeApiSpecsModal()">✕</button>
         </div>
       </div>
       <div style="flex: 1; position: relative; background: #0B0F19; border-radius: 0 0 14px 14px; overflow: hidden;">
-        <iframe src="/docs" style="width: 100%; height: 100%; border: none;"></iframe>
+        <iframe id="apiDocsFrame" src="./docs" style="width: 100%; height: 100%; border: none;"></iframe>
       </div>
     </div>
   </div>
@@ -1109,6 +1109,19 @@
   <div id="toast" class="toast-banner"></div>
 
   <script>
+    // Dynamic Base Path & Reverse Proxy URL Resolver
+    const getBasePath = () => {
+      let path = window.location.pathname;
+      path = path.replace(/\/index\.html?$/i, '');
+      return path.replace(/\/+$/, '');
+    };
+
+    const api = (endpoint) => {
+      const base = getBasePath();
+      const clean = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+      return `${base}${clean}`;
+    };
+
     const maxDataPoints = 50;
     const palette = [
       '#38BDF8', // Cyan
@@ -1873,7 +1886,7 @@
       startTime = Date.now();
       drawChart();
       try {
-        await fetch('/api/v1/reset', { method: 'POST' });
+        await fetch(api('/api/v1/reset'), { method: 'POST' });
       } catch (e) {}
       showToast('✔ Dashboard chart & probe data reset');
     }
@@ -1927,7 +1940,7 @@
 
     function downloadExportClient() {
       const fmtKey = formatKeys[currentFormat];
-      const url = `/api/v1/export?format=${fmtKey}`;
+      const url = api(`/api/v1/export?format=${fmtKey}`);
       const a = document.createElement('a');
       a.href = url;
       a.download = getDefaultFilename(currentFormat).replace('./', '');
@@ -1942,7 +1955,7 @@
       const fmtKey = formatKeys[currentFormat];
       const path = document.getElementById('exportFilePath').value;
       try {
-        const resp = await fetch('/api/v1/export', {
+        const resp = await fetch(api('/api/v1/export'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ format: fmtKey, path: path })
@@ -2447,6 +2460,11 @@
 
     function openApiSpecsModal() {
       const modal = document.getElementById('apiSpecsModal');
+      const frame = document.getElementById('apiDocsFrame');
+      const link = document.getElementById('apiDocsTabLink');
+      const docsUrl = api('/docs');
+      if (frame && frame.getAttribute('src') !== docsUrl) frame.src = docsUrl;
+      if (link) link.href = docsUrl;
       if (modal) modal.style.display = 'flex';
       closeActionMenu();
     }
@@ -2490,7 +2508,7 @@
     // Load initial metrics snapshot via REST API
     async function loadInitialMetrics() {
       try {
-        const resp = await fetch('/api/v1/metrics');
+        const resp = await fetch(api('/api/v1/metrics'));
         if (!resp.ok) return;
         const m = await resp.json();
         if (m.targets && m.targets.length > 0) {
@@ -2516,7 +2534,7 @@
     loadInitialMetrics();
 
     // Connect to Server-Sent Events (SSE) stream
-    const evtSource = new EventSource('/api/v1/stream');
+    const evtSource = new EventSource(api('/api/v1/stream'));
 
     evtSource.onmessage = function(e) {
       const data = JSON.parse(e.data);

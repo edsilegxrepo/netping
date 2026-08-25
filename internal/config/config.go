@@ -196,6 +196,7 @@ type Config struct {
 	TriggerMode                bool
 	TriggerConcurrency         int
 	LegacyConsole              bool
+	URLPrefix                  string
 }
 
 func (c Config) GetHostname() string {
@@ -320,6 +321,8 @@ type flagOptions struct {
 	listen                             *string
 	triggerConcurrency                 *int
 	legacyConsole                      *bool
+	urlPrefix                          *string
+	basePath                           *string
 }
 
 func registerFlags(fs *flag.FlagSet) flagOptions {
@@ -428,6 +431,8 @@ func registerFlags(fs *flag.FlagSet) flagOptions {
 		listen:              fs.String("listen", "", "Start trigger listener on specified address (e.g. :3000 or 127.0.0.1:3000)."),
 		triggerConcurrency:  fs.Int("trigger-concurrency", 100, "Maximum concurrent dynamic probe workers."),
 		legacyConsole:       fs.Bool("legacy-console", false, "Use CP437/ASCII fallback glyphs and square borders for legacy terminals (PuTTY, cmd.exe)."),
+		urlPrefix:           fs.String("url-prefix", "", "URL subpath prefix when running behind a reverse proxy (e.g. /probe)."),
+		basePath:            fs.String("base-path", "", "Alias for --url-prefix."),
 	}
 }
 
@@ -656,6 +661,15 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		_ = os.Setenv("NETPING_LEGACY_CONSOLE", "1")
 	}
 
+	rawPrefix := *opts.urlPrefix
+	if rawPrefix == "" && *opts.basePath != "" {
+		rawPrefix = *opts.basePath
+	}
+	if rawPrefix == "" {
+		rawPrefix = os.Getenv("NETPING_URL_PREFIX")
+	}
+	urlPrefix := normalizeURLPrefix(rawPrefix)
+
 	cfg := &Config{
 		Hostname:                   primaryTarget.Host,
 		IP:                         primaryTarget.IP,
@@ -706,7 +720,19 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		TriggerMode:                isTriggerMode,
 		TriggerConcurrency:         *opts.triggerConcurrency,
 		LegacyConsole:              isLegacyConsole,
+		URLPrefix:                  urlPrefix,
 	}
 
 	return cfg, nil
+}
+
+func normalizeURLPrefix(raw string) string {
+	clean := strings.TrimSpace(raw)
+	if clean == "" || clean == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(clean, "/") {
+		clean = "/" + clean
+	}
+	return strings.TrimRight(clean, "/")
 }

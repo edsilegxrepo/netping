@@ -5,6 +5,7 @@
 package config
 
 import (
+	"flag"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -440,4 +441,22 @@ func TestCheckForUpdatesURL(t *testing.T) {
 	err = CheckForUpdatesURL(ts3.URL, ts3.Client(), &buf3)
 	assert.NoError(t, err)
 	assert.Contains(t, buf3.String(), "You have the latest version")
+}
+
+func TestURLPrefixParsing(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	cfg, err := ParseConfig(fs, []string{"--host", "127.0.0.1", "--port", "80", "--url-prefix", "/probe"})
+	assert.NoError(t, err)
+	assert.Equal(t, "/probe", cfg.URLPrefix)
+
+	fs2 := flag.NewFlagSet("test2", flag.ContinueOnError)
+	cfg2, err := ParseConfig(fs2, []string{"--host", "127.0.0.1", "--port", "80", "--base-path", "custom/subpath/"})
+	assert.NoError(t, err)
+	assert.Equal(t, "/custom/subpath", cfg2.URLPrefix)
+
+	t.Setenv("NETPING_URL_PREFIX", "/env/path")
+	fs3 := flag.NewFlagSet("test3", flag.ContinueOnError)
+	cfg3, err := ParseConfig(fs3, []string{"--host", "127.0.0.1", "--port", "80"})
+	assert.NoError(t, err)
+	assert.Equal(t, "/env/path", cfg3.URLPrefix)
 }

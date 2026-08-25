@@ -136,6 +136,7 @@ netping --host <host1,host2> --port <port1,port2> [options]
 | `--legacy-console` | `bool` | `false` | Use CP437/ASCII compatibility glyphs and square borders for legacy terminals (PuTTY, cmd.exe). |
 | `--web` | `bool` | `false` | Launch embedded real-time web dashboard with SSE event streaming. |
 | `--web-addr` | `string` | `127.0.0.1:3000` | Listening address and port for the embedded web dashboard. |
+| `--url-prefix`, `--base-path` | `string` | `""` | Base URL subpath when running behind reverse proxies (e.g. `/probe`). |
 
 ### 4.7. REST API Trigger Daemon & Authentication
 | Flag | Type | Default | Description |
@@ -264,6 +265,33 @@ netping --host 1.1.1.1 --port 443 --web --web-addr 127.0.0.1:3000
 ```
 - Opens native HTTP server at `http://127.0.0.1:3000`.
 - Connects via Server-Sent Events (SSE) for 0ms telemetry streaming and Canvas 2D latency timelines.
+
+#### Reverse Proxy Subpath Deployment (Nginx / Caddy / Traefik)
+To host the Web Dashboard and REST API behind an arbitrary subpath (e.g. `http://example.com/probe/`), pass `--url-prefix` (or set `NETPING_URL_PREFIX`):
+
+```bash
+netping --host 1.1.1.1 --port 443 --web --web-addr 127.0.0.1:8080 --url-prefix /probe
+```
+
+**Nginx Configuration:**
+```nginx
+location /probe {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # SSE Real-Time Stream options
+    proxy_set_header Connection '';
+    proxy_buffering off;
+    proxy_cache off;
+    chunked_transfer_encoding off;
+    proxy_read_timeout 86400s;
+}
+```
+*See [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md) for full configuration recipes including Caddy, Traefik, and HAProxy.*
 
 ---
 

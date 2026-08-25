@@ -16,6 +16,11 @@
   - **Dynamic Method Routing**: Supports payload transmission (`--send` / `send_data` via HTTP `POST`) and response body assertion (`--expect` / `expect_data` via HTTP `GET`) across CLI and trigger API, while preserving standard lightweight `HEAD` requests by default.
 - **Terminal Compatibility & Legacy Console Mode**:
   - Added `--legacy-console` CLI flag and `NETPING_LEGACY_CONSOLE=1` support to force CP437/VGA-safe block characters (`_`, `▄`, `█`) on terminal clients lacking Unicode fractional block glyphs (e.g. PuTTY with Lucida Console / Consolas).
+- **Reverse Proxy & Subpath Mounting**:
+  - Added `--url-prefix` (and `--base-path`) CLI flag and `NETPING_URL_PREFIX` environment variable to host the Web Dashboard and REST API at arbitrary subpaths (e.g. `/probe`).
+  - Added dynamic base-path and API resolvers in the frontend SPA to resolve all telemetry metrics, exports, and SSE streams relative to the mounting subpath.
+  - Added `X-Accel-Buffering: no` header on `/api/v1/stream` to prevent Nginx/proxy buffer stalls on live event streams.
+  - Added automated 301 trailing-slash redirects for clean browser relative asset resolution.
 - **Testing & Verification**:
   - Comprehensive unit test suites across `pkg/auth`, `pkg/engine`, `pkg/web`, `internal/config`, and `cmd`.
   - 8-stage end-to-end lifecycle testing covering key generation, idle daemon startup, REST authentication, probe triggering, SSE streaming, and dashboard visualization.

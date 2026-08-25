@@ -1631,3 +1631,132 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 		assert.Equal(t, 0, broadcaster.GetHistoryCount())
 	})
 }
+
+func TestLive_Web_ReverseProxy_URLPrefix_E2E(t *testing.T) {
+	st := stats.NewStatistics(stats.Options{
+		Hostname: "subpath-e2e.example.com",
+		IP:       netip.MustParseAddr("1.1.1.1"),
+		Port:     443,
+	})
+	st.RecordSuccess(12.5, time.Now())
+
+	broadcaster := web.NewBroadcaster()
+	broadcaster.Broadcast(web.ProbeEvent{
+		Sequence: 1,
+		Success:  true,
+		RTT:      12.5,
+		Target:   "subpath-e2e.example.com:443",
+		Protocol: "HTTPS",
+		IP:       "1.1.1.1",
+	})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	actualAddr := ln.Addr().String()
+	_ = ln.Close()
+
+	server := web.NewServer(actualAddr, st, broadcaster)
+	server.SetURLPrefix("/probe")
+	server.SetTargetsSupplier(func() []printers.FleetTarget {
+		return []printers.FleetTarget{
+			{Target: "subpath-e2e.example.com:443", Host: "subpath-e2e.example.com", Port: 443, Protocol: "HTTPS", Stats: st},
+		}
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		_ = server.Start(ctx)
+	}()
+
+	baseURL := fmt.Sprintf("http://%s", actualAddr)
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // Do not follow redirects automatically in tests
+		},
+	}
+
+	require.Eventually(t, func() bool {
+		resp, err := client.Get(baseURL + "/probe/api/v1/health")
+		if err == nil && resp.StatusCode == http.StatusOK {
+			_ = resp.Body.Close()
+			return true
+		}
+		return false
+	}, 3*time.Second, 50*time.Millisecond, "Server failed to start under /probe")
+
+	// 1. GET /probe -> 301 Redirect to /probe/
+	t.Run("GET_Prefix_Without_Slash_Redirects", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/probe")
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		assert.Equal(t, http.StatusMovedPermanently, resp.StatusCode)
+		assert.Equal(t, "/probe/", resp.Header.Get("Location"))
+	})
+
+	// 2. GET /probe/ -> 200 OK (Dashboard HTML)
+	t.Run("GET_Prefix_Dashboard_HTML", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/probe/")
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		assert.Contains(t, string(body), "netping Enterprise Dashboard")
+		assert.Contains(t, string(body), "getBasePath")
+	})
+
+	// 3. GET /probe/api/v1/health
+	t.Run("GET_Prefix_Health", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/probe/api/v1/health")
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		var h map[string]interface{}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&h))
+		assert.Equal(t, "healthy", h["status"])
+	})
+
+	// 4. GET /probe/api/v1/metrics
+	t.Run("GET_Prefix_Metrics", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/probe/api/v1/metrics")
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	// 5. GET /probe/docs & GET /probe/api/openapi.json
+	t.Run("GET_Prefix_Swagger_And_OpenAPI", func(t *testing.T) {
+		respDocs, err := client.Get(baseURL + "/probe/docs")
+		require.NoError(t, err)
+		defer func() { _ = respDocs.Body.Close() }()
+		assert.Equal(t, http.StatusOK, respDocs.StatusCode)
+
+		respSpec, err := client.Get(baseURL + "/probe/api/openapi.json")
+		require.NoError(t, err)
+		defer func() { _ = respSpec.Body.Close() }()
+		assert.Equal(t, http.StatusOK, respSpec.StatusCode)
+	})
+
+	// 6. GET /probe/api/v1/stream (SSE Stream + X-Accel-Buffering: no)
+	t.Run("GET_Prefix_SSE_Stream", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/probe/api/v1/stream", nil)
+		require.NoError(t, err)
+		streamClient := &http.Client{Timeout: 5 * time.Second}
+		resp, err := streamClient.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
+		assert.Equal(t, "no", resp.Header.Get("X-Accel-Buffering"))
+	})
+
+	// 7. GET /api/v1/health (without prefix) -> 404
+	t.Run("GET_Without_Prefix_Returns_404", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/api/v1/health")
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+}

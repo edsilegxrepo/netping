@@ -158,6 +158,9 @@ func main() {
 		}
 
 		webServer := web.NewServer(webAddr, nil, broadcaster)
+		if cfg.URLPrefix != "" {
+			webServer.SetURLPrefix(cfg.URLPrefix)
+		}
 		webServer.SetTargetsSupplier(registry.GetFleetTargets)
 		if validator != nil {
 			webServer.SetKeyValidator(validator)
@@ -310,6 +313,9 @@ func main() {
 				return fleet
 			}
 			webServer := web.NewServer(webAddr, nil, broadcaster)
+			if cfg.URLPrefix != "" {
+				webServer.SetURLPrefix(cfg.URLPrefix)
+			}
 			webServer.SetTargetsSupplier(fleetSupplier)
 			if cfg.APIKeyStore != "" || cfg.APIKeyHash != "" {
 				if ks, err := auth.NewKeystore(cfg.APIKeyStore, cfg.APIKeyHash); err == nil {
@@ -508,6 +514,9 @@ func main() {
 			broadcaster.SetMaxHistory(int(cfg.HistoryLimit))
 		}
 		webServer := web.NewServer(webAddr, stat, broadcaster)
+		if cfg.URLPrefix != "" {
+			webServer.SetURLPrefix(cfg.URLPrefix)
+		}
 		if cfg.APIKeyStore != "" || cfg.APIKeyHash != "" {
 			if ks, err := auth.NewKeystore(cfg.APIKeyStore, cfg.APIKeyHash); err == nil {
 				webServer.SetKeyValidator(ks)

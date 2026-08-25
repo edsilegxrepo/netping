@@ -255,6 +255,7 @@ EXAMPLES:
   netping --host example.com --port 443
   netping --host web1,web2 --port 80,443 --protocol https
   netping --host db-server --port 5432 --protocol postgresql --diags
+  netping --host kdc.corp.local --protocol kerberos --diags
   netping --uri cloudflare.com:443 --dashboard
   netping --host 1.1.1.1,8.8.8.8 --port 53 --output-format csv --output-file ./dns.csv
 
@@ -262,7 +263,7 @@ TARGET CONFIGURATION:
   --host <hosts>             Target hostname(s) or IP(s), comma-separated for multi-target.
   --port <ports>             Target port(s), comma-separated for multi-port.
   --uri <uris>               Target URI(s) in host:port or scheme://host:port format.
-  --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, ...).
+  --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, kerberos, ...).
   --service <name>           Service name / SID for Oracle database connections.
   --oracle-service <name>    Alias for --service.
   --dns-host <domains>       Domain(s) to resolve in DNS query mode (comma-separated).

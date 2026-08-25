@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.6.1 - 2026-08-25
+
+- **Kerberos v5 Protocol Probing Engine (RFC 4120)**:
+  - **Dual-Transport Probing**: Added native Kerberos KDC latency probing on Port 88 over both **TCP** (`--protocol kerberos`) and **UDP** (`--protocol kerberos-udp`) via RFC 4120 ASN.1 DER `AS-REQ` generation.
+  - **Deep Protocol Inspection (`--diags`)**: Extracts message types (`KRB-ERROR`/`AS-REP`), symbolic error codes (0–76+), authoritative Realm/SPN identities, microsecond clock skew ($\ge 300\text{s}$ critical alerts), supported cipher suites (AES-256, AES-128, RC4), and pre-authentication mechanisms.
+  - **Documentation**: See [docs/KERBEROS.md](docs/KERBEROS.md) for full protocol specifications, wire framing, and architecture details.
+
 ## v3.6.0 - 2026-08-24
 
 - **REST Trigger API & Daemon Operating Mode**:

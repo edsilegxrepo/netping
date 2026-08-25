@@ -348,7 +348,7 @@ func TestLive_FTP_Rebex(t *testing.T) {
 // 7. Databases (Container Endpoints)
 // ==========================================
 
-const dbHost = "cs-main-wsl001.csysinet.com"
+const dockerHost = "cs-main-wsl001.csysinet.com"
 
 func ensureDockerDBContainers(t *testing.T) {
 	cmdName := "docker"
@@ -375,13 +375,13 @@ func waitForPort(host string, port int, timeout time.Duration) bool {
 
 func TestLive_DB_PostgreSQL(t *testing.T) {
 	ensureDockerDBContainers(t)
-	if !waitForPort(dbHost, 5432, 5*time.Second) {
-		t.Skipf("PostgreSQL on %s:5432 is not accessible", dbHost)
+	if !waitForPort(dockerHost, 5432, 5*time.Second) {
+		t.Skipf("PostgreSQL on %s:5432 is not accessible", dockerHost)
 	}
 
 	db := probers.NewDBing(probers.DBOptions{
 		Type:     probers.PostgreSQL,
-		Hostname: dbHost,
+		Hostname: dockerHost,
 		Port:     5432,
 		Timeout:  5 * time.Second,
 	})
@@ -393,13 +393,13 @@ func TestLive_DB_PostgreSQL(t *testing.T) {
 
 func TestLive_DB_MySQL(t *testing.T) {
 	ensureDockerDBContainers(t)
-	if !waitForPort(dbHost, 3306, 5*time.Second) {
-		t.Skipf("MySQL on %s:3306 is not accessible", dbHost)
+	if !waitForPort(dockerHost, 3306, 5*time.Second) {
+		t.Skipf("MySQL on %s:3306 is not accessible", dockerHost)
 	}
 
 	db := probers.NewDBing(probers.DBOptions{
 		Type:     probers.MySQL,
-		Hostname: dbHost,
+		Hostname: dockerHost,
 		Port:     3306,
 		Timeout:  5 * time.Second,
 	})
@@ -411,13 +411,13 @@ func TestLive_DB_MySQL(t *testing.T) {
 
 func TestLive_DB_MSSQL(t *testing.T) {
 	ensureDockerDBContainers(t)
-	if !waitForPort(dbHost, 1433, 5*time.Second) {
-		t.Skipf("MSSQL on %s:1433 is not accessible", dbHost)
+	if !waitForPort(dockerHost, 1433, 5*time.Second) {
+		t.Skipf("MSSQL on %s:1433 is not accessible", dockerHost)
 	}
 
 	db := probers.NewDBing(probers.DBOptions{
 		Type:     probers.MSSQL,
-		Hostname: dbHost,
+		Hostname: dockerHost,
 		Port:     1433,
 		Timeout:  5 * time.Second,
 	})
@@ -429,13 +429,13 @@ func TestLive_DB_MSSQL(t *testing.T) {
 
 func TestLive_DB_Oracle(t *testing.T) {
 	ensureDockerDBContainers(t)
-	if !waitForPort(dbHost, 1521, 5*time.Second) {
-		t.Skipf("Oracle on %s:1521 is not accessible", dbHost)
+	if !waitForPort(dockerHost, 1521, 5*time.Second) {
+		t.Skipf("Oracle on %s:1521 is not accessible", dockerHost)
 	}
 
 	db := probers.NewDBing(probers.DBOptions{
 		Type:        probers.Oracle,
-		Hostname:    dbHost,
+		Hostname:    dockerHost,
 		Port:        1521,
 		ServiceName: "FREE",
 		Timeout:     5 * time.Second,
@@ -449,13 +449,13 @@ func TestLive_DB_Oracle(t *testing.T) {
 func TestLive_DB_SAPHANA(t *testing.T) {
 	ensureDockerDBContainers(t)
 	port := 39013
-	if !waitForPort(dbHost, port, 5*time.Second) {
-		t.Skipf("SAP HANA on %s:%d is not accessible", dbHost, port)
+	if !waitForPort(dockerHost, port, 5*time.Second) {
+		t.Skipf("SAP HANA on %s:%d is not accessible", dockerHost, port)
 	}
 
 	db := probers.NewDBing(probers.DBOptions{
 		Type:     probers.SAPHANA,
-		Hostname: dbHost,
+		Hostname: dockerHost,
 		Port:     uint16(port),
 		Timeout:  5 * time.Second,
 	})
@@ -467,13 +467,13 @@ func TestLive_DB_SAPHANA(t *testing.T) {
 
 func TestLive_DB_SAPHANA_Port39013(t *testing.T) {
 	ensureDockerDBContainers(t)
-	if !waitForPort(dbHost, 39013, 5*time.Second) {
-		t.Skipf("SAP HANA on %s:39013 is not accessible", dbHost)
+	if !waitForPort(dockerHost, 39013, 5*time.Second) {
+		t.Skipf("SAP HANA on %s:39013 is not accessible", dockerHost)
 	}
 
 	db := probers.NewDBing(probers.DBOptions{
 		Type:     probers.SAPHANA,
-		Hostname: dbHost,
+		Hostname: dockerHost,
 		Port:     39013,
 		Timeout:  5 * time.Second,
 	})
@@ -771,15 +771,15 @@ func TestLive_DB_All5Protocols_Concurrent_E2E(t *testing.T) {
 	for _, dt := range dbTargets {
 		pinger := probers.NewDBing(probers.DBOptions{
 			Type:        dt.dbType,
-			Hostname:    dbHost,
+			Hostname:    dockerHost,
 			Port:        dt.port,
 			ServiceName: dt.serviceName,
 			Timeout:     5 * time.Second,
 		})
 
 		workers = append(workers, probers.TargetWorker{
-			Target:      fmt.Sprintf("%s:%d", dbHost, dt.port),
-			Host:        dbHost,
+			Target:      fmt.Sprintf("%s:%d", dockerHost, dt.port),
+			Host:        dockerHost,
 			Port:        dt.port,
 			Protocol:    dt.protocol,
 			ServiceName: dt.serviceName,
@@ -1760,3 +1760,125 @@ func TestLive_Web_ReverseProxy_URLPrefix_E2E(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 }
+
+// ==========================================
+// 14. Kerberos KDC Container E2E Integration
+// ==========================================
+
+const (
+	kdcContainerName = "kdc-e2e-server"
+	kdcImage         = "gcavalcante8808/krb5-server:latest"
+	kdcRealm         = "EXAMPLE.COM"
+)
+
+func getKDCHost() string {
+	if runtime.GOOS == "windows" {
+		return dockerHost
+	}
+	return "127.0.0.1"
+}
+
+func runDockerCmd(args ...string) *exec.Cmd {
+	cmdName := "docker"
+	if runtime.GOOS == "windows" {
+		cmdName = "wsl"
+		args = append([]string{"docker"}, args...)
+	}
+	return exec.Command(cmdName, args...)
+}
+
+func ensureDockerKDCContainer(t *testing.T) {
+	// 1. Check if container is already running
+	out, err := runDockerCmd("inspect", "-f", "{{.State.Running}}", kdcContainerName).Output()
+	if err == nil && strings.TrimSpace(string(out)) == "true" {
+		return
+	}
+
+	// 2. Remove any stopped/stale container
+	_ = runDockerCmd("rm", "-f", kdcContainerName).Run()
+
+	// 3. Start fresh KDC container
+	startCmd := runDockerCmd("run", "-d",
+		"--name", kdcContainerName,
+		"-p", "88:88/tcp",
+		"-p", "88:88/udp",
+		"-e", "KRB5_REALM="+kdcRealm,
+		"-e", "KRB5_KDC=127.0.0.1",
+		"-e", "KRB5_PASS=AdminPassword123!",
+		kdcImage,
+	)
+	if err := startCmd.Run(); err != nil {
+		t.Logf("Docker KDC container launch returned: %v", err)
+	}
+}
+
+func TestLive_Kerberos_TCP_E2E(t *testing.T) {
+	ensureDockerKDCContainer(t)
+	host := getKDCHost()
+	if !waitForPort(host, 88, 10*time.Second) {
+		t.Skipf("Kerberos KDC on %s:88 (TCP) is not accessible", host)
+	}
+
+	p := probers.NewKerberosing(probers.KerberosOptions{
+		Hostname: host,
+		Port:     88,
+		IsUDP:    false,
+		Realm:    kdcRealm,
+		Timeout:  5 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	require.NoError(t, res.Err)
+	assert.True(t, res.RTT > 0)
+	assert.Contains(t, res.Diagnostics, "Kerberos v5 (RFC 4120)")
+	assert.Contains(t, res.Diagnostics, "Transport: TCP")
+	assert.Contains(t, res.Diagnostics, kdcRealm)
+}
+
+func TestLive_Kerberos_UDP_E2E(t *testing.T) {
+	ensureDockerKDCContainer(t)
+	host := getKDCHost()
+	if !waitForPort(host, 88, 10*time.Second) {
+		t.Skipf("Kerberos KDC on %s:88 (UDP) is not accessible", host)
+	}
+
+	p := probers.NewKerberosing(probers.KerberosOptions{
+		Hostname: host,
+		Port:     88,
+		IsUDP:    true,
+		Realm:    kdcRealm,
+		Timeout:  5 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	require.NoError(t, res.Err)
+	assert.True(t, res.RTT > 0)
+	assert.Contains(t, res.Diagnostics, "Kerberos v5 (RFC 4120)")
+	assert.Contains(t, res.Diagnostics, "Transport: UDP")
+	assert.Contains(t, res.Diagnostics, kdcRealm)
+}
+
+func TestLive_Kerberos_CLI_Diags_E2E(t *testing.T) {
+	ensureDockerKDCContainer(t)
+	host := getKDCHost()
+	if !waitForPort(host, 88, 10*time.Second) {
+		t.Skipf("Kerberos KDC on %s:88 is not accessible", host)
+	}
+
+	binPath := filepath.Join("..", "..", "bin", "netping")
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+
+	cmd := exec.Command(binPath, "--host", host, "--port", "88", "--protocol", "kerberos", "--count", "2", "--diags")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+
+	out := string(output)
+	assert.Contains(t, out, "Reply from")
+	assert.Contains(t, out, "[DIAG]")
+	assert.Contains(t, out, "Kerberos v5")
+	assert.Contains(t, out, kdcRealm)
+	assert.Contains(t, out, "ClockSkew:")
+}
+

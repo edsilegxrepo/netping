@@ -2,7 +2,7 @@
 // and deterministic diagnostic exit codes used across netping.
 //
 // Objectives:
-//   - Centralize protocol enumeration (49 supported L3-L7 protocols).
+//   - Centralize protocol enumeration (51 supported L3-L7 protocols).
 //   - Provide standardized, machine-readable diagnostic process exit codes.
 //
 // Core Components:
@@ -63,8 +63,10 @@ const (
 	AMQPS      Protocol = "AMQPS"
 	SMB        Protocol = "SMB"
 	RSYNC      Protocol = "RSYNC"
-	FTP        Protocol = "FTP"
-	FTPS       Protocol = "FTPS"
+	FTP         Protocol = "FTP"
+	FTPS        Protocol = "FTPS"
+	KERBEROS    Protocol = "KERBEROS"
+	KERBEROSUDP Protocol = "KERBEROSUDP"
 )
 
 // Diagnostic Exit Codes

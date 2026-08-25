@@ -8,7 +8,7 @@ import (
 	"github.com/edsilegx/netping/pkg/consts"
 )
 
-// FactoryOptions defines all parameters necessary to construct any of the 49 protocol pingers.
+// FactoryOptions defines all parameters necessary to construct any of the 51 protocol pingers.
 type FactoryOptions struct {
 	Protocol    consts.Protocol
 	Hostname    string
@@ -454,6 +454,26 @@ func BuildPinger(opts FactoryOptions) Pinger {
 			IP:       opts.IP,
 			Port:     opts.Port,
 			UseTLS:   true,
+			Timeout:  timeout,
+			Dialer:   dialer,
+		})
+	case consts.KERBEROS:
+		return NewKerberosing(KerberosOptions{
+			Hostname: opts.Hostname,
+			IP:       opts.IP,
+			Port:     opts.Port,
+			IsUDP:    false,
+			Realm:    opts.ServiceName,
+			Timeout:  timeout,
+			Dialer:   dialer,
+		})
+	case consts.KERBEROSUDP:
+		return NewKerberosing(KerberosOptions{
+			Hostname: opts.Hostname,
+			IP:       opts.IP,
+			Port:     opts.Port,
+			IsUDP:    true,
+			Realm:    opts.ServiceName,
 			Timeout:  timeout,
 			Dialer:   dialer,
 		})

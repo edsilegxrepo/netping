@@ -12,7 +12,7 @@ This document outlines the testing architecture, suite structure, positive/negat
 1. **Deterministic Execution**: Zero flaky tests. Timeouts, backoffs, and retries use controllable monotonic clocks and explicit context deadlines.
 2. **Isolation & Ephemeral Artifacts**: All filesystem outputs (CSV, TSV, SQLite3, Keystores) write strictly to temporary directories created via `t.TempDir()`.
 3. **Zero Data Races**: Every package must execute cleanly under Go's race detector (`go test -race`).
-4. **Wire-Level Mock Protocol Handshakes**: All 49 Layer 3 to Layer 7 probers are validated against in-memory TCP/TLS/HTTP/DNS mock servers simulating real-world server responses, handshake errors, and latency breakdowns.
+4. **Wire-Level Mock Protocol Handshakes**: All 51 Layer 3 to Layer 7 probers are validated against in-memory TCP/TLS/HTTP/DNS mock servers simulating real-world server responses, handshake errors, and latency breakdowns.
 5. **Memory Sanitization Validation**: Cryptographic buffers containing raw API keys are validated for zero-byte memory overwriting (`auth.ZeroBytes`).
 
 ```mermaid
@@ -65,7 +65,8 @@ netping/
 │   ├── consts/protocols_test.go # Protocol aliases, default IANA ports, and enums.
 │   ├── engine/engine_test.go    # Dynamic trigger execution, worker semaphores, and SLA alarms.
 │   ├── metrics/prometheus_test.go # OpenMetrics formatting, scrape endpoints, and histograms.
-│   ├── probers/factory_test.go  # Centralized prober builder pattern validation across 49 protocols.
+│   ├── probers/factory_test.go  # Centralized prober builder pattern validation across 51 protocols.
+│   ├── probers/kerberos_test.go # RFC 4120 Kerberos v5 mock TCP/UDP KDC server, clock skew, and ASN.1 dissection.
 │   ├── probers/probers_test.go  # Wire-level mock servers for databases, queues, mail, HTTP method dispatch, and web.
 │   ├── stats/stats_test.go      # RFC 3550 jitter calculation, streak tracking, and snapshots.
 │   ├── utils/utils_test.go      # Percentile ranks, error taxonomy classifiers, and sparklines.
@@ -148,7 +149,22 @@ sequenceDiagram
 | **Network Interface** | `TestNewNetworkInterface_ValidLocalIP` | Tests outbound socket binding to host loopback / active NIC addresses. | PASS if dialer.LocalAddr binds cleanly to designated local IP. |
 | **Network Interface** | `TestNewNetworkInterface_AutoDetect` | Verifies auto-detection of default outbound network interface and gateway. | PASS if non-empty local IP is selected without errors. |
 | **Printers (TUI)** | `TestSparklineRenderingModes` | Tests `shouldUseCompatGlyphs()` across environment overrides and modern/fallback block glyph sets. | PASS if legacy 3-glyph and modern 8-glyph modes render accurately. |
-| **Probers (Factory)** | `TestBuildPinger_AllProtocols` | Instantiates prober instances across all 49 supported protocols. | PASS if BuildPinger produces non-nil Pinger for every protocol constant. |
+| **Probers (Factory)** | `TestBuildPinger_AllProtocols` | Instantiates prober instances across all 51 supported protocols. | PASS if BuildPinger produces non-nil Pinger for every protocol constant. |
+| **Probers (Kerberos)**| `TestBuildKerberosASREQ` | Validates RFC 4120 DER `AS-REQ` generation with nonce, timestamp, and cipher suites. | PASS if `[APPLICATION 10]` DER packet is generated with principal and realm. |
+| **Probers (Kerberos)**| `TestKerberos_ErrorCodeNames` | Validates mapping table for RFC 4120 symbolic error names (0 through 76+). | PASS if all standard error codes resolve to correct symbolic names. |
+| **Probers (Kerberos)**| `TestKerberos_ETypeNames` | Validates cipher suite name table (AES256, AES128, RC4, Camellia, DES). | PASS if all 11 cipher identifiers map to standard names. |
+| **Probers (Kerberos)**| `TestKerberos_DefaultOptions` | Validates default Port 88, hostname realm fallback, and custom port configuration. | PASS if Port 88 and uppercase realm defaults apply cleanly. |
+| **Probers (Kerberos)**| `TestKerberos_DissectKRBError` | Dissects ASN.1 `KRB-ERROR` context tags (error code, realm, SPN, timestamp, PA-DATA). | PASS if all fields and supported PA-DATA methods are extracted. |
+| **Probers (Kerberos)**| `TestKerberos_ASN1Helpers_WrapAndLength` | Validates DER length encoding across short (<128), medium (128-255), and long (>255) bounds. | PASS if ASN.1 length bytes encode and decode with zero buffer overflows. |
+| **Probers (Kerberos)**| `TestKerberos_ASN1Helpers_Parsers` | Tests ASN.1 integer, string, generalized time, and principal name primitives. | PASS if all ASN.1 data types parse with boundary protection. |
+| **Probers (Kerberos)**| `TestKerberos_ParseEDataPAData_AllTypes` | Validates PA-DATA sequence extraction for timestamp, etype-info2, and FAST armoring. | PASS if all pre-auth mechanisms and cipher suites are enumerated. |
+| **Probers (Kerberos)**| `TestKerberos_ClockSkewCriticalAlert` | Tests microsecond clock skew calculation and $|\Delta t| \ge 300\text{s}$ warning trigger. | PASS if critical alert string is appended on $\ge 300\text{s}$ drift. |
+| **Probers (Kerberos)**| `TestKerberos_UnexpectedResponses` | Asserts negative handling on short payloads, invalid application tags, and fatal errors. | PASS if malformed/unexpected responses return descriptive errors. |
+| **Probers (Kerberos)**| `TestKerberos_TCP_MockServer_KRBError` | In-memory TCP mock server validating 4-byte stream framing and `--diags` telemetry. | PASS if TCP length framing exchanges and diagnostics are populated. |
+| **Probers (Kerberos)**| `TestKerberos_TCP_MockServer_ASRep` | In-memory TCP mock server validating `AS-REP` ticket delivery response. | PASS if `Msg: AS-REP (11) │ Status: OK` is reported. |
+| **Probers (Kerberos)**| `TestKerberos_TCP_InvalidLengthHeader`| Validates TCP stream framing protection against oversized length headers (>65536). | PASS if prober aborts and returns invalid length error. |
+| **Probers (Kerberos)**| `TestKerberos_UDP_MockServer_KRBError` | In-memory UDP mock server validating raw datagram exchange and `KRB-ERROR` parsing. | PASS if UDP datagram transmits, parses, and computes latency. |
+| **Probers (Kerberos)**| `TestKerberos_Timeout` | Validates context deadline expiration when KDC does not respond. | PASS if timeout error is returned cleanly without goroutine leak. |
 | **Probers (HTTP/S)** | `TestHTTPing_Ping_Success` | Probes mock HTTP server collecting DNS, TCP, TLS, and TTFB trace timings. | PASS if TTFB > 0, HTTPStatus = 200, and RTT is within bounds. |
 | **Probers (HTTP/S)** | `TestHTTPing_SendDataAndExpectData` | Validates method dispatch (HEAD default, POST with body, GET with expect substring matching). | PASS if POST transmits payload and GET asserts expected response substring. |
 | **Probers (Database)** | `TestDBing_Postgres_Handshake` | Simulates PostgreSQL SSLRequest and StartupMessage protocol handshakes. | PASS if SSL capability and server version are parsed into Diagnostics. |
@@ -215,7 +231,39 @@ All integration and E2E tests are executed with `-tags=integration` and probe ag
 | **CLI E2E** | `TestLive_CLI_FlagCombinations_E2E` | Full CLI Flag Permutations | PASS across 15+ sub-tests: `--diags`, `--json`, `--db`, `--fast-close`, `--retry`. |
 | **Fleet E2E** | `TestLive_MultiTarget_Parallel_Fleet_E2E`| Multi-Target Fleet Probing | PASS if workers probe in parallel and aggregate into MultiTargetSummary. |
 | **Export E2E** | `TestLive_MultiTarget_Outputs_AllFormats_E2E` | CSV, TSV, SQLite3, JSON, NDJSON | PASS across all 5 sub-tests: all files parse structurally without data loss. |
+| **Kerberos KDC** | `TestLive_Kerberos_TCP_E2E` | MIT KDC Container (`:88` TCP) | PASS if TCP 4-byte framing connects, receives `KRB-ERROR`/`AS-REP`, and parses realm. |
+| **Kerberos KDC** | `TestLive_Kerberos_UDP_E2E` | MIT KDC Container (`:88` UDP) | PASS if UDP datagram exchanges with KDC container and extracts diagnostics. |
+| **Kerberos KDC** | `TestLive_Kerberos_CLI_Diags_E2E`| CLI Subprocess with `--diags` | PASS if CLI output contains `[DIAG]`, `Kerberos v5`, `ClockSkew:`, and Realm. |
 | **Web REST E2E** | `TestLive_Web_REST_API_Full_E2E` | Live Embedded Web & REST API | PASS across all 10 sub-tests: Dashboard, Health, Metrics, Targets, Probes, SSE, Export, Reset. |
+
+---
+
+### 4.3. Kerberos KDC Container E2E Integration Suite
+
+The Kerberos End-to-End integration suite tests live Key Distribution Center (KDC) authentication handshakes, transport framing, and deep diagnostics against an automated MIT Kerberos container (`gcavalcante8808/krb5-server:latest`).
+
+#### Container Topology & Environment:
+- **Image**: `gcavalcante8808/krb5-server:latest`
+- **Container Name**: `kdc-e2e-server`
+- **Exposed Ports**: `88/tcp` (TCP stream framing) and `88/udp` (raw datagrams)
+- **Environment Variables**:
+  - `KRB5_REALM=EXAMPLE.COM`
+  - `KRB5_KDC=127.0.0.1`
+  - `KRB5_PASS=AdminPassword123!`
+
+#### Cross-Platform Host Resolution (`getKDCHost()`):
+- **Windows (WSL2 Docker)**: Targets `dockerHost` (`cs-main-wsl001.csysinet.com` / WSL virtual switch IP) to ensure UDP datagrams cross the Hyper-V virtual adapter boundary (since WSL2's localhost proxy forwards only TCP).
+- **Linux (Native Docker)**: Targets `127.0.0.1` directly on the local network namespace.
+
+#### Running Kerberos Integration Tests:
+```bash
+go test -tags=integration -v ./tests/integration -run "TestLive_Kerberos"
+```
+
+#### Verified Test Scenarios:
+1. **`TestLive_Kerberos_TCP_E2E`**: Establishes TCP connection, sends 4-byte prefixed `AS-REQ`, parses `KRB-ERROR`/`AS-REP` reply payload, and validates RTT and realm.
+2. **`TestLive_Kerberos_UDP_E2E`**: Transmits raw DER datagram, parses KDC reply (`KDC_ERR_C_PRINCIPAL_UNKNOWN (6)`), authoritative SPN (`krbtgt/EXAMPLE.COM`), and measures sub-millisecond UDP latency.
+3. **`TestLive_Kerberos_CLI_Diags_E2E`**: Executes the compiled `netping` binary (`netping --host <kdc> --port 88 --protocol kerberos --count 2 --diags`) in a sub-process and asserts structured diagnostic output.
 
 ---
 
@@ -236,7 +284,7 @@ All integration and E2E tests are executed with `-tags=integration` and probe ag
 | `pkg/consts` | Protocol constants, port mapping & exit codes | **100.0%** | PASS |
 | `pkg/engine` | Dynamic trigger orchestration & worker semaphores | **84.3%** | PASS |
 | `pkg/metrics` | Embedded Prometheus/OpenMetrics exporter | **100.0%** | PASS |
-| `pkg/probers` | 49 L3–L7 protocol handshakes & wire parsers | **81.0%** | PASS |
+| `pkg/probers` | 51 L3–L7 protocol handshakes & wire parsers | **84.9%** | PASS |
 | `pkg/stats` | RFC 3550 jitter, streak tracking & snapshots | **98.3%** | PASS |
 | `pkg/utils` | Percentile ranks, error taxonomy & sparklines | **82.1%** | PASS |
 | `pkg/web` | Embedded web server, SSE broadcaster & REST API | **84.2%** | PASS |

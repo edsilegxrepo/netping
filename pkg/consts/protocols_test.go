@@ -32,6 +32,8 @@ func TestGetDefaultPort(t *testing.T) {
 	assert.Equal(t, uint16(445), GetDefaultPort(SMB))
 	assert.Equal(t, uint16(873), GetDefaultPort(RSYNC))
 	assert.Equal(t, uint16(21), GetDefaultPort(FTP))
+	assert.Equal(t, uint16(88), GetDefaultPort(KERBEROS))
+	assert.Equal(t, uint16(88), GetDefaultPort(KERBEROSUDP))
 	assert.Equal(t, uint16(443), GetDefaultPort(Protocol("UNKNOWN")))
 }
 
@@ -47,6 +49,26 @@ func TestNormalizeProtocol(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, POSTGRES, p)
 	assert.Equal(t, uint16(5432), port)
+
+	p, port, ok = NormalizeProtocol("kerberos")
+	assert.True(t, ok)
+	assert.Equal(t, KERBEROS, p)
+	assert.Equal(t, uint16(88), port)
+
+	p, port, ok = NormalizeProtocol("krb5")
+	assert.True(t, ok)
+	assert.Equal(t, KERBEROS, p)
+	assert.Equal(t, uint16(88), port)
+
+	p, port, ok = NormalizeProtocol("kerberos-udp")
+	assert.True(t, ok)
+	assert.Equal(t, KERBEROSUDP, p)
+	assert.Equal(t, uint16(88), port)
+
+	p, port, ok = NormalizeProtocol("krb5-udp")
+	assert.True(t, ok)
+	assert.Equal(t, KERBEROSUDP, p)
+	assert.Equal(t, uint16(88), port)
 
 	p, port, ok = NormalizeProtocol("hana")
 	assert.True(t, ok)

@@ -9,91 +9,99 @@ This document provides a comprehensive technical breakdown of the **`netping`** 
 `netping` is engineered as a zero-dependency, high-throughput network diagnostics and latency measurement engine written in Go. Its core purpose is to provide Layer 3 to Layer 7 latency probing, active protocol diagnostics, and real-time observability while guaranteeing low memory overhead, lock-free telemetry reads, and resilience against transient network failures.
 
 ```mermaid
-graph TB
-    subgraph CLI ["Entrypoint & Orchestration"]
-        Entry["cmd/netping.go"]
-        Config["internal/config"]
-        App["internal/app"]
+flowchart TD
+    %% TIER 1: INGESTION & CONTROL
+    subgraph Tier1 ["Tier 1: Entrypoint, Configuration & Trigger Daemon"]
+        direction TB
+        CLI["cmd/netping.go<br/>(Composition Root)"]
+        
+        subgraph T1_Helpers [" "]
+            direction LR
+            Config["internal/config<br/>(Flag Parsing & Pool Matrix)"]
+            App["internal/app<br/>(Signal Trapping & Lifecycle)"]
+            
+            subgraph TriggerDaemon ["Dynamic REST Trigger Daemon"]
+                direction TB
+                Engine["pkg/engine<br/>(DynamicEngine Semaphore)"] <--> Auth["pkg/auth<br/>(Argon2id Keystore)"]
+            end
+        end
+
+        CLI --> Config
+        CLI --> App
+        CLI --> Engine
     end
 
-    subgraph DynamicEngineSub ["Dynamic Trigger Engine & Auth"]
-        Engine["pkg/engine (DynamicEngine)"]
-        Auth["pkg/auth (Argon2id Verifier & Keystore)"]
+    %% TIER 2: ORCHESTRATION & FACTORY
+    subgraph Tier2 ["Tier 2: Probing Orchestrators & Factory"]
+        direction TB
+        subgraph T2_Probers [" "]
+            direction LR
+            Prober["pkg/probers.Prober<br/>(Single-Target Loop)"]
+            MultiProber["pkg/probers.MultiProber<br/>(Concurrent Fleet Pool)"]
+        end
+
+        Factory["pkg/probers.BuildPinger<br/>(Central Driver Factory)"]
+        PingerContract["«interface» probers.Pinger<br/>Ping(ctx context.Context) ProbeResult"]
+
+        Prober --> Factory
+        MultiProber --> Factory
+        Factory --> PingerContract
     end
 
-    subgraph CoreEngine ["Probing Engine & Orchestrator"]
-        Prober["pkg/probers.Prober"]
-        MultiProber["pkg/probers.MultiProber"]
-        Factory["pkg/probers.BuildPinger (Factory)"]
-        PingerContract["pkg/probers.Pinger (Interface)"]
+    %% TIER 3: PROTOCOL CLUSTERS (2x2 Stacked Grid)
+    subgraph Tier3 ["Tier 3: Protocol Drivers & Deep Diagnostics (55 Protocols)"]
+        direction TB
+        
+        subgraph T3_Row1 ["Transport & Web Protocols"]
+            direction LR
+            P_Net["<b>Network & Transport (L3–L4)</b><br/>• TCP, UDP, ICMP Ping<br/>• Raw TLS Handshake<br/>• Layer-4 Traceroute Engine"]
+            P_Web["<b>Web, DNS & APIs (L7)</b><br/>• HTTP / HTTPS (HEAD, POST, GET)<br/>• WebSocket / WSS Handshake<br/>• gRPC / GRPCS Health & ALPN<br/>• DNS, DoH & DoT Wire Queries"]
+        end
+
+        subgraph T3_Row2 ["Databases, Queues & Identity"]
+            direction LR
+            P_Data["<b>Databases & Message Queues</b><br/>• Postgres, MySQL, MSSQL, Oracle, SAP HANA, Mongo<br/>• Redis & Memcached Wire Handshakes<br/>• Kafka (ApiVersions) & RabbitMQ / AMQP"]
+            P_Auth["<b>Identity, SSO, Directory & Storage</b><br/>• SSO: OIDC Discovery, SAML 2.0 XML & OAuth 2.0 PKCE<br/>• Kerberos v5: KDC TCP/UDP AS-REQ Handshakes<br/>• LDAP / LDAPS Anonymous Bind & Root DSE<br/>• Cloud Storage (S3, Azure Blob, GCS) & Mail"]
+        end
+
+        PingerContract --> T3_Row1
+        PingerContract --> T3_Row2
     end
 
-    subgraph Probers ["Protocol-Specific Probers (55 Protocols)"]
-        TCP["pkg/probers/tcp.go"]
-        HTTP["pkg/probers/http.go (HEAD/POST/GET)"]
-        TLS["pkg/probers/raw_tls.go"]
-        UDP["pkg/probers/udp.go"]
-        ICMP["pkg/probers/icmp.go"]
-        WS["pkg/probers/ws.go"]
-        GRPC["pkg/probers/grpc.go"]
-        DNSProber["pkg/probers/dns_query.go"]
-        DB["pkg/probers/db.go"]
-        Cache["pkg/probers/redis.go & memcached.go"]
-        Mail["pkg/probers/mail.go"]
-        Storage["pkg/probers/storage.go"]
-        Queue["pkg/probers/queue.go"]
-        Directory["pkg/probers/ldap.go & kerberos.go"]
-        SSOProbers["pkg/probers/sso.go (OIDC, SAML 2.0, OAuth 2.0)"]
-        Trace["pkg/probers/traceroute.go"]
+    %% TIER 4: TELEMETRY STATE MACHINE
+    subgraph Tier4 ["Tier 4: Telemetry State Machine & Snapshots"]
+        direction TB
+        Stats["pkg/stats.Statistics<br/>(RWMutex Thread-Safe State Accumulator)"]
+        Snapshot["pkg/stats.Snapshot<br/>(Immutable Copy-on-Read Metric Struct)"]
+        Stats -.->|Copy-on-Read| Snapshot
     end
 
-    subgraph StateTelemetry ["Telemetry & State Machine"]
-        Stats["pkg/stats.Statistics (Mutex Protected)"]
-        Snapshot["pkg/stats.Snapshot (Immutable Copy)"]
+    %% TIER 5: OUTPUT SURFACES & OBSERVABILITY
+    subgraph Tier5 ["Tier 5: Output & Observability Surfaces"]
+        direction LR
+        
+        subgraph TerminalUI ["Terminal & Storage"]
+            direction TB
+            TUIDash["120-Column TUI Dashboard<br/>(internal/printers/dashboard.go)"]
+            Printers["CLI & File Exporters<br/>(Color, JSON, NDJSON, CSV, TSV, SQLite3)"]
+        end
+
+        subgraph NetworkExporters ["Web & Monitoring"]
+            direction TB
+            WebUI["Embedded Web Server & SSE Broadcaster<br/>(pkg/web)"]
+            PromExporter["Prometheus Metrics Exporter<br/>(pkg/metrics)"]
+        end
+
+        Snapshot --> TerminalUI
+        Snapshot --> NetworkExporters
     end
 
-    subgraph OutputSurfaces ["Telemetry Consumers & Outputs"]
-        CLIPrinters["internal/printers (Color, Plain, JSON, NDJSON)"]
-        StoragePrinters["internal/printers (CSV, TSV, SQLite3)"]
-        TUIDashboard["internal/printers/dashboard.go (120-Col TUI)"]
-        WebDash["pkg/web (SSE Web Server & PNG Canvas Exporter)"]
-        PromMetrics["pkg/metrics (Prometheus Exporter)"]
-    end
-
-    Entry --> Config
-    Entry --> App
-    Entry --> Prober
-    Entry --> MultiProber
-    Entry --> Engine
-    Engine --> Auth
-    Engine --> Factory
-
-    Prober --> Factory
-    MultiProber --> Factory
-    Factory --> PingerContract
-    PingerContract --> TCP
-    PingerContract --> HTTP
-    PingerContract --> TLS
-    PingerContract --> UDP
-    PingerContract --> ICMP
-    PingerContract --> WS
-    PingerContract --> GRPC
-    PingerContract --> DNSProber
-    PingerContract --> DB
-    PingerContract --> Cache
-    PingerContract --> Mail
-    PingerContract --> Storage
-    PingerContract --> Queue
-    PingerContract --> Trace
-
-    Prober --> Stats
-    Stats -.->|Copy-on-Read| Snapshot
-
-    Snapshot --> CLIPrinters
-    Snapshot --> StoragePrinters
-    Snapshot --> TUIDashboard
-    Snapshot --> WebDash
-    Snapshot --> PromMetrics
+    %% VERTICAL TIER FLOW
+    Tier1 ==>|Configures & Spawns| Tier2
+    Tier2 -->|Executes Handshakes| Tier3
+    Tier3 -->|Updates Counters & Timings| Stats
+    Tier2 -.->|Updates Ongoing Probes| Stats
+    Tier4 ==>|Pipes Snapshots| Tier5
 ```
 
 ### 1.1. Core Design Patterns
@@ -144,31 +152,30 @@ graph TB
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Operator / CI Engine
-    participant Main as cmd/netping.go
-    participant Prober as pkg/probers.Prober
-    participant Pinger as Protocol Pinger (L3-L7)
-    participant Target as Remote Target Endpoint
-    participant Stats as pkg/stats.Statistics
-    participant Outputs as Printers / Web / Prometheus
+    actor User as Operator / API Client
+    participant Engine as Engine (cmd & pkg/probers)
+    participant Driver as Protocol Driver (L3–L7)
+    participant Target as Remote Target
+    participant Output as Telemetry & Exporters
 
-    User->>Main: Execute CLI (e.g. netping --host 1.1.1.1 --port 443 --diags)
-    Main->>Main: Parse args & configure Resolver, NIC, Printers
-    Main->>Prober: Start Prober.Run(ctx)
+    Note over User,Output: Phase 1: Initialization & Target Matrix Expansion
+    User->>Engine: Dispatch Probe Request (CLI / REST Trigger)
+    Engine->>Engine: Parse options, resolve target pool & bind socket
+
+    Note over User,Output: Phase 2: High-Precision Probing Loop
     loop Every Probe Interval (default 1s)
-        Prober->>Pinger: Ping(ctx)
-        opt Resolve Target (if hostname or --resolve-every-probe)
-            Pinger->>Pinger: Resolve DNS & record DNSTime
-        end
-        Pinger->>Target: Establish L4/L7 Handshake
-        Target-->>Pinger: Return SYN-ACK / TLS Certificate / Application Banner
-        Pinger-->>Prober: Return ProbeResult (RTT, DNSTime, LocalAddr, Diags, Err)
-        Prober->>Stats: Ingest ProbeResult (Update Min/Avg/Max, Jitter, Percentiles)
-        Stats-->>Outputs: Dispatch formatted event (CLI / TUI / SSE / SQLite / CSV)
+        Engine->>Driver: Ping(ctx)
+        Driver->>Driver: Resolve DNS & measure DNSTime
+        Driver->>Target: Transmit Protocol Handshake / Payload
+        Target-->>Driver: Reply (SYN-ACK / Cert / Banner / JSON)
+        Driver-->>Engine: Return ProbeResult (RTT, TTFB, Diags, Err)
+        Engine->>Output: Ingest metrics & stream updates (TUI / SSE / SQLite)
     end
-    User->>Main: SIGINT (Ctrl+C) / Count Reached (--count)
-    Main->>Outputs: Flush Buffers (Done) & Render Final SLA Statistics
-    Main-->>User: Exit with Diagnostic Code (0, 1, 2, 3, 4, 5, 6, 7, 130)
+
+    Note over User,Output: Phase 3: Teardown & SLA Reporting
+    User->>Engine: Termination Signal (SIGINT / --count limit)
+    Engine->>Output: Flush buffers & compute final SLA percentiles
+    Output-->>User: Render statistics table & return exit code
 ```
 
 ### 2.2. Code Relations & Data Sequences
@@ -298,36 +305,41 @@ graph TD
 `netping` enforces a **defense-in-depth security model** across socket communications, memory management, protocol negotiation, and export boundaries.
 
 ```mermaid
-graph TB
-    subgraph SocketSecurity ["Socket & Transport Security"]
-        TLSVal["TLS 1.2 / 1.3 Strict Verification"]
-        CertChecks["X.509 Certificate Chain & Validity Checks"]
-        RawSocketDrop["Unprivileged ICMP Fallback (Drop CAP_NET_RAW)"]
+flowchart TD
+    subgraph Row1 ["Transport, Socket & Cryptographic Authentication"]
+        direction LR
+        
+        subgraph SocketSecurity ["Socket & Transport Security"]
+            direction TB
+            TLSVal["TLS 1.2 / 1.3 Strict Verification"] --> CertChecks["X.509 Certificate Chain & Validity Checks"]
+            RawSocketDrop["Unprivileged ICMP Fallback<br/>(Drop CAP_NET_RAW)"]
+        end
+
+        subgraph AuthSecurity ["Authentication & Memory Security"]
+            direction TB
+            ArgonHash["Argon2id Hashed Keystores<br/>(OWASP m=65536, t=3, p=4)"]
+            ArgonHash --> MemScrub["RAM Scrubbing on API Tokens<br/>(auth.ZeroBytes)"]
+            ArgonHash --> TimeConstant["Constant-Time Token Comparison<br/>(subtle.ConstantTimeCompare)"]
+        end
     end
 
-    subgraph AuthSecurity ["Authentication & Memory Security"]
-        ArgonHash["Argon2id Hashed Keystores (OWASP m=65536, t=3, p=4)"]
-        MemScrub["RAM Scrubbing on API Tokens (auth.ZeroBytes)"]
-        TimeConstant["Constant-Time Token Comparison (subtle.ConstantTimeCompare)"]
+    subgraph Row2 ["Data Integrity, Network Exposure & Surface Isolation"]
+        direction LR
+        
+        subgraph NetworkSurface ["Network Exposure Surface"]
+            direction TB
+            LoopbackOnly["Web Dashboard Defaults to 127.0.0.1<br/>(Localhost Only)"] --> ReadHeaders["Safe Header Parsing & 1MB Body Limit<br/>(Prevents DoS)"]
+            NoAuthData["Zero Ingestion of Sensitive Passwords/Payloads"]
+        end
+
+        subgraph DataIntegrity ["Data Storage & Export Integrity"]
+            direction TB
+            SQLSanitize["SQLite Table Name Sanitization<br/>(Regex Enforced)"] --> BufferSync["Guaranteed io.Closer Sync<br/>on SIGINT / SIGTERM"]
+            MemoryIsolation["Private Mutex Enclosed Statistics<br/>(No Data Races)"]
+        end
     end
 
-    subgraph DataIntegrity ["Data Storage & Export Integrity"]
-        SQLSanitize["SQLite Table Name Sanitization (Regex Enforced)"]
-        BufferSync["Guaranteed io.Closer Sync on SIGINT/SIGTERM"]
-        MemoryIsolation["Private Mutex Enclosed Statistics (No Data Races)"]
-    end
-
-    subgraph NetworkSurface ["Network Exposure Surface"]
-        LoopbackOnly["Web Dashboard Defaults to 127.0.0.1 (Localhost Only)"]
-        ReadHeaders["Safe Header Parsing & 1MB Body Limit (Prevents DoS)"]
-        NoAuthData["Zero Ingestion of Sensitive Passwords/Payloads"]
-    end
-
-    TLSVal --> CertChecks
-    ArgonHash --> MemScrub
-    ArgonHash --> TimeConstant
-    SQLSanitize --> BufferSync
-    LoopbackOnly --> ReadHeaders
+    Row1 --> Row2
 ```
 
 ### 5.1. Authentication & Protocol Security Layers

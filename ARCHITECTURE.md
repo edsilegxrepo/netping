@@ -371,3 +371,16 @@ flowchart TD
   - The embedded web dashboard (`--web`) defaults strictly to `127.0.0.1:3000` (loopback only) to prevent unauthorized external network access unless explicitly bound to `--web-addr 0.0.0.0:<port>`.
 - **SQL Injection Prevention**:
   - SQLite database table names derived from target hostnames are strictly validated against an alphanumeric allowlist regex `^[a-zA-Z0-9_]+$` before execution in DDL statements. Parameterized queries are used for all probe record insertions.
+
+---
+
+## 6. Companion Architectural Specifications & Guides
+
+For deep protocol wire mechanics, deployment blueprints, and specialized subsystems, refer to the companion specifications:
+
+- **[Single Sign-On (SSO) & Identity Federation](docs/SSO.md)** (`docs/SSO.md`): Protocol specifications for OpenID Connect (OIDC 1.0) discovery + JWKS `x5c` cert expiry parsing, SAML 2.0 XML `EntityDescriptor` + X.509 verification, and OAuth 2.0 (RFC 8414) PKCE AS metadata audits.
+- **[Kerberos v5 Probing & KDC Diagnostics](docs/KERBEROS.md)** (`docs/KERBEROS.md`): Wire framing specifications for dual-transport TCP and UDP RFC 4120 `AS-REQ` DER generation, microsecond clock skew tracking, and diagnostic error codes.
+- **[Reverse Proxy & Subpath Mounting](docs/REVERSE_PROXY.md)** (`docs/REVERSE_PROXY.md`): Production deployment architectures for Nginx, Apache, Caddy, HAProxy, and Traefik with `--url-prefix` dynamic base-path resolution and SSE buffer controls.
+- **[Dynamic REST Trigger API & Daemon](docs/API_TRIGGER.md)** (`docs/API_TRIGGER.md`): Full REST API endpoint contracts, Argon2id authentication mechanics, and keystore management.
+- **[Parallel Multi-Target & Concurrency Architecture](docs/CONCURRENCY.md)** (`docs/CONCURRENCY.md`): Worker goroutine isolation, target expansion matrix, and single-writer telemetry synchronization.
+- **[Modernization & Protocol Engine Architecture](docs/MODERNIZATION.md)** (`docs/MODERNIZATION.md`): Complete multi-protocol prober design rationale, performance metrics, and zero-allocation hot paths.

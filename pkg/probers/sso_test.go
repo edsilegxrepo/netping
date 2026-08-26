@@ -53,7 +53,7 @@ func TestSSO_OIDC_Discovery_And_JWKS(t *testing.T) {
 	// Generate valid cert expiring in 120 days
 	validCertB64 := generateTestCertificate("accounts.example.com", time.Now().Add(-24*time.Hour), time.Now().Add(120*24*time.Hour))
 
-	var jwksServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"keys": []map[string]interface{}{

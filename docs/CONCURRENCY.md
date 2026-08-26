@@ -16,23 +16,23 @@ Netping adopts an **explicit, unambiguous target specification model** supportin
 
 ```mermaid
 flowchart TD
-    A[Input Arguments] --> B{Explicit Flags Provided?}
-    B -- No --> C[Error: --host, --port, or --uri required]
-    B -- Yes --> D{Which Flags?}
+    A["Input Arguments"] --> B{"Explicit Flags Provided?"}
+    B -->|No| C["Error: --host, --port, or --uri required"]
+    B -->|Yes| D{"Which Flags?"}
     
-    D -- --uri list --> E[Parse exact endpoints: host1:p1, host2:p2]
-    D -- --host + --port --> F[Cartesian Product Generator: host[i] x port[j]]
-    D -- --host only --> G[Apply protocol standard default port]
-    D -- --port only --> H[Apply default localhost]
+    D -->|--uri list| E["Parse exact endpoints: host1:p1, host2:p2"]
+    D -->|--host + --port| F["Cartesian Product Generator: host[i] x port[j]"]
+    D -->|--host only| G["Apply protocol standard default port"]
+    D -->|--port only| H["Apply default localhost"]
     
-    E --> I[Target Pool: []TargetConfig]
+    E --> I["Target Pool: []TargetConfig"]
     F --> I
     G --> I
     H --> I
     
-    I --> J{len(targets) > 1}
-    J -- True --> K[Parallel Multi-Target Dispatcher]
-    J -- False --> L[Single-Target Dispatcher]
+    I --> J{"len(targets) > 1"}
+    J -->|True| K["Parallel Multi-Target Dispatcher"]
+    J -->|False| L["Single-Target Dispatcher"]
 ```
 
 ### Syntax & Expansion Rules:

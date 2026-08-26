@@ -1,0 +1,24 @@
+*.sh
+.idea/
+tcping
+tcping.exe
+.DS_Store
+.vscode
+.zed
+*.code-workspace
+patches/
+*.db
+.tool-versions
+/target/
+/output/
+tmp/
+
+# secrets / credentials
+.env
+.env.*
+*.key
+*.pem
+secrets/
+credentials/
+.aws/
+.ssh/

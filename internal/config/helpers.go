@@ -6,11 +6,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-	"net/url"
 
 	"github.com/edsilegx/netping/pkg/consts"
 )

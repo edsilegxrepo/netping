@@ -69,6 +69,7 @@ func NewSSOing(opts SSOOptions) *SSOing {
 	if tlsConfig == nil {
 		tlsConfig = &tls.Config{
 			InsecureSkipVerify: false,
+			MinVersion:         tls.VersionTLS12,
 		}
 	}
 	if tlsConfig.ServerName == "" && opts.Hostname != "" {
@@ -487,9 +488,9 @@ func (s *SSOing) inspectJWKS(jwksURI string, client *http.Client, ctx context.Co
 
 // samlEntityDescriptor maps OASIS SAML 2.0 XML metadata structures.
 type samlEntityDescriptor struct {
-	XMLName         xml.Name `xml:"EntityDescriptor"`
-	EntityID        string   `xml:"entityID,attr"`
-	ValidUntil      string   `xml:"validUntil,attr"`
+	XMLName          xml.Name `xml:"EntityDescriptor"`
+	EntityID         string   `xml:"entityID,attr"`
+	ValidUntil       string   `xml:"validUntil,attr"`
 	IDPSSODescriptor struct {
 		SingleSignOnService []struct {
 			Binding  string `xml:"Binding,attr"`
@@ -499,7 +500,7 @@ type samlEntityDescriptor struct {
 			Binding  string `xml:"Binding,attr"`
 			Location string `xml:"Location,attr"`
 		} `xml:"SingleLogoutService"`
-		NameIDFormat []string `xml:"NameIDFormat"`
+		NameIDFormat  []string `xml:"NameIDFormat"`
 		KeyDescriptor []struct {
 			Use             string `xml:"use,attr"`
 			X509Certificate string `xml:"KeyInfo>X509Data>X509Certificate"`

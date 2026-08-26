@@ -1959,6 +1959,3 @@ func TestLive_SSO_CLI_Diags_E2E(t *testing.T) {
 	assert.Contains(t, out, "Issuer: https://accounts.google.com")
 	assert.Contains(t, out, "JWKS:")
 }
-
-
-

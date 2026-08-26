@@ -298,7 +298,7 @@ func dissectKRBError(data []byte) parsedKRBError {
 	}
 
 	for offset < len(data) {
-		if (data[offset] & 0xc0) != 0x80 && (data[offset] & 0xc0) != 0xa0 {
+		if (data[offset]&0xc0) != 0x80 && (data[offset]&0xc0) != 0xa0 {
 			break
 		}
 		tagNum := int(data[offset] & 0x1f)
@@ -361,9 +361,10 @@ func buildKerberosASREQ(realm, principal string) []byte {
 	cnameBuf.Write([]byte{0xa0, 0x03, 0x02, 0x01, 0x01}) // [0] INTEGER 1
 	var cnameStrSeq bytes.Buffer
 	cnameStrSeq.WriteByte(0x1b) // GeneralString
-	// #nosec G115 -- principal name bounded
+	// #nosec G115 -- principal name bounded (<255 bytes)
 	cnameStrSeq.WriteByte(byte(len(principal)))
 	cnameStrSeq.WriteString(principal)
+	// #nosec G115 -- sequence length is bounded by small Kerberos principal string
 	cnameBuf.Write([]byte{0xa1, byte(cnameStrSeq.Len() + 2), 0x30, byte(cnameStrSeq.Len())})
 	cnameBuf.Write(cnameStrSeq.Bytes())
 
@@ -382,9 +383,10 @@ func buildKerberosASREQ(realm, principal string) []byte {
 	snameStrSeq.WriteByte(6)
 	snameStrSeq.WriteString("krbtgt")
 	snameStrSeq.WriteByte(0x1b)
-	// #nosec G115 -- realm length bounded
+	// #nosec G115 -- realm length bounded (<255 bytes)
 	snameStrSeq.WriteByte(byte(len(realm)))
 	snameStrSeq.WriteString(realm)
+	// #nosec G115 -- sequence length is bounded by small Kerberos realm string
 	snameBuf.Write([]byte{0xa1, byte(snameStrSeq.Len() + 2), 0x30, byte(snameStrSeq.Len())})
 	snameBuf.Write(snameStrSeq.Bytes())
 

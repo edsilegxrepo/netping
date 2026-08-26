@@ -417,5 +417,3 @@ func TestDynamicEngine_SSO_All3Protocols_Execution(t *testing.T) {
 	assert.Contains(t, respOAuth.Diagnostics, "Issuer: https://as.example.com")
 	assert.Contains(t, respOAuth.Diagnostics, "PKCE: [S256]")
 }
-
-

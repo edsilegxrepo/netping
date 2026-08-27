@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.6.1 - 2026-08-25
+## v0.6.1 - 2026-08-25
 
 - **Single Sign-On (SSO) & Federation Probing Engine**:
   - **OpenID Connect (OIDC 1.0)**: Added native latency and discovery probing (`--protocol oidc`) on Port 443 with deep inspection (`--diags`) extracting issuer, endpoints, token signing algorithms, scopes, and active JWKS X.509 signing key expiration audits.
@@ -13,7 +13,7 @@
   - **Deep Protocol Inspection (`--diags`)**: Extracts message types (`KRB-ERROR`/`AS-REP`), symbolic error codes (0–76+), authoritative Realm/SPN identities, microsecond clock skew ($\ge 300\text{s}$ critical alerts), supported cipher suites (AES-256, AES-128, RC4), and pre-authentication mechanisms.
   - **Documentation**: See [docs/KERBEROS.md](docs/KERBEROS.md) for full protocol specifications, wire framing, and architecture details.
 
-## v3.6.0 - 2026-08-24
+## v0.6.0 - 2026-08-24
 
 - **REST Trigger API & Daemon Operating Mode**:
   - **On-Demand Dynamic Probe Triggering**: Added `POST /api/v1/trigger` enabling remote systems to execute network diagnostic probes on demand across all 49 supported application layer protocols.
@@ -39,7 +39,7 @@
   - 8-stage end-to-end lifecycle testing covering key generation, idle daemon startup, REST authentication, probe triggering, SSE streaming, and dashboard visualization.
   - 100% data-race free under `go test -race ./...`.
 
-## v3.5.2 - 2026-08-23
+## v0.5.2 - 2026-08-23
 
 - **Interactive Web Dashboard**:
   - **Enhanced Latency Waveform**: Real-time hover tooltips, drag/wheel zoom with reset, and X-axis timestamp scale.
@@ -53,7 +53,7 @@
   - **Detached Async Saves**: Zero-latency-spike background export process on Windows and POSIX.
   - **Dynamic History Buffer**: Expandable in-memory retention buffer up to 5M events (`--history-limit`) with REST API controls (`/api/v1/config/history`).
 
-## v3.5.1 - 2026-08-21
+## v0.5.1 - 2026-08-21
 
 - **Features & Protocol Diagnostics**:
   - **Oracle Database (`--protocol oracle`)**: Added `TNS RESEND` (0x0B) automatic frame negotiation, 16-bit TNS protocol version mapping (TNS v316 -> Oracle 19c/21c/23c), and dynamic database service routing via `--service` / `--oracle-service`.
@@ -69,7 +69,7 @@
 - **Testing & Verification**:
   - Expanded unit test coverage across database, queue, directory, and WebSocket packages; verified end-to-end against live production endpoints (Gmail/Outlook IMAPS, Google Cloud gRPC, Forumsys LDAP, Echo WebSocket, SAP HANA).
 
-## v3.5.0 - 2026-08-20
+## v0.5.0 - 2026-08-20
 
 Modernization and evolution into **`netping`** — an enterprise-grade multi-protocol network diagnostics and latency measurement suite. For the complete engineering architecture and design specification, see [`docs/MODERNIZATION.md`](docs/MODERNIZATION.md).
 
@@ -82,6 +82,6 @@ Modernization and evolution into **`netping`** — an enterprise-grade multi-pro
 - **Comprehensive Data Ingestion & Exports**: Native support for JSON (`-j` / `--json`), Pretty JSON (`--pretty`), Newline-Delimited JSON (`--ndjson`), JSON Lines (`--jsonl`), CSV (`--csv`), TSV (`--tsv`), SQLite3 database (`--db`), and standing Prometheus metrics endpoint (`--metrics-addr`).
 - **Thread-Safe Architecture & Exit Codes**: Implemented immutable `stats.Snapshot` copy-on-read model, strict DAG package dependency hierarchy, and standardized diagnostic exit codes (`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `130`).
 
-## v3.0.0 - Baseline
+## v0.0.0 - Baseline
 
 Used `wip/v3` branch from https://github.com/pouriyajamshidi/tcping for MVP functional specs.

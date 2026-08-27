@@ -24,6 +24,9 @@ type HTTPOptions struct {
 	Dialer     *net.Dialer
 	SendData   string
 	ExpectData string
+	Method     string
+	UserAgent  string
+	WAFMode    bool
 }
 
 // HTTPing implements Pinger for HTTP and HTTPS protocols with full timing breakdown.
@@ -37,6 +40,9 @@ type HTTPing struct {
 	timeout    time.Duration
 	sendData   string
 	expectData string
+	method     string
+	userAgent  string
+	wafMode    bool
 }
 
 // NewHTTPing constructs a new HTTP/HTTPS prober.
@@ -60,7 +66,12 @@ func NewHTTPing(opts HTTPOptions) *HTTPing {
 		target = opts.IP.String()
 	}
 
-	url := fmt.Sprintf("%s://%s:%d/", scheme, target, port)
+	var url string
+	if (scheme == "https" && port == 443) || (scheme == "http" && port == 80) {
+		url = fmt.Sprintf("%s://%s/", scheme, target)
+	} else {
+		url = fmt.Sprintf("%s://%s:%d/", scheme, target, port)
+	}
 
 	dialer := opts.Dialer
 	if dialer == nil {
@@ -93,6 +104,26 @@ func NewHTTPing(opts HTTPOptions) *HTTPing {
 		},
 	}
 
+	method := strings.ToUpper(strings.TrimSpace(opts.Method))
+	if method == "" {
+		if opts.SendData != "" {
+			method = http.MethodPost
+		} else if opts.ExpectData != "" || opts.WAFMode {
+			method = http.MethodGet
+		} else {
+			method = http.MethodHead
+		}
+	}
+
+	ua := strings.TrimSpace(opts.UserAgent)
+	if ua == "" {
+		if opts.WAFMode {
+			ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+		} else {
+			ua = "netping/1.0"
+		}
+	}
+
 	return &HTTPing{
 		client:     client,
 		url:        url,
@@ -103,26 +134,38 @@ func NewHTTPing(opts HTTPOptions) *HTTPing {
 		timeout:    opts.Timeout,
 		sendData:   opts.SendData,
 		expectData: opts.ExpectData,
+		method:     method,
+		userAgent:  ua,
+		wafMode:    opts.WAFMode,
 	}
 }
 
 // Ping executes an HTTP/HTTPS probe with httptrace timing collection.
 func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
-	method := http.MethodHead
 	var reqBody io.Reader
 	if h.sendData != "" {
-		method = http.MethodPost
 		reqBody = strings.NewReader(h.sendData)
-	} else if h.expectData != "" {
-		method = http.MethodGet
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, h.url, reqBody)
+	req, err := http.NewRequestWithContext(ctx, h.method, h.url, reqBody)
 	if err != nil {
 		return ProbeResult{Err: err}
 	}
-	req.Header.Set("User-Agent", "netping/1.0")
-	req.Header.Set("Accept", "*/*")
+	req.Header.Set("User-Agent", h.userAgent)
+	if h.wafMode {
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("Sec-Ch-Ua", `"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"`)
+		req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+		req.Header.Set("Sec-Ch-Ua-Platform", `"Windows"`)
+		req.Header.Set("Sec-Fetch-Dest", "document")
+		req.Header.Set("Sec-Fetch-Mode", "navigate")
+		req.Header.Set("Sec-Fetch-Site", "none")
+		req.Header.Set("Sec-Fetch-User", "?1")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+	} else {
+		req.Header.Set("Accept", "*/*")
+	}
 	if h.sendData != "" {
 		req.Header.Set("Content-Type", "application/octet-stream")
 	}
@@ -138,6 +181,8 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 		firstByte      time.Time
 		localAddr      net.Addr
 		certExpiry     time.Time
+		certSubject    string
+		certIssuer     string
 		tlsVersion     uint16
 		tlsCipherSuite uint16
 		alpnProto      string
@@ -166,6 +211,8 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 			alpnProto = state.NegotiatedProtocol
 			if len(state.PeerCertificates) > 0 {
 				certExpiry = state.PeerCertificates[0].NotAfter
+				certSubject = state.PeerCertificates[0].Subject.CommonName
+				certIssuer = state.PeerCertificates[0].Issuer.CommonName
 			}
 		},
 		GotConn: func(info httptrace.GotConnInfo) {
@@ -255,6 +302,13 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 	if h.expectData != "" {
 		diagParts = append(diagParts, fmt.Sprintf("Matched: %q", h.expectData))
 	}
+	if wafVendor := detectWAF(resp, certSubject, certIssuer, respBodyStr); wafVendor != "" {
+		diagParts = append(diagParts, fmt.Sprintf("WAF: %s", wafVendor))
+	}
+	if ttfb > 0 {
+		diagParts = append(diagParts, fmt.Sprintf("TTFB: %.2fms [DNS:%.1fms TCP:%.1fms TLS:%.1fms]",
+			ttfb.Seconds()*1000, dnsTime.Seconds()*1000, tcpTime.Seconds()*1000, tlsTime.Seconds()*1000))
+	}
 	if srv := resp.Header.Get("Server"); srv != "" {
 		diagParts = append(diagParts, fmt.Sprintf("Server: %s", srv))
 	}
@@ -278,10 +332,6 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 		days := int(time.Until(certExpiry).Hours() / 24)
 		diagParts = append(diagParts, fmt.Sprintf("CertValid: %s (%dd left)", certExpiry.Format("2006-01-02"), days))
 	}
-	if ttfb > 0 {
-		diagParts = append(diagParts, fmt.Sprintf("TTFB: %.2fms [DNS:%.1fms TCP:%.1fms TLS:%.1fms]",
-			ttfb.Seconds()*1000, dnsTime.Seconds()*1000, tcpTime.Seconds()*1000, tlsTime.Seconds()*1000))
-	}
 
 	return ProbeResult{
 		LocalAddr:   localAddr,
@@ -295,4 +345,52 @@ func (h *HTTPing) Ping(ctx context.Context) ProbeResult {
 		Diagnostics: strings.Join(diagParts, " │ "),
 		Err:         nil,
 	}
+}
+
+func detectWAF(resp *http.Response, certSubject, certIssuer, bodySnippet string) string {
+	if resp == nil {
+		return ""
+	}
+	server := strings.ToLower(resp.Header.Get("Server"))
+	via := strings.ToLower(resp.Header.Get("Via"))
+	certAll := strings.ToLower(certSubject + " " + certIssuer)
+	bodyLower := strings.ToLower(bodySnippet)
+
+	var cookies []string
+	for _, c := range resp.Cookies() {
+		cookies = append(cookies, strings.ToLower(c.Name))
+	}
+	cookieStr := strings.Join(cookies, " ")
+
+	var detected []string
+
+	if strings.Contains(server, "cloudflare") || resp.Header.Get("CF-RAY") != "" || resp.Header.Get("cf-ray") != "" || strings.Contains(cookieStr, "__cf") || strings.Contains(certAll, "cloudflare") {
+		detected = append(detected, "Cloudflare")
+	}
+	if strings.Contains(server, "incapsula") || strings.Contains(server, "imperva") || strings.EqualFold(resp.Header.Get("X-CDN"), "Imperva") || strings.EqualFold(resp.Header.Get("X-CDN"), "Incapsula") || resp.Header.Get("X-Iinfo") != "" || resp.Header.Get("x-iinfo") != "" || strings.Contains(cookieStr, "incap_ses") || strings.Contains(cookieStr, "visid_incap") || strings.Contains(certAll, "imperva") || strings.Contains(certAll, "incapsula") || strings.Contains(bodyLower, "_incapsula_resource") || strings.Contains(bodyLower, "cking-with-mannot") {
+		detected = append(detected, "Imperva")
+	}
+	if strings.Contains(server, "akamaighost") || resp.Header.Get("X-Akamai-Transformed") != "" || resp.Header.Get("Akamai-GRN") != "" || strings.Contains(cookieStr, "ak_bmsc") || strings.Contains(cookieStr, "bm_sz") {
+		detected = append(detected, "Akamai")
+	}
+	if strings.Contains(server, "cloudfront") || strings.Contains(via, "cloudfront") || resp.Header.Get("X-Amz-Cf-Id") != "" || resp.Header.Get("X-Amzn-Waf-Action") != "" {
+		detected = append(detected, "AWS CloudFront / AWS WAF")
+	}
+	if strings.Contains(server, "fastly") || resp.Header.Get("X-Fastly-Request-ID") != "" {
+		detected = append(detected, "Fastly")
+	}
+	if strings.Contains(server, "bigip") || strings.Contains(cookieStr, "bigipserver") || strings.Contains(cookieStr, "ts01") {
+		detected = append(detected, "F5 BIG-IP / ASM")
+	}
+	if strings.Contains(server, "sucuri") || resp.Header.Get("X-Sucuri-ID") != "" || resp.Header.Get("X-Sucuri-Cache") != "" {
+		detected = append(detected, "Sucuri CloudProxy")
+	}
+	if resp.Header.Get("X-Azure-Ref") != "" || resp.Header.Get("X-FD-Ref") != "" {
+		detected = append(detected, "Azure Front Door")
+	}
+
+	if len(detected) == 0 {
+		return ""
+	}
+	return strings.Join(detected, " + ")
 }

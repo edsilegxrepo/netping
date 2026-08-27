@@ -39,6 +39,7 @@ const (
 	ORACLE      Protocol = "ORACLE"
 	MONGODB     Protocol = "MONGODB"
 	MONGODBS    Protocol = "MONGODBS"
+	MONGODBSRV  Protocol = "MONGODB+SRV"
 	CASSANDRA   Protocol = "CASSANDRA"
 	CASSANDRAS  Protocol = "CASSANDRAS"
 	SAPHANA     Protocol = "SAPHANA"

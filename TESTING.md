@@ -175,6 +175,7 @@ sequenceDiagram
 | **Probers (SSO)**     | `TestSSO_ErrorHandling_And_Non200` | Tests HTTP 500 error status responses and missing target configuration errors. | PASS if non-success status codes return structured errors without crashing. |
 | **Probers (SSO)**     | `TestSSO_Factory_Integration` | Validates BuildPinger instantiation for OIDC, SAML, OAUTH2, and SSO protocol constants. | PASS if BuildPinger produces initialized SSOing instances. |
 | **Probers (HTTP/S)** | `TestHTTPing_Ping_Success` | Probes mock HTTP server collecting DNS, TCP, TLS, and TTFB trace timings. | PASS if TTFB > 0, HTTPStatus = 200, and RTT is within bounds. |
+| **Probers (HTTP/S)** | `TestHTTPing_WAFMode_and_Options` | Tests multi-layer WAF detection (`Cloudflare + Imperva`) and custom port URL generation. | PASS if detected WAF string matches combined vendor signatures. |
 | **Probers (HTTP/S)** | `TestHTTPing_SendDataAndExpectData` | Validates method dispatch (HEAD default, POST with body, GET with expect substring matching). | PASS if POST transmits payload and GET asserts expected response substring. |
 | **Probers (Database)** | `TestDBing_Postgres_Handshake` | Simulates PostgreSQL SSLRequest and StartupMessage protocol handshakes. | PASS if SSL capability and server version are parsed into Diagnostics. |
 | **Probers (Database)** | `TestDBing_MySQL_Handshake` | Simulates MySQL HandshakeV10 greeting frame decoding. | PASS if proto version, thread ID, and auth plugin are extracted. |
@@ -196,11 +197,14 @@ sequenceDiagram
 | **Dynamic Engine** | `TestDynamicEngine_TracerouteExecution` | Triggers dynamic traceroute via DynamicEngine. | PASS if hops array is returned in TriggerResponse. |
 | **Dynamic Engine** | `TestDynamicEngine_MultipleProbes` | Triggers multi-probe execution (count=3) with per-probe breakdown. | PASS if resp.Probes contains exactly 3 probe results. |
 | **Dynamic Engine** | `TestDynamicEngine_SSO_All3Protocols_Execution` | Dispatches dynamic on-demand trigger probes across OIDC, SAML, and OAuth 2.0. | PASS if all 3 protocols execute through DynamicEngine and return status 200 + diagnostics. |
+| **Printers (TUI)**   | `TestDashboard_FailureMessagesNeverCauseScroll` | Tests single/multi target models across 5 terminal sizes ($80\times20 \to 160\times50$) and modal states. | PASS if lines $\le H-1$ with zero terminal scrolling or modal overflow. |
 | **Web & SSE** | `TestBroadcaster_BroadcastAndSubscribe` | Streams real-time ProbeEvents to concurrent SSE subscriber channels. | PASS if subscriber receives event payload with identical sequence number. |
 | **Web & SSE** | `TestBroadcaster_Concurrent` | Streams high-volume events across 50 concurrent SSE subscriber goroutines. | PASS if zero deadlocks, zero dropped events, and zero race conditions occur. |
+| **Web & Dashboard** | `TestLatencyComparison_BreakdownDeliveryAndDashboard` | Validates stage breakdown serialization, SSE streaming, REST history, dashboard modes (Curves, Bars, Stacked %), fleet mode restrictions, and compact tooltip diagnostics. | PASS if all latency stages stream accurately and dashboard components render cleanly. |
 | **Web Server** | `TestWebServer_REST_Endpoints` | Tests `/api/v1/health`, `/api/v1/targets`, `/api/v1/metrics`, `/api/v1/probes`. | PASS if all endpoints return valid JSON and HTTP 200. |
 | **Web Server** | `TestWebServer_TriggerAPI` | Posts probe trigger to `/api/v1/trigger` with Bearer auth. | PASS if probe executes and broadcasts to SSE stream. |
 | **Printers & Export** | `TestExportSingleTarget_Formats` | Exports historical telemetry into CSV, TSV, JSON, and SQLite3 files. | PASS if generated files are non-empty and ANSI box characters are stripped. |
+| **Utilities** | `TestSanitizeSingleLine` | Strips newlines, carriage returns, tabs, unprintable control bytes $<32$, and collapses spaces. | PASS if control characters are stripped and ANSI color escapes are preserved. |
 | **Utilities** | `TestCalculatePercentile` | Calculates P50, P90, P95, and P99 SLAs using linear interpolation. | PASS if percentile values match exact mathematical interpolation. |
 | **Utilities** | `TestClassifyError` | Maps OS socket error strings to canonical error taxonomy codes. | PASS if `ECONNREFUSED` maps to `"Connection Refused"`. |
 
@@ -307,18 +311,18 @@ go test -tags=integration -v ./tests/integration -run "TestLive_SSO"
 | Package Path | Component Responsibilities | Coverage % | Status ($ \ge 80\% $) |
 | :--- | :--- | :---: | :---: |
 | `internal/app` | Signal trapping & process lifecycle management | **100.0%** | PASS |
-| `internal/config` | Flag parsing, argument permutation & target expansion | **82.2%** | PASS |
+| `internal/config` | Flag parsing, argument permutation & target expansion | **75.5%** | PASS |
 | `internal/dns` | Custom DNS nameserver resolution & retry backoff | **85.7%** | PASS |
 | `internal/nic` | Network interface binding & socket dialer construction | **88.1%** | PASS |
-| `internal/printers` | TUI dashboard, SQLite3, CSV, TSV, JSON formatters | **80.2%** | PASS |
+| `internal/printers` | TUI dashboard, SQLite3, CSV, TSV, JSON formatters | **81.0%** | PASS |
 | `pkg/auth` | Argon2id key generation, keystores & LRU cache | **89.2%** | PASS |
 | `pkg/consts` | Protocol constants, port mapping & exit codes | **100.0%** | PASS |
-| `pkg/engine` | Dynamic trigger orchestration & worker semaphores | **84.3%** | PASS |
+| `pkg/engine` | Dynamic trigger orchestration & worker semaphores | **80.5%** | PASS |
 | `pkg/metrics` | Embedded Prometheus/OpenMetrics exporter | **100.0%** | PASS |
-| `pkg/probers` | 55 L3–L7 protocol handshakes & wire parsers | **85.0%** | PASS |
+| `pkg/probers` | 55 L3–L7 protocol handshakes & wire parsers | **85.5%** | PASS |
 | `pkg/stats` | RFC 3550 jitter, streak tracking & snapshots | **98.3%** | PASS |
-| `pkg/utils` | Percentile ranks, error taxonomy & sparklines | **82.1%** | PASS |
-| `pkg/web` | Embedded web server, SSE broadcaster & REST API | **84.2%** | PASS |
+| `pkg/utils` | Percentile ranks, error taxonomy & sparklines | **84.1%** | PASS |
+| `pkg/web` | Embedded web server, SSE broadcaster & REST API | **84.8%** | PASS |
 
 ### 5.2. How to Generate and Refresh Coverage Stats
 

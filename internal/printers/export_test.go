@@ -1,6 +1,7 @@
 package printers
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/edsilegx/netping/pkg/stats"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func TestSanitizeExportField(t *testing.T) {
@@ -110,13 +112,20 @@ func TestExportFormats_Single_And_Multi(t *testing.T) {
 
 	history := []SingleProbeExportRecord{
 		{
-			Timestamp: time.Now(),
-			Seq:       1,
-			Target:    "example.com:443",
-			Protocol:  "HTTPS",
-			IP:        "93.184.216.34",
-			IsSuccess: true,
-			RTTMs:     12.5,
+			Timestamp:   time.Now(),
+			Seq:         1,
+			Target:      "example.com:443",
+			Port:        443,
+			Protocol:    "HTTPS",
+			IP:          "93.184.216.34",
+			IsSuccess:   true,
+			RTTMs:       12.5,
+			DNSTimeMs:   1.2,
+			TCPTimeMs:   2.3,
+			TLSTimeMs:   4.5,
+			TTFBMs:      4.5,
+			HTTPStatus:  200,
+			Diagnostics: "TLS 1.3 | HTTP/2",
 		},
 	}
 
@@ -144,4 +153,110 @@ func TestExportFormats_Single_And_Multi(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestExportFormats_TTFBVerification(t *testing.T) {
+	tmpDir := t.TempDir()
+	st := &stats.Statistics{
+		Hostname: "api.example.com",
+		Port:     443,
+	}
+	history := []SingleProbeExportRecord{
+		{
+			Timestamp:   time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC),
+			Seq:         1,
+			Target:      "api.example.com:443",
+			Port:        443,
+			Protocol:    "HTTPS",
+			IP:          "1.2.3.4",
+			IsSuccess:   true,
+			RTTMs:       15.50,
+			DNSTimeMs:   2.10,
+			TCPTimeMs:   3.20,
+			TLSTimeMs:   5.10,
+			TTFBMs:      5.10,
+			HTTPStatus:  200,
+			Diagnostics: "HTTP/2 200 OK",
+		},
+	}
+
+	// 1. CSV Verification
+	csvPath := filepath.Join(tmpDir, "test.csv")
+	err := ExportSingleTarget("api.example.com", 443, "HTTPS", st, history, FormatCSV, csvPath)
+	require.NoError(t, err)
+	csvData, err := os.ReadFile(csvPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(csvData), "TTFB_ms")
+	assert.Contains(t, string(csvData), "5.10")
+
+	// 2. TSV Verification
+	tsvPath := filepath.Join(tmpDir, "test.tsv")
+	err = ExportSingleTarget("api.example.com", 443, "HTTPS", st, history, FormatTSV, tsvPath)
+	require.NoError(t, err)
+	tsvData, err := os.ReadFile(tsvPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(tsvData), "TTFB_ms")
+	assert.Contains(t, string(tsvData), "5.10")
+
+	// 3. JSON Verification
+	jsonPath := filepath.Join(tmpDir, "test.json")
+	err = ExportSingleTarget("api.example.com", 443, "HTTPS", st, history, FormatJSON, jsonPath)
+	require.NoError(t, err)
+	jsonData, err := os.ReadFile(jsonPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(jsonData), `"ttfbMs":5.1`)
+
+	// 4. Plain Text Verification
+	txtPath := filepath.Join(tmpDir, "test.txt")
+	err = ExportSingleTarget("api.example.com", 443, "HTTPS", st, history, FormatPlainText, txtPath)
+	require.NoError(t, err)
+	txtData, err := os.ReadFile(txtPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(txtData), "TTFB(ms)")
+	assert.Contains(t, string(txtData), "5.10")
+
+	// 5. SQLite3 Verification (Single Target)
+	dbPath := filepath.Join(tmpDir, "test.db")
+	err = ExportSingleTarget("api.example.com", 443, "HTTPS", st, history, FormatSQLite3, dbPath)
+	require.NoError(t, err)
+	db, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	var ttfbVal float64
+	var dnsVal, tcpVal, tlsVal float64
+	var statusVal int
+	row := db.QueryRow("SELECT dns_ms, tcp_ms, tls_ms, ttfb_ms, http_status FROM probes WHERE seq = 1")
+	err = row.Scan(&dnsVal, &tcpVal, &tlsVal, &ttfbVal, &statusVal)
+	require.NoError(t, err)
+	assert.InDelta(t, 2.10, dnsVal, 0.01)
+	assert.InDelta(t, 3.20, tcpVal, 0.01)
+	assert.InDelta(t, 5.10, tlsVal, 0.01)
+	assert.InDelta(t, 5.10, ttfbVal, 0.01)
+	assert.Equal(t, 200, statusVal)
+
+	// 6. Fleet CSV & SQLite Verification
+	fleetTargets := []FleetTarget{
+		{Target: "api.example.com:443", Host: "api.example.com", Port: 443, Protocol: "HTTPS", Stats: st},
+	}
+	fleetCSVPath := filepath.Join(tmpDir, "fleet.csv")
+	err = ExportMultiTarget(fleetTargets, time.Now().Add(-5*time.Second), history, FormatCSV, fleetCSVPath)
+	require.NoError(t, err)
+	fleetCSVData, err := os.ReadFile(fleetCSVPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(fleetCSVData), "TTFB_ms")
+	assert.Contains(t, string(fleetCSVData), "5.10")
+
+	fleetDBPath := filepath.Join(tmpDir, "fleet.db")
+	err = ExportMultiTarget(fleetTargets, time.Now().Add(-5*time.Second), history, FormatSQLite3, fleetDBPath)
+	require.NoError(t, err)
+	dbFleet, err := sql.Open("sqlite", fleetDBPath)
+	require.NoError(t, err)
+	defer func() { _ = dbFleet.Close() }()
+
+	var fleetTTFB float64
+	rowFleet := dbFleet.QueryRow("SELECT ttfb_ms FROM probes WHERE seq = 1")
+	err = rowFleet.Scan(&fleetTTFB)
+	require.NoError(t, err)
+	assert.InDelta(t, 5.10, fleetTTFB, 0.01)
 }

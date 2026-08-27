@@ -27,6 +27,9 @@ type FactoryOptions struct {
 	FastClose   bool
 	URI         string
 	TLSConfig   *tls.Config
+	HTTPMethod  string
+	UserAgent   string
+	WAFMode     bool
 }
 
 // BuildPinger constructs a Pinger for the specified protocol and options.
@@ -48,6 +51,9 @@ func BuildPinger(opts FactoryOptions) Pinger {
 			Dialer:     dialer,
 			SendData:   opts.SendData,
 			ExpectData: opts.ExpectData,
+			Method:     opts.HTTPMethod,
+			UserAgent:  opts.UserAgent,
+			WAFMode:    opts.WAFMode,
 		})
 	case consts.UDP:
 		return NewUDPing(UDPOptions{
@@ -203,7 +209,7 @@ func BuildPinger(opts FactoryOptions) Pinger {
 			Timeout:  timeout,
 			Dialer:   dialer,
 		})
-	case consts.MONGODBS:
+	case consts.MONGODBS, consts.MONGODBSRV:
 		return NewDBing(DBOptions{
 			Type:     MongoDB,
 			Hostname: opts.Hostname,

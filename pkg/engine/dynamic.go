@@ -443,6 +443,15 @@ func resolveTriggerTarget(req TriggerRequest) (string, uint16, consts.Protocol, 
 	}
 
 	proto, defPortStr, _ := resolveProtocolAndDefaultPort(protoStr)
+
+	if proto == consts.MONGODBSRV || strings.HasPrefix(strings.ToLower(req.URI), "mongodb+srv://") || strings.HasPrefix(strings.ToLower(req.Target), "mongodb+srv://") || (strings.HasSuffix(strings.ToLower(host), ".mongodb.net") && (proto == consts.MONGODB || proto == consts.MONGODBS)) {
+		if _, addrs, err := net.LookupSRV("mongodb", "tcp", host); err == nil && len(addrs) > 0 {
+			host = strings.TrimSuffix(addrs[0].Target, ".")
+			port = addrs[0].Port
+			proto = consts.MONGODBS
+		}
+	}
+
 	if port == 0 {
 		if defP, err := strconv.ParseUint(defPortStr, 10, 16); err == nil && defP > 0 {
 			port = uint16(defP)
@@ -491,5 +500,8 @@ func buildPinger(host string, ip netip.Addr, port uint16, proto consts.Protocol,
 		StartTLS:    req.StartTLS,
 		FastClose:   req.FastClose,
 		URI:         uri,
+		HTTPMethod:  req.Method,
+		UserAgent:   req.UserAgent,
+		WAFMode:     req.WAF,
 	})
 }

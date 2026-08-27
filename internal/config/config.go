@@ -143,6 +143,9 @@ type TargetConfig struct {
 	URI                     string
 	ShouldRetryResolve      bool
 	RetryResolveAfterNFails uint
+	HTTPMethod              string
+	UserAgent               string
+	WAFMode                 bool
 }
 
 // Config holds all user provided settings
@@ -198,6 +201,9 @@ type Config struct {
 	TriggerConcurrency         int
 	LegacyConsole              bool
 	URLPrefix                  string
+	HTTPMethod                 string
+	UserAgent                  string
+	WAFMode                    bool
 }
 
 func (c Config) GetHostname() string {
@@ -303,13 +309,11 @@ type flagOptions struct {
 	retryMaxBackoff                    *float64
 	retryJitter                        *bool
 	enableWeb                          *bool
-	webAddr                            *string
 	showDiags                          *bool
 	showDiagnostics                    *bool
 	startTLS                           *bool
 	dnsHost                            *string
 	serviceName                        *string
-	oracleService                      *string
 	host                               *string
 	port                               *string
 	uri                                *string
@@ -323,7 +327,11 @@ type flagOptions struct {
 	triggerConcurrency                 *int
 	legacyConsole                      *bool
 	urlPrefix                          *string
-	basePath                           *string
+	method                             *string
+	httpMethod                         *string
+	userAgent                          *string
+	ua                                 *string
+	waf                                *bool
 }
 
 func registerFlags(fs *flag.FlagSet) flagOptions {
@@ -417,23 +425,25 @@ func registerFlags(fs *flag.FlagSet) flagOptions {
 		retryMaxBackoff:     fs.Float64("retry-max-backoff", 2.0, "Maximum retry backoff delay in seconds."),
 		retryJitter:         fs.Bool("retry-jitter", true, "Apply randomized jitter to exponential retry backoff."),
 		enableWeb:           fs.Bool("web", false, "Start embedded real-time web dashboard (default 127.0.0.1:3000)."),
-		webAddr:             fs.String("web-addr", "", "Listen address for web dashboard (e.g. 127.0.0.1:3000 or :3000)."),
 		showDiags:           fs.Bool("diags", false, "Show detailed protocol negotiation diagnostics."),
 		showDiagnostics:     fs.Bool("diagnostics", false, "Show detailed protocol negotiation diagnostics."),
 		startTLS:            fs.Bool("starttls", false, "Upgrade connection via STARTTLS (SMTP/IMAP/POP3)."),
 		dnsHost:             fs.String("dns-host", "", "Host(s) to query in DNS mode (comma-separated, e.g. google.com,cloudflare.com)."),
 		serviceName:         fs.String("service", "", "Service name / SID for Oracle database connections (e.g. ORCL, FREE, XE, ORCLPDB1)."),
-		oracleService:       fs.String("oracle-service", "", "Oracle database service name (e.g. ORCL, FREE, XE, ORCLPDB1)."),
 		historyLimit:        fs.Uint("history-limit", 1000000, "Maximum in-memory historical probe events retained (default: 1000000, max: 5000000)."),
 		generateAPIKey:      fs.String("generate-api-key", "", "Generate a 256-bit API key, compute Argon2id hash, and save to keystore file path."),
 		apiKeyStore:         fs.String("api-key-store", "", "Path to API key keystore file for Trigger mode authentication."),
 		apiKeyHash:          fs.String("api-key-hash", "", "Inline Argon2id hash string for Trigger mode authentication."),
 		triggerMode:         fs.Bool("trigger-mode", false, "Start in trigger-only mode without initial targets."),
-		listen:              fs.String("listen", "", "Start trigger listener on specified address (e.g. :3000 or 127.0.0.1:3000)."),
+		listen:              fs.String("listen", "", "Listen address for web dashboard and REST API (e.g. 127.0.0.1:3000 or :3000)."),
 		triggerConcurrency:  fs.Int("trigger-concurrency", 100, "Maximum concurrent dynamic probe workers."),
 		legacyConsole:       fs.Bool("legacy-console", false, "Use CP437/ASCII fallback glyphs and square borders for legacy terminals (PuTTY, cmd.exe)."),
 		urlPrefix:           fs.String("url-prefix", "", "URL subpath prefix when running behind a reverse proxy (e.g. /probe)."),
-		basePath:            fs.String("base-path", "", "Alias for --url-prefix."),
+		method:              fs.String("method", "", "HTTP method for HTTP/HTTPS probes (GET, HEAD, POST, ...)."),
+		httpMethod:          fs.String("http-method", "", "Alias for --method."),
+		userAgent:           fs.String("user-agent", "", "Custom User-Agent header for HTTP/HTTPS probes."),
+		ua:                  fs.String("ua", "", "Alias for --user-agent."),
+		waf:                 fs.Bool("waf", false, "Enable WAF-resilient probing (browser headers, GET method, 5s timeout, WAF detection)."),
 	}
 }
 
@@ -494,9 +504,6 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 	isTriggerMode := *opts.triggerMode || *opts.listen != "" || (*opts.apiKeyStore != "" && *opts.host == "" && *opts.uri == "" && *opts.port == "")
 
 	serviceName := *opts.serviceName
-	if serviceName == "" && *opts.oracleService != "" {
-		serviceName = *opts.oracleService
-	}
 
 	var targetPool []TargetDef
 	if !isTriggerMode {
@@ -528,6 +535,27 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 	var targetConfigs []TargetConfig
 	var targetStrings []string
 
+	method := strings.ToUpper(strings.TrimSpace(*opts.method))
+	if method == "" && *opts.httpMethod != "" {
+		method = strings.ToUpper(strings.TrimSpace(*opts.httpMethod))
+	}
+	ua := strings.TrimSpace(*opts.userAgent)
+	if ua == "" && *opts.ua != "" {
+		ua = strings.TrimSpace(*opts.ua)
+	}
+	wafMode := *opts.waf
+
+	timeoutVal := *opts.timeout
+	timeoutFlagProvided := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "timeout" {
+			timeoutFlagProvided = true
+		}
+	})
+	if wafMode && !timeoutFlagProvided && timeoutVal <= 1.0 {
+		timeoutVal = 5.0
+	}
+
 	for _, tDef := range targetPool {
 		var targetIsAlreadyIP bool
 		resolvedIP, _ := resolver.ResolveHostname(tDef.Host)
@@ -550,6 +578,9 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 			URI:                     tDef.URI,
 			ShouldRetryResolve:      shouldRetryResolve,
 			RetryResolveAfterNFails: *opts.retryHostnameResolveAfterNFailures,
+			HTTPMethod:              method,
+			UserAgent:               ua,
+			WAFMode:                 wafMode,
 		}
 		targetConfigs = append(targetConfigs, tCfg)
 		targetStrings = append(targetStrings, fmt.Sprintf("%s:%d", tDef.Host, tDef.Port))
@@ -559,7 +590,7 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 	if len(targetConfigs) > 0 {
 		primaryTarget = targetConfigs[0]
 	}
-	timeoutInDuration := utils.SecondsToDuration(*opts.timeout)
+	timeoutInDuration := utils.SecondsToDuration(timeoutVal)
 
 	var networkInterface nic.NetworkInterface
 	if *opts.interfaceName != "" {
@@ -654,10 +685,7 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		}
 	}
 
-	webAddr := *opts.webAddr
-	if *opts.listen != "" {
-		webAddr = *opts.listen
-	}
+	webAddr := *opts.listen
 	if webAddr == "" && isTriggerMode {
 		webAddr = ":3000"
 	}
@@ -668,9 +696,6 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 	}
 
 	rawPrefix := *opts.urlPrefix
-	if rawPrefix == "" && *opts.basePath != "" {
-		rawPrefix = *opts.basePath
-	}
 	if rawPrefix == "" {
 		rawPrefix = os.Getenv("NETPING_URL_PREFIX")
 	}
@@ -727,6 +752,9 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 		TriggerConcurrency:         *opts.triggerConcurrency,
 		LegacyConsole:              isLegacyConsole,
 		URLPrefix:                  urlPrefix,
+		HTTPMethod:                 method,
+		UserAgent:                  ua,
+		WAFMode:                    wafMode,
 	}
 
 	return cfg, nil

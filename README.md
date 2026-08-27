@@ -10,8 +10,8 @@ For complete architectural specifications, concurrency mechanics, and dependency
 
 Traditional ping utilities are typically restricted to Layer 3 ICMP or simple Layer 4 TCP handshakes. Modern distributed systems, cloud infrastructures, and microservice meshes require granular application-layer latency analysis, TLS certificate verification, database responsiveness checks, and real-time observability.
 
-- **Layer 3 to Layer 7 Unified Probing**: Measure handshake, TTFB, and protocol responsiveness across 58 network and application protocols (HTTP/S, gRPC/S, WebSocket/S, DNS/DoH/DoT, Redis/S, DBs, Mail, Queues, Storage, Directory, SMB, Rsync, FTP/S, SSH, O365, Kerberos TCP/UDP, OIDC, SAML 2.0, OAuth 2.0, SSO, WinRM/S, Microsoft Entra ID, HashiCorp Vault / Cloud KMS).
-- **Deep Protocol Diagnostics (`--diags`)**: Extract TLS cipher suites, certificate expiration, HTTP headers, database banners, message queue metadata, Kerberos skew, JWKS key rotation, and KMS seal/vault states.
+- **Layer 3 to Layer 7 Unified Probing**: Measure handshake, TTFB, and protocol responsiveness across 59 network and application protocols (HTTP/S, gRPC/S, WebSocket/S, DNS/DoH/DoT, Redis/S, DBs, MongoDB Atlas `mongodb+srv`, Mail, Queues, Storage, Directory, SMB, Rsync, FTP/S, SSH, O365, Kerberos TCP/UDP, OIDC, SAML 2.0, OAuth 2.0, SSO, WinRM/S, Microsoft Entra ID, HashiCorp Vault / Cloud KMS).
+- **Deep Protocol Diagnostics (`--diags`)**: Extract TLS cipher suites, certificate expiration, HTTP headers, WAF signatures (Cloudflare, Imperva, Akamai, AWS WAF, Fastly, F5), database banners, message queue metadata, Kerberos skew, JWKS key rotation, and KMS seal/vault states.
 - **Real-Time Visual Telemetry**:
   - **120-Column Interactive TUI Dashboard (`--dashboard`)** with a 106-point latency waveform chart.
   - **Zero-Dependency Web Dashboard (`--web`)** with Server-Sent Events (SSE) and Canvas 2D timeline graphs.
@@ -77,9 +77,12 @@ netping --host <host1,host2> --port <port1,port2> [options]
 | :--- | :---: | :---: | :--- |
 | `--host` | `string` | `""` | Comma-separated target hostnames or IP addresses. |
 | `--port` | `string` | `""` | Comma-separated target port numbers. |
-| `--uri` | `string` | `""` | Comma-separated target URIs (e.g. `https://host:443,postgres://db:5432`). |
-| `--protocol` | `string` | `tcp` | Target protocol: `tcp`, `http`, `https`, `tls`, `udp`, `icmp`, `ws`, `wss`, `grpc`, `grpcs`, `dns`, `dot`, `doh`, `redis`, `rediss`, `memcached`, `smtp`, `smtps`, `imap`, `imaps`, `pop3`, `pop3s`, `ldap`, `ldaps`, `postgres`, `mysql`, `mssql`, `oracle`, `mongodb`, `cassandra`, `saphana`, `s3`, `blob`, `gcs`, `kafka`, `kafkas`, `rabbitmq`, `amqps`, `smb`, `rsync`, `ftp`, `ftps`, `ssh`, `o365`, `kerberos`, `kerberos-udp`, `krb5`, `oidc`, `saml`, `oauth2`, `sso`, `winrm`, `winrms`, `entra`, `kms`, `vault`. See [`docs/SSO.md`](docs/SSO.md), [`docs/KERBEROS.md`](docs/KERBEROS.md), and [`docs/KMS.md`](docs/KMS.md). |
-| `--service`, `--oracle-service` | `string` | `""` | Database service/SID name (Oracle) or domain realm (Kerberos/LDAP). |
+| `--uri` | `string` | `""` | Comma-separated target URIs (e.g. `https://host:443,mongodb+srv://cluster.mongodb.net,postgres://db:5432`). |
+| `--protocol` | `string` | `tcp` | Target protocol: `tcp`, `http`, `https`, `tls`, `udp`, `icmp`, `ws`, `wss`, `grpc`, `grpcs`, `dns`, `dot`, `doh`, `redis`, `rediss`, `memcached`, `smtp`, `smtps`, `imap`, `imaps`, `pop3`, `pop3s`, `ldap`, `ldaps`, `postgres`, `mysql`, `mssql`, `oracle`, `mongodb`, `mongodbs`, `mongodb+srv` / `atlas`, `cassandra`, `saphana`, `s3`, `blob`, `gcs`, `kafka`, `kafkas`, `rabbitmq`, `amqps`, `smb`, `rsync`, `ftp`, `ftps`, `ssh`, `o365`, `kerberos`, `kerberos-udp`, `krb5`, `oidc`, `saml`, `oauth2`, `sso`, `winrm`, `winrms`, `entra`, `kms`, `vault`. See [`docs/SSO.md`](docs/SSO.md), [`docs/KERBEROS.md`](docs/KERBEROS.md), and [`docs/KMS.md`](docs/KMS.md). |
+| `--service` | `string` | `""` | Database service/SID name (Oracle) or domain realm (Kerberos/LDAP). |
+| `--method`, `--http-method` | `string` | `""` | Explicit HTTP request method for HTTP/HTTPS probes (`GET`, `HEAD`, `POST`, `OPTIONS`, `PUT`, `DELETE`). |
+| `--user-agent`, `--ua` | `string` | `""` | Custom `User-Agent` request header for HTTP/HTTPS probes. |
+| `--waf` | `bool` | `false` | WAF-resilient probing preset: emulates browser headers (`Chrome/128`, `Sec-Ch-Ua`), defaults to `GET` method (bypassing `HEAD` blackholing), sets 5s timeout, and detects WAF signatures (Cloudflare, Imperva, Akamai, AWS WAF, Fastly, F5, etc.) in `--diags`. |
 | `--send` | `string` | `""` | Payload to transmit on connection (raw string for TCP/UDP; automatically switches HTTP/S prober to `POST` with request body). |
 | `--expect` | `string` | `""` | Expected response substring for validation (checks raw socket replies; automatically switches HTTP/S prober to `GET` to validate response body). |
 | `--starttls` | `bool` | `false` | Explicitly initiate protocol-level STARTTLS negotiation (SMTP/IMAP/POP3/LDAP). |
@@ -134,14 +137,14 @@ netping --host <host1,host2> --port <port1,port2> [options]
 | `--dashboard` | `bool` | `false` | Launch full-screen interactive 120-column TUI dashboard with waveform history. |
 | `--legacy-console` | `bool` | `false` | Use CP437/ASCII compatibility glyphs and square borders for legacy terminals (PuTTY, cmd.exe). |
 | `--web` | `bool` | `false` | Launch embedded real-time web dashboard with SSE event streaming. |
-| `--web-addr` | `string` | `127.0.0.1:3000` | Listening address and port for the embedded web dashboard. |
-| `--url-prefix`, `--base-path` | `string` | `""` | Base URL subpath when running behind reverse proxies (e.g. `/probe`). |
+| `--listen` | `string` | `127.0.0.1:3000` | Listening address and port for the embedded web dashboard and REST API. |
+| `--url-prefix` | `string` | `""` | Base URL subpath when running behind reverse proxies (e.g. `/probe`). |
+| `--sparkline` | `bool` | `false` | Render live terminal latency sparklines in standard console output. |
 
 ### 4.7. REST API Trigger Daemon & Authentication
 | Flag | Type | Default | Description |
 | :--- | :---: | :---: | :--- |
 | `--trigger-mode` | `bool` | `false` | Start as an idle daemon accepting dynamic on-demand probe triggers via REST API. |
-| `--listen` | `string` | `""` | Address to listen on for trigger mode (e.g. `127.0.0.1:3000` or `:3000`). |
 | `--generate-api-key` | `string` | `""` | Generate a high-entropy API key and persist its Argon2id hash to specified store path. |
 | `--api-key-store` | `string` | `""` | Path to JSON keystore containing valid Argon2id hashed API keys. |
 | `--api-key-hash` | `string` | `""` | Single raw Argon2id hash string for direct authentication without a keystore file. |
@@ -292,7 +295,49 @@ netping --host api.example.com --port 443 --protocol https --expect "healthy" --
 ```text
 Probing api.example.com on port 443
 ● Reply from api.example.com on port 443: TCP_conn=1 time=38.450 ms
-  └─ [DIAG] Status: 200 OK │ Sent: 19B │ Matched: "healthy" │ Server: envoy │ Proto: HTTP/2 (h2) │ CertValid: 2026-11-15 (83d left) │ TTFB: 38.45ms [DNS: 1.20ms TCP: 12.10ms TLS: 18.20ms]
+  └─ [DIAG] Status: 200 OK │ Sent: 19B │ Matched: "healthy" │ TTFB: 38.45ms [DNS: 1.20ms TCP: 12.10ms TLS: 18.20ms] │ Server: envoy │ Proto: HTTP/2 (h2) │ CertValid: 2026-11-15 (83d left)
+```
+
+#### WAF-Resilient Probing & Bot-Protected Origins (`--waf`)
+
+Web Application Firewalls (Cloudflare, Imperva, Akamai, AWS WAF, Fastly, F5) often blackhole `HEAD` probes or require modern browser header fingerprints. `--waf` passes standard browser headers, switches to `GET`, adjusts timeouts, and identifies active WAF/CDN layers (including multi-layer architectures):
+
+```bash
+# 1. WAF-Resilient probing with automatic browser header emulation and multi-layer WAF detection
+netping --host www.mckesson.com --protocol https --waf --diags --count 1
+
+# 2. Granular HTTP method and custom User-Agent override
+netping --host api.example.com --protocol https --method GET --user-agent "CustomMonitor/2.0" --diags
+```
+```text
+Probing www.mckesson.com on port 443
+● Reply from www.mckesson.com on port 443: TCP_conn=1 time=1831.70 ms
+  └─ [DIAG] Status: 200 OK │ WAF: Cloudflare + Imperva │ TTFB: 1831.70ms [DNS: 0.0ms TCP: 13.2ms TLS: 52.6ms] │ Server: cloudflare │ Proto: HTTP/2.0 (h2) │ TLS: TLS 1.3, Cipher: TLS_AES_128_GCM_SHA256 │ CertValid: 2026-11-25 (89d left)
+```
+
+> [!NOTE]
+> **Multi-Layer WAF Detection**: `netping` inspects response headers, cookies, TLS certificates, and body tokens to identify layered security architectures (e.g., Cloudflare at the outer edge routing to an Imperva/Incapsula origin shield).
+
+
+#### MongoDB Atlas & Cluster Auto-Discovery (`mongodb+srv`)
+
+MongoDB Atlas cluster addresses do not publish `A`/`AAAA` records on the parent domain, publishing only DNS `SRV` records (`_mongodb._tcp.<cluster>`). `netping` automatically resolves the SRV records, discovers all underlying shard nodes, and executes concurrent TLS probes across the entire replica set fleet:
+
+```bash
+# 1. Probing via mongodb+srv URI scheme
+netping --uri mongodb+srv://mycluster.gcp.mongodb.net --diags --count 1
+
+# 2. Probing via CLI flags
+netping --host mycluster.gcp.mongodb.net --protocol mongodb+srv --diags --count 1
+```
+```text
+┌────────────────────────────────────────────┬────────────┬────────┬────────┬────────┐
+│ TARGET                                     │ PROTOCOL   │ SENT   │ RECV   │ LOSS % │
+├────────────────────────────────────────────┼────────────┼────────┼────────┼────────┤
+│ mycluster-shard-00-00.gcp.mongodb.net:27017│ MONGODBS   │ 1      │ 1      │   0.0% │
+│ mycluster-shard-00-01.gcp.mongodb.net:27017│ MONGODBS   │ 1      │ 1      │   0.0% │
+│ mycluster-shard-00-02.gcp.mongodb.net:27017│ MONGODBS   │ 1      │ 1      │   0.0% │
+└────────────────────────────────────────────┴────────────┴────────┴────────┴────────┘
 ```
 
 ---
@@ -344,7 +389,7 @@ This forces compatibility mode:
 
 #### Zero-Dependency Embedded Web Dashboard
 ```bash
-netping --host 1.1.1.1 --port 443 --web --web-addr 127.0.0.1:3000
+netping --host 1.1.1.1 --port 443 --web --listen 127.0.0.1:3000
 ```
 - Opens native HTTP server at `http://127.0.0.1:3000`.
 - Connects via Server-Sent Events (SSE) for 0ms telemetry streaming and Canvas 2D latency timelines.
@@ -353,7 +398,7 @@ netping --host 1.1.1.1 --port 443 --web --web-addr 127.0.0.1:3000
 To host the Web Dashboard and REST API behind an arbitrary subpath (e.g. `http://example.com/probe/`), pass `--url-prefix` (or set `NETPING_URL_PREFIX`):
 
 ```bash
-netping --host 1.1.1.1 --port 443 --web --web-addr 127.0.0.1:8080 --url-prefix /probe
+netping --host 1.1.1.1 --port 443 --web --listen 127.0.0.1:8080 --url-prefix /probe
 ```
 
 **Nginx Configuration:**
@@ -461,7 +506,7 @@ netping --generate-api-key ./keystore.json
 
 #### 2. Start the Trigger Listener Daemon
 ```bash
-netping --trigger-mode --api-key-store ./keystore.json --web-addr :3000 --trigger-concurrency 50
+netping --trigger-mode --api-key-store ./keystore.json --listen :3000 --trigger-concurrency 50
 ```
 
 #### 3. Execute Dynamic On-Demand Probes (`POST /api/v1/trigger`)

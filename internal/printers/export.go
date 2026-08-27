@@ -92,10 +92,16 @@ type SingleProbeExportRecord struct {
 	Timestamp   time.Time `json:"timestamp"`
 	Seq         uint      `json:"seq"`
 	Target      string    `json:"target"`
+	Port        uint16    `json:"port,omitempty"`
 	Protocol    string    `json:"protocol"`
 	IP          string    `json:"ip"`
 	IsSuccess   bool      `json:"isSuccess"`
 	RTTMs       float64   `json:"rttMs"`
+	DNSTimeMs   float64   `json:"dnsTimeMs"`
+	TCPTimeMs   float64   `json:"tcpTimeMs"`
+	TLSTimeMs   float64   `json:"tlsTimeMs"`
+	TTFBMs      float64   `json:"ttfbMs"`
+	HTTPStatus  int       `json:"httpStatus,omitempty"`
 	Diagnostics string    `json:"diagnostics,omitempty"`
 	Error       string    `json:"error,omitempty"`
 }
@@ -243,6 +249,11 @@ func exportSingleTargetSQLite(target string, port uint16, protocol string, st *s
 		ip TEXT,
 		is_success INTEGER,
 		rtt_ms REAL,
+		dns_ms REAL,
+		tcp_ms REAL,
+		tls_ms REAL,
+		ttfb_ms REAL,
+		http_status INTEGER,
 		diagnostics TEXT,
 		error TEXT
 	);`
@@ -257,7 +268,8 @@ func exportSingleTargetSQLite(target string, port uint16, protocol string, st *s
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO probes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	defer func() { _ = tx.Rollback() }()
+	stmt, err := tx.Prepare(`INSERT INTO probes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -268,7 +280,7 @@ func exportSingleTargetSQLite(target string, port uint16, protocol string, st *s
 		if p.IsSuccess {
 			isSucc = 1
 		}
-		_, _ = stmt.Exec(p.Timestamp.Format(time.RFC3339), p.Seq, cleanTarget, port, cleanProtocol, p.IP, isSucc, p.RTTMs, sanitizeExportField(p.Diagnostics), sanitizeExportField(p.Error))
+		_, _ = stmt.Exec(p.Timestamp.Format(time.RFC3339), p.Seq, cleanTarget, port, cleanProtocol, p.IP, isSucc, p.RTTMs, p.DNSTimeMs, p.TCPTimeMs, p.TLSTimeMs, p.TTFBMs, p.HTTPStatus, sanitizeExportField(p.Diagnostics), sanitizeExportField(p.Error))
 	}
 	return tx.Commit()
 }
@@ -334,7 +346,7 @@ func ExportSingleTargetToWriter(w io.Writer, target string, port uint16, protoco
 		cw.Comma = delimiter
 		defer cw.Flush()
 
-		_ = cw.Write([]string{"Timestamp", "Seq", "Target", "Port", "Protocol", "IP", "Status", "RTT_ms", "Diagnostics", "Error"})
+		_ = cw.Write([]string{"Timestamp", "Seq", "Target", "Port", "Protocol", "IP", "Status", "RTT_ms", "DNS_ms", "TCP_ms", "TLS_ms", "TTFB_ms", "HTTP_Status", "Diagnostics", "Error"})
 		for _, p := range history {
 			status := "SUCCESS"
 			if !p.IsSuccess {
@@ -349,6 +361,11 @@ func ExportSingleTargetToWriter(w io.Writer, target string, port uint16, protoco
 				p.IP,
 				status,
 				fmt.Sprintf("%.2f", p.RTTMs),
+				fmt.Sprintf("%.2f", p.DNSTimeMs),
+				fmt.Sprintf("%.2f", p.TCPTimeMs),
+				fmt.Sprintf("%.2f", p.TLSTimeMs),
+				fmt.Sprintf("%.2f", p.TTFBMs),
+				fmt.Sprintf("%d", p.HTTPStatus),
 				p.Diagnostics,
 				p.Error,
 			})
@@ -378,8 +395,8 @@ func ExportSingleTargetToWriter(w io.Writer, target string, port uint16, protoco
 		_, _ = fmt.Fprintf(bw, "  Max Latency:     %.2f ms\n\n", rttRes.Max)
 
 		_, _ = bw.WriteString("PROBE EVENT HISTORY:\n")
-		_, _ = fmt.Fprintf(bw, "%-20s %-6s %-10s %-12s %-16s %s\n", "TIMESTAMP", "SEQ", "STATUS", "RTT (ms)", "IP", "DETAILS")
-		_, _ = bw.WriteString(strings.Repeat("-", 80) + "\n")
+		_, _ = fmt.Fprintf(bw, "%-20s %-6s %-10s %-10s %-10s %-16s %s\n", "TIMESTAMP", "SEQ", "STATUS", "RTT(ms)", "TTFB(ms)", "IP", "DETAILS")
+		_, _ = bw.WriteString(strings.Repeat("-", 95) + "\n")
 		for _, p := range history {
 			status := "SUCCESS"
 			if !p.IsSuccess {
@@ -389,11 +406,12 @@ func ExportSingleTargetToWriter(w io.Writer, target string, port uint16, protoco
 			if p.Error != "" {
 				details = "Error: " + p.Error
 			}
-			_, _ = fmt.Fprintf(bw, "%-20s %-6d %-10s %-12.2f %-16s %s\n",
+			_, _ = fmt.Fprintf(bw, "%-20s %-6d %-10s %-10.2f %-10.2f %-16s %s\n",
 				p.Timestamp.Format("2006-01-02 15:04:05"),
 				p.Seq,
 				status,
 				p.RTTMs,
+				p.TTFBMs,
 				p.IP,
 				details,
 			)
@@ -489,6 +507,11 @@ func exportMultiTargetSQLite(targets []FleetTarget, startTime time.Time, history
 		ip TEXT,
 		is_success INTEGER,
 		rtt_ms REAL,
+		dns_ms REAL,
+		tcp_ms REAL,
+		tls_ms REAL,
+		ttfb_ms REAL,
+		http_status INTEGER,
 		diagnostics TEXT,
 		error TEXT
 	);`
@@ -500,6 +523,7 @@ func exportMultiTargetSQLite(targets []FleetTarget, startTime time.Time, history
 	if err != nil {
 		return err
 	}
+	defer func() { _ = tx.Rollback() }()
 	stmt, err := tx.Prepare(`INSERT INTO fleet_summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
@@ -511,7 +535,7 @@ func exportMultiTargetSQLite(targets []FleetTarget, startTime time.Time, history
 		_, _ = stmt.Exec(s.Target, s.Protocol, s.IP, s.Sent, s.Recv, s.LossPercent, s.LastRTTMs, s.AvgRTTMs, s.MaxRTTMs, elapsed, time.Now().Format(time.RFC3339))
 	}
 
-	probeStmt, err := tx.Prepare(`INSERT INTO probes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	probeStmt, err := tx.Prepare(`INSERT INTO probes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err == nil {
 		defer func() { _ = probeStmt.Close() }()
 		for _, p := range history {
@@ -519,7 +543,7 @@ func exportMultiTargetSQLite(targets []FleetTarget, startTime time.Time, history
 			if p.IsSuccess {
 				isSucc = 1
 			}
-			_, _ = probeStmt.Exec(p.Timestamp.Format(time.RFC3339), p.Seq, sanitizeExportField(p.Target), sanitizeExportField(p.Protocol), sanitizeExportField(p.IP), isSucc, p.RTTMs, sanitizeExportField(p.Diagnostics), sanitizeExportField(p.Error))
+			_, _ = probeStmt.Exec(p.Timestamp.Format(time.RFC3339), p.Seq, sanitizeExportField(p.Target), sanitizeExportField(p.Protocol), sanitizeExportField(p.IP), isSucc, p.RTTMs, p.DNSTimeMs, p.TCPTimeMs, p.TLSTimeMs, p.TTFBMs, p.HTTPStatus, sanitizeExportField(p.Diagnostics), sanitizeExportField(p.Error))
 		}
 	}
 	return tx.Commit()
@@ -614,7 +638,7 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 		if len(history) > 0 {
 			_ = cw.Write([]string{})
 			_ = cw.Write([]string{"# PROBE EVENTS"})
-			_ = cw.Write([]string{"Timestamp", "Seq", "Target", "Protocol", "IP", "Status", "RTT_ms", "Diagnostics", "Error"})
+			_ = cw.Write([]string{"Timestamp", "Seq", "Target", "Protocol", "IP", "Status", "RTT_ms", "DNS_ms", "TCP_ms", "TLS_ms", "TTFB_ms", "HTTP_Status", "Diagnostics", "Error"})
 			for _, p := range history {
 				status := "SUCCESS"
 				if !p.IsSuccess {
@@ -628,6 +652,11 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 					p.IP,
 					status,
 					fmt.Sprintf("%.2f", p.RTTMs),
+					fmt.Sprintf("%.2f", p.DNSTimeMs),
+					fmt.Sprintf("%.2f", p.TCPTimeMs),
+					fmt.Sprintf("%.2f", p.TLSTimeMs),
+					fmt.Sprintf("%.2f", p.TTFBMs),
+					fmt.Sprintf("%d", p.HTTPStatus),
 					p.Diagnostics,
 					p.Error,
 				})
@@ -657,9 +686,9 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 
 		if len(history) > 0 {
 			_, _ = bw.WriteString("\nPROBE EVENT HISTORY:\n")
-			_, _ = fmt.Fprintf(bw, "%-20s %-6s %-24s %-8s %-16s %-10s %-10s %s\n",
-				"TIMESTAMP", "SEQ", "TARGET", "PROTO", "IP", "STATUS", "RTT(ms)", "DETAILS")
-			_, _ = bw.WriteString(strings.Repeat("-", 110) + "\n")
+			_, _ = fmt.Fprintf(bw, "%-20s %-6s %-24s %-8s %-16s %-10s %-10s %-10s %s\n",
+				"TIMESTAMP", "SEQ", "TARGET", "PROTO", "IP", "STATUS", "RTT(ms)", "TTFB(ms)", "DETAILS")
+			_, _ = bw.WriteString(strings.Repeat("-", 125) + "\n")
 			for _, p := range history {
 				status := "SUCCESS"
 				if !p.IsSuccess {
@@ -669,7 +698,7 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 				if p.Error != "" {
 					details = "Error: " + p.Error
 				}
-				_, _ = fmt.Fprintf(bw, "%-20s %-6d %-24s %-8s %-16s %-10s %-10.2f %s\n",
+				_, _ = fmt.Fprintf(bw, "%-20s %-6d %-24s %-8s %-16s %-10s %-10.2f %-10.2f %s\n",
 					p.Timestamp.Format("2006-01-02 15:04:05"),
 					p.Seq,
 					p.Target,
@@ -677,6 +706,7 @@ func ExportMultiTargetToWriter(w io.Writer, targets []FleetTarget, startTime tim
 					p.IP,
 					status,
 					p.RTTMs,
+					p.TTFBMs,
 					details,
 				)
 			}

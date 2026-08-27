@@ -407,7 +407,7 @@ netping --host kdc01.corp.example.com --protocol kerberos --diags
 
 ### 8.3. Web UI Dashboard & Real-Time Monitoring
 ```bash
-netping --host kdc01.corp.example.com --protocol kerberos --web --web-addr :3000
+netping --host kdc01.corp.example.com --protocol kerberos --web --listen :3000
 ```
 
 ---

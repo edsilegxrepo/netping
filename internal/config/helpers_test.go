@@ -392,6 +392,14 @@ func TestPrintUsage(t *testing.T) {
 	assert.Contains(t, out, "TARGET CONFIGURATION:")
 	assert.Contains(t, out, "PROBE EXECUTION & TIMING:")
 	assert.Contains(t, out, "DASHBOARD & WEB MONITORING:")
+	assert.Contains(t, out, "DYNAMIC TRIGGERING & REST API:")
+	assert.Contains(t, out, "--url-prefix")
+	assert.Contains(t, out, "--listen")
+	assert.Contains(t, out, "--waf")
+	assert.Contains(t, out, "--method")
+	assert.Contains(t, out, "--user-agent")
+	assert.Contains(t, out, "--trigger-mode")
+	assert.Contains(t, out, "--legacy-console")
 }
 
 func TestPrintVersion(t *testing.T) {
@@ -450,7 +458,7 @@ func TestURLPrefixParsing(t *testing.T) {
 	assert.Equal(t, "/probe", cfg.URLPrefix)
 
 	fs2 := flag.NewFlagSet("test2", flag.ContinueOnError)
-	cfg2, err := ParseConfig(fs2, []string{"--host", "127.0.0.1", "--port", "80", "--base-path", "custom/subpath/"})
+	cfg2, err := ParseConfig(fs2, []string{"--host", "127.0.0.1", "--port", "80", "--url-prefix", "custom/subpath/"})
 	assert.NoError(t, err)
 	assert.Equal(t, "/custom/subpath", cfg2.URLPrefix)
 
@@ -459,4 +467,15 @@ func TestURLPrefixParsing(t *testing.T) {
 	cfg3, err := ParseConfig(fs3, []string{"--host", "127.0.0.1", "--port", "80"})
 	assert.NoError(t, err)
 	assert.Equal(t, "/env/path", cfg3.URLPrefix)
+}
+
+func TestResolveTargetPool_MongoSRV(t *testing.T) {
+	// Test error on non-existent SRV cluster
+	_, err := ResolveMongoSRV("invalid-nonexistent-cluster-12345.mongodb.net", "", "")
+	assert.Error(t, err)
+
+	// Test ResolveTargetPool with mongodb+srv URI protocol normalization
+	proto, portStr, _ := ResolveProtocolAndPort("mongodb+srv", "", "")
+	assert.Equal(t, consts.MONGODBSRV, proto)
+	assert.Equal(t, "27017", portStr)
 }

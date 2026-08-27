@@ -75,6 +75,16 @@ func buildPingerForTarget(tCfg config.TargetConfig, cfg config.Config, dialer *n
 	if svc == "" {
 		svc = cfg.ServiceName
 	}
+	method := tCfg.HTTPMethod
+	if method == "" {
+		method = cfg.HTTPMethod
+	}
+	ua := tCfg.UserAgent
+	if ua == "" {
+		ua = cfg.UserAgent
+	}
+	waf := tCfg.WAFMode || cfg.WAFMode
+
 	return probers.BuildPinger(probers.FactoryOptions{
 		Protocol:    tCfg.Protocol,
 		Hostname:    tCfg.Host,
@@ -91,6 +101,9 @@ func buildPingerForTarget(tCfg config.TargetConfig, cfg config.Config, dialer *n
 		StartTLS:    cfg.StartTLS,
 		FastClose:   cfg.FastClose,
 		URI:         tCfg.URI,
+		HTTPMethod:  method,
+		UserAgent:   ua,
+		WAFMode:     waf,
 	})
 }
 
@@ -405,6 +418,11 @@ func main() {
 					Protocol:     proto,
 					Diagnostics:  diagStr,
 					Error:        utils.ClassifyError(res.Err),
+					DNSTime:      res.DNSTime.Seconds() * 1000,
+					TCPTime:      res.TCPTime.Seconds() * 1000,
+					TLSTime:      res.TLSTime.Seconds() * 1000,
+					TTFB:         res.TTFB.Seconds() * 1000,
+					HTTPStatus:   res.HTTPStatus,
 					TotalSent:    snap.TotalSent,
 					TotalSuccess: snap.TotalSuccess,
 					TotalFailed:  snap.TotalFailed,
@@ -561,6 +579,11 @@ func main() {
 				Protocol:     proto,
 				Diagnostics:  diagStr,
 				Error:        utils.ClassifyError(res.Err),
+				DNSTime:      res.DNSTime.Seconds() * 1000,
+				TCPTime:      res.TCPTime.Seconds() * 1000,
+				TLSTime:      res.TLSTime.Seconds() * 1000,
+				TTFB:         res.TTFB.Seconds() * 1000,
+				HTTPStatus:   res.HTTPStatus,
 				TotalSent:    snap.TotalSent,
 				TotalSuccess: snap.TotalSuccess,
 				TotalFailed:  snap.TotalFailed,

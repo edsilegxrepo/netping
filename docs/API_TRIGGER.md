@@ -141,16 +141,15 @@ To start the daemon in Trigger Mode:
 
 **Linux / macOS**:
 ```bash
-netping --trigger-mode --web-addr 127.0.0.1:3000 --api-key-store /etc/netping/keystore.json
+netping --trigger-mode --listen 127.0.0.1:3000 --api-key-store /etc/netping/keystore.json
 ```
 
 **Windows (PowerShell / Command Prompt)**:
 ```powershell
-netping.exe --trigger-mode --web-addr 127.0.0.1:3000 --api-key-store E:/data/netping/keystore.json
+netping.exe --trigger-mode --listen 127.0.0.1:3000 --api-key-store E:/data/netping/keystore.json
 # or with backslashes
-netping.exe --trigger-mode --web-addr :3000 --api-key-store C:\netping\keystore.json
+netping.exe --trigger-mode --listen :3000 --api-key-store C:\netping\keystore.json
 ```
-*(Shorthand equivalent: `netping --listen :3000 --api-key-store ./keystore.json`)*
 
 ### 3.2 Environment Variable Support
 Ideal for Docker / Kubernetes container environments:
@@ -159,7 +158,7 @@ export NETPING_API_KEY_STORE="/etc/netping/keystore.json"
 # Or direct inline hash:
 export NETPING_API_KEY_HASH='$argon2id$v=19$m=65536,t=3,p=4$...'
 
-netping --trigger-mode --web-addr :3000
+netping --trigger-mode --listen :3000
 ```
 
 ### 3.3 Startup Banner

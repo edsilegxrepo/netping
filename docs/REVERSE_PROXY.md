@@ -232,7 +232,7 @@ const api = (endpoint) => {
 #### Mode 1: Pass-Through with Backend `--url-prefix` (Recommended)
 `netping` command:
 ```bash
-netping --web --web-addr 127.0.0.1:8080 --url-prefix /probe
+netping --web --listen 127.0.0.1:8080 --url-prefix /probe
 ```
 
 Nginx configuration:
@@ -258,7 +258,7 @@ location /probe {
 #### Mode 2: Nginx Prefix-Stripping (Zero Backend Configuration)
 `netping` command:
 ```bash
-netping --web --web-addr 127.0.0.1:8080
+netping --web --listen 127.0.0.1:8080
 ```
 
 Nginx configuration:

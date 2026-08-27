@@ -93,6 +93,99 @@ func TestHTTPing(t *testing.T) {
 	assert.Equal(t, http.StatusOK, res.HTTPStatus)
 }
 
+func TestHTTPing_WAFMode_and_Options(t *testing.T) {
+	var receivedMethod, receivedUA, receivedSecChUa string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedMethod = r.Method
+		receivedUA = r.Header.Get("User-Agent")
+		receivedSecChUa = r.Header.Get("Sec-Ch-Ua")
+		w.Header().Set("Server", "cloudflare")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	addrParts := strings.Split(strings.TrimPrefix(ts.URL, "http://"), ":")
+	portNum, _ := strconv.Atoi(addrParts[1])
+
+	// 1. Test WAFMode
+	hWAF := NewHTTPing(HTTPOptions{
+		Hostname: addrParts[0],
+		IP:       netip.MustParseAddr(addrParts[0]),
+		Port:     uint16(portNum),
+		Protocol: consts.HTTP,
+		Timeout:  2 * time.Second,
+		WAFMode:  true,
+	})
+	resWAF := hWAF.Ping(context.Background())
+	assert.NoError(t, resWAF.Err)
+	assert.Equal(t, "GET", receivedMethod)
+	assert.Contains(t, receivedUA, "Mozilla/5.0")
+	assert.NotEmpty(t, receivedSecChUa)
+	assert.Contains(t, resWAF.Diagnostics, "WAF: Cloudflare")
+
+	// 2. Test Custom Method and UA
+	hCustom := NewHTTPing(HTTPOptions{
+		Hostname:  addrParts[0],
+		IP:        netip.MustParseAddr(addrParts[0]),
+		Port:      uint16(portNum),
+		Protocol:  consts.HTTP,
+		Timeout:   2 * time.Second,
+		Method:    "POST",
+		UserAgent: "custom-tester/2.0",
+		SendData:  "hello=world",
+	})
+	resCustom := hCustom.Ping(context.Background())
+	assert.NoError(t, resCustom.Err)
+	assert.Equal(t, "POST", receivedMethod)
+	assert.Equal(t, "custom-tester/2.0", receivedUA)
+
+	// 3. Test Default Port Omission in URL
+	hDefaultHTTPS := NewHTTPing(HTTPOptions{
+		Hostname: "example.com",
+		Port:     443,
+		Protocol: consts.HTTPS,
+	})
+	assert.Equal(t, "https://example.com/", hDefaultHTTPS.url)
+
+	hDefaultHTTP := NewHTTPing(HTTPOptions{
+		Hostname: "example.com",
+		Port:     80,
+		Protocol: consts.HTTP,
+	})
+	assert.Equal(t, "http://example.com/", hDefaultHTTP.url)
+
+	hCustomPort := NewHTTPing(HTTPOptions{
+		Hostname: "example.com",
+		Port:     8443,
+		Protocol: consts.HTTPS,
+	})
+	assert.Equal(t, "https://example.com:8443/", hCustomPort.url)
+
+	// 4. Test Multi-Layer WAF Detection (Cloudflare + Imperva)
+	tsMultiWAF := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "cloudflare")
+		w.Header().Set("CF-RAY", "123456-DFW")
+		w.Header().Set("X-CDN", "Imperva")
+		w.Header().Set("X-Iinfo", "8-1234-5678")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tsMultiWAF.Close()
+
+	multiParts := strings.Split(strings.TrimPrefix(tsMultiWAF.URL, "http://"), ":")
+	multiPort, _ := strconv.Atoi(multiParts[1])
+	hMultiWAF := NewHTTPing(HTTPOptions{
+		Hostname: multiParts[0],
+		IP:       netip.MustParseAddr(multiParts[0]),
+		Port:     uint16(multiPort),
+		Protocol: consts.HTTP,
+		Timeout:  2 * time.Second,
+		WAFMode:  true,
+	})
+	resMulti := hMultiWAF.Ping(context.Background())
+	assert.NoError(t, resMulti.Err)
+	assert.Contains(t, resMulti.Diagnostics, "WAF: Cloudflare + Imperva")
+}
+
 func TestUDPing(t *testing.T) {
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	assert.NoError(t, err)

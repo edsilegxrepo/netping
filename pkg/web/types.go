@@ -34,6 +34,9 @@ type TriggerRequest struct {
 	ResolveEveryProbe   bool     `json:"resolve_every_probe"`
 	RetryResolveAfter   uint     `json:"retry_resolve_after"`
 	MaxConsecutiveFails uint     `json:"max_consecutive_fails"`
+	Method              string   `json:"method,omitempty"`
+	UserAgent           string   `json:"user_agent,omitempty"`
+	WAF                 bool     `json:"waf,omitempty"`
 }
 
 // SingleProbeItem represents an individual measurement in a multi-probe execution.

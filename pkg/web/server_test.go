@@ -321,20 +321,46 @@ func TestWebServer_Export_HostSave_AllFormats(t *testing.T) {
 
 	broadcaster := NewBroadcaster()
 	broadcaster.Broadcast(ProbeEvent{
-		Sequence: 1,
-		Success:  true,
-		RTT:      12.5,
-		Target:   "test-export.com:443",
+		Sequence:   1,
+		Success:    true,
+		RTT:        12.5,
+		DNSTime:    1.5,
+		TCPTime:    2.0,
+		TLSTime:    4.5,
+		TTFB:       4.5,
+		HTTPStatus: 200,
+		Target:     "test-export.com:443",
 	})
 	broadcaster.Broadcast(ProbeEvent{
-		Sequence: 2,
-		Success:  true,
-		RTT:      18.5,
-		Target:   "test-export.com:443",
+		Sequence:   2,
+		Success:    true,
+		RTT:        18.5,
+		DNSTime:    1.2,
+		TCPTime:    2.1,
+		TLSTime:    5.0,
+		TTFB:       5.0,
+		HTTPStatus: 200,
+		Target:     "test-export.com:443",
 	})
 
 	server := NewServer("127.0.0.1:0", st, broadcaster)
 	tmpDir := t.TempDir()
+
+	// Verify streaming GET export delivers TTFB fields
+	t.Run("streaming_export_csv_json", func(t *testing.T) {
+		reqCSV := httptest.NewRequest(http.MethodGet, "/api/v1/export?format=csv", nil)
+		wCSV := httptest.NewRecorder()
+		server.handleExport(wCSV, reqCSV)
+		assert.Equal(t, http.StatusOK, wCSV.Code)
+		assert.Contains(t, wCSV.Body.String(), "TTFB_ms")
+		assert.Contains(t, wCSV.Body.String(), "4.50")
+
+		reqJSON := httptest.NewRequest(http.MethodGet, "/api/v1/export?format=json", nil)
+		wJSON := httptest.NewRecorder()
+		server.handleExport(wJSON, reqJSON)
+		assert.Equal(t, http.StatusOK, wJSON.Code)
+		assert.Contains(t, wJSON.Body.String(), `"ttfbMs":4.5`)
+	})
 
 	formats := []string{"json", "pretty_json", "csv", "tsv", "sqlite"}
 	for _, fmtKey := range formats {
@@ -565,4 +591,87 @@ func TestWebServer_URLPrefixAndSubpathRouting(t *testing.T) {
 	w404 := httptest.NewRecorder()
 	server.ServeHTTP(w404, req404)
 	assert.Equal(t, http.StatusNotFound, w404.Code)
+}
+
+func TestLatencyComparison_BreakdownDeliveryAndDashboard(t *testing.T) {
+	// 1. Verify ProbeEvent JSON serialization contains all latency breakdown keys
+	event := ProbeEvent{
+		RawTime:      time.Now(),
+		Sequence:     42,
+		Success:      true,
+		RTT:          156.78,
+		Target:       "example.com:443",
+		Protocol:     "HTTPS",
+		DNSTime:      2.34,
+		TCPTime:      14.56,
+		TLSTime:      35.89,
+		TTFB:         150.12,
+		HTTPStatus:   200,
+		TotalSent:    42,
+		TotalSuccess: 42,
+	}
+
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	jsonStr := string(data)
+	assert.Contains(t, jsonStr, `"dns_time":2.34`)
+	assert.Contains(t, jsonStr, `"tcp_time":14.56`)
+	assert.Contains(t, jsonStr, `"tls_time":35.89`)
+	assert.Contains(t, jsonStr, `"ttfb":150.12`)
+	assert.Contains(t, jsonStr, `"http_status":200`)
+
+	// 2. Verify Broadcaster delivers the breakdown to subscribers and saves history
+	broadcaster := NewBroadcaster()
+	ch := broadcaster.Subscribe()
+	defer broadcaster.Unsubscribe(ch)
+
+	broadcaster.Broadcast(event)
+
+	select {
+	case received := <-ch:
+		assert.Equal(t, 2.34, received.DNSTime)
+		assert.Equal(t, 14.56, received.TCPTime)
+		assert.Equal(t, 35.89, received.TLSTime)
+		assert.Equal(t, 150.12, received.TTFB)
+		assert.Equal(t, 200, received.HTTPStatus)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for broadcast event")
+	}
+
+	// 3. Verify /api/v1/probes returns history containing breakdown fields
+	server := NewServer("127.0.0.1:0", nil, broadcaster)
+	reqProbes := httptest.NewRequest(http.MethodGet, "/api/v1/probes", nil)
+	wProbes := httptest.NewRecorder()
+	server.handleProbes(wProbes, reqProbes)
+	assert.Equal(t, http.StatusOK, wProbes.Code)
+	assert.Contains(t, wProbes.Body.String(), `"dns_time":2.34`)
+	assert.Contains(t, wProbes.Body.String(), `"tcp_time":14.56`)
+	assert.Contains(t, wProbes.Body.String(), `"tls_time":35.89`)
+	assert.Contains(t, wProbes.Body.String(), `"ttfb":150.12`)
+
+	// 4. Verify Dashboard HTML contains Latency Comparison components & modes
+	reqIndex := httptest.NewRequest(http.MethodGet, "/", nil)
+	wIndex := httptest.NewRecorder()
+	server.handleIndex(wIndex, reqIndex)
+	assert.Equal(t, http.StatusOK, wIndex.Code)
+	html := wIndex.Body.String()
+
+	// UI Controls & Toggles
+	assert.Contains(t, html, "btnToggleLatencyComp")
+	assert.Contains(t, html, "latencyModeSelector")
+	assert.Contains(t, html, "btnLatModeCurves")
+	assert.Contains(t, html, "btnLatModeBars")
+	assert.Contains(t, html, "btnLatModeStacked")
+	assert.Contains(t, html, "menuItemLatencyComp")
+
+	// Chart Engine Functions & Logic
+	assert.Contains(t, html, "toggleLatencyComparison")
+	assert.Contains(t, html, "setLatencyCompMode")
+	assert.Contains(t, html, "getPhaseBreakdown")
+	assert.Contains(t, html, "formatTooltipDiags")
+	assert.Contains(t, html, "phaseColors")
+
+	// 5. Verify fleet mode restrictions in HTML script
+	assert.Contains(t, html, "if (isFleetMode) return;")
+	assert.Contains(t, html, "itemLatencyComp.disabled = isChartHidden || isFleetMode;")
 }

@@ -3,6 +3,8 @@ package web
 import (
 	"sync"
 	"time"
+
+	"github.com/edsilegx/netping/pkg/utils"
 )
 
 type ProbeEvent struct {
@@ -21,6 +23,7 @@ type ProbeEvent struct {
 	DNSTime        float64   `json:"dns_time,omitempty"`
 	TCPTime        float64   `json:"tcp_time,omitempty"`
 	TLSTime        float64   `json:"tls_time,omitempty"`
+	TTFB           float64   `json:"ttfb,omitempty"`
 	HTTPStatus     int       `json:"http_status,omitempty"`
 	TotalSent      uint      `json:"total_sent"`
 	TotalSuccess   uint      `json:"total_success"`
@@ -162,6 +165,9 @@ func (b *Broadcaster) Broadcast(event ProbeEvent) {
 	if event.Timestamp == "" {
 		event.Timestamp = event.RawTime.Format("15:04:05.000")
 	}
+
+	event.Diagnostics = utils.SanitizeSingleLine(event.Diagnostics)
+	event.Error = utils.SanitizeSingleLine(event.Error)
 
 	b.history = append(b.history, event)
 	maxCap := b.maxHistory

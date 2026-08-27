@@ -224,3 +224,31 @@ func GenerateSparkline(samples []float32, maxBlocks int) string {
 	}
 	return sb.String()
 }
+
+// SanitizeSingleLine strips newlines, tabs, and unprintable control characters,
+// collapsing whitespace runs into single spaces for clean TUI, REST, SSE, and HTML representation.
+func SanitizeSingleLine(s string) string {
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	lastWasSpace := false
+	for _, r := range s {
+		if r == '\n' || r == '\r' || r == '\t' || r == '\v' || r == '\f' || (r < 32 && r != '\x1b') {
+			if !lastWasSpace {
+				b.WriteByte(' ')
+				lastWasSpace = true
+			}
+		} else if r == ' ' {
+			if !lastWasSpace {
+				b.WriteByte(' ')
+				lastWasSpace = true
+			}
+		} else {
+			b.WriteRune(r)
+			lastWasSpace = false
+		}
+	}
+	return strings.TrimSpace(b.String())
+}

@@ -3,6 +3,7 @@ package printers
 import (
 	"errors"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,4 +156,121 @@ func TestSparklineRenderingModes(t *testing.T) {
 
 	barsModern := renderLatencyBars(rtts, 10)
 	assert.NotEmpty(t, barsModern)
+}
+
+func TestDashboard_FailureMessagesNeverCauseScroll(t *testing.T) {
+	st := &stats.Statistics{
+		WithDiags: true,
+	}
+
+	testSizes := []struct {
+		W int
+		H int
+	}{
+		{W: 80, H: 24},
+		{W: 80, H: 20},
+		{W: 100, H: 25},
+		{W: 120, H: 30},
+		{W: 150, H: 40},
+	}
+
+	for _, size := range testSizes {
+		m := newSingleDashboardModel("gfusw-qecm300-gdwxy.gcp.mongodb.net", 27017, "MONGODBS", st)
+		m.Update(tea.WindowSizeMsg{Width: size.W, Height: size.H})
+
+		failureReasons := []string{
+			"connection timeout after 5000ms",
+			"dial tcp: lookup _mongodb._tcp.gfusw-qecm300-gdwxy.gcp.mongodb.net:\nno such host",
+			"tls: handshake failure: remote error: tls: handshake failure",
+			"read tcp 192.168.1.50:52134->142.250.190.46:443: wsarecv: An existing connection was forcibly closed by the remote host.",
+			"connection refused",
+		}
+
+		for seq := 1; seq <= 30; seq++ {
+			failReason := failureReasons[seq%len(failureReasons)]
+			diag := "DNS: OK │ TLS: Failed │ Status: Error"
+
+			m.Update(singleProbeMsg{
+				stat:        cloneStats(st),
+				isSuccess:   false,
+				failReason:  failReason,
+				timestamp:   time.Now(),
+				seq:         uint(seq),
+				rtt:         0,
+				ip:          "142.250.190.46",
+				diagnostics: diag,
+			})
+
+			view := m.View()
+			lines := strings.Split(view, "\n")
+
+			// Total lines MUST NOT exceed H - 1
+			assert.LessOrEqual(t, len(lines), size.H-1, "Single Dashboard Frame %d at size %dx%d exceeded height limit", seq, size.W, size.H)
+			// Line 0 MUST be top border
+			assert.True(t, strings.HasPrefix(strings.TrimSpace(lines[0]), "╭") || strings.HasPrefix(strings.TrimSpace(lines[0]), "┌"),
+				"Single Dashboard Frame %d: Line 0 is not top border: %q", seq, lines[0])
+			// Line 1 MUST contain header title
+			assert.Contains(t, lines[1], "NETPING DASHBOARD", "Single Dashboard Frame %d: Top header is missing from Line 1", seq)
+			// Bottom border MUST be present at len-2
+			bottomIdx := len(lines) - 2
+			assert.True(t, strings.HasPrefix(strings.TrimSpace(lines[bottomIdx]), "╰") || strings.HasPrefix(strings.TrimSpace(lines[bottomIdx]), "└"),
+				"Single Dashboard Frame %d: Bottom border is missing at line %d: %q", seq, bottomIdx, lines[bottomIdx])
+		}
+
+		// Multi-target fleet with 3 MongoDB cluster replica nodes
+		multiTargets := []FleetTarget{
+			{Target: "gfusw-qecm300-gdwxy-00-00.gcp.mongodb.net:27017", Protocol: "MONGODBS", Stats: &stats.Statistics{}},
+			{Target: "gfusw-qecm300-gdwxy-00-01.gcp.mongodb.net:27017", Protocol: "MONGODBS", Stats: &stats.Statistics{}},
+			{Target: "gfusw-qecm300-gdwxy-00-02.gcp.mongodb.net:27017", Protocol: "MONGODBS", Stats: &stats.Statistics{}},
+		}
+		mm := newMultiDashboardModel(multiTargets)
+		mm.Update(tea.WindowSizeMsg{Width: size.W, Height: size.H})
+
+		for seq := 1; seq <= 30; seq++ {
+			tIdx := seq % len(multiTargets)
+			failReason := failureReasons[seq%len(failureReasons)]
+			mm.Update(multiProbeMsg{
+				target:      multiTargets[tIdx].Target,
+				protocol:    "MONGODBS",
+				rtt:         0,
+				seq:         uint(seq),
+				timestamp:   time.Now(),
+				diagnostics: "TLS: Failed",
+				err:         errors.New(failReason),
+			})
+
+			view := mm.View()
+			lines := strings.Split(view, "\n")
+
+			minHMulti := 16
+			if len(multiTargets) > 2 {
+				minHMulti = 14 + len(multiTargets)*2
+			}
+
+			if size.H < minHMulti {
+				assert.LessOrEqual(t, len(lines), size.H-1)
+				continue
+			}
+
+			assert.LessOrEqual(t, len(lines), size.H-1, "Multi Dashboard Frame %d at size %dx%d exceeded height limit", seq, size.W, size.H)
+			assert.True(t, strings.HasPrefix(strings.TrimSpace(lines[0]), "╭") || strings.HasPrefix(strings.TrimSpace(lines[0]), "┌"),
+				"Multi Dashboard Frame %d: Line 0 is not top border: %q", seq, lines[0])
+			assert.Contains(t, lines[1], "NETPING FLEET DASHBOARD", "Multi Dashboard Frame %d: Top header is missing from Line 1", seq)
+
+			bottomIdx := len(lines) - 2
+			assert.True(t, strings.HasPrefix(strings.TrimSpace(lines[bottomIdx]), "╰") || strings.HasPrefix(strings.TrimSpace(lines[bottomIdx]), "└"),
+				"Multi Dashboard Frame %d: Bottom border is missing at line %d: %q", seq, bottomIdx, lines[bottomIdx])
+		}
+
+		// Verify export modal open state never overflows height
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+		modalViewSingle := m.View()
+		modalLinesSingle := strings.Split(modalViewSingle, "\n")
+		assert.LessOrEqual(t, len(modalLinesSingle), size.H-1, "Single modal at size %dx%d exceeded height limit", size.W, size.H)
+
+		mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+		modalViewMulti := mm.View()
+		modalLinesMulti := strings.Split(modalViewMulti, "\n")
+		assert.LessOrEqual(t, len(modalLinesMulti), size.H-1, "Multi modal at size %dx%d exceeded height limit", size.W, size.H)
+	}
 }

@@ -124,3 +124,22 @@ func TestGenerateSparkline(t *testing.T) {
 	assert.Equal(t, "", GenerateSparkline(nil, 10))
 	assert.Equal(t, "▄", GenerateSparkline([]float32{10}, 10))
 }
+
+func TestSanitizeSingleLine(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"", ""},
+		{"clean text", "clean text"},
+		{"line1\nline2\r\nline3", "line1 line2 line3"},
+		{"tab1\ttab2\t\ttab3", "tab1 tab2 tab3"},
+		{"  lots   of   spaces  ", "lots of spaces"},
+		{"mixed\r\n\t  control\x00\x07characters\v\fhere", "mixed control characters here"},
+	}
+
+	for _, tc := range tests {
+		got := SanitizeSingleLine(tc.input)
+		assert.Equal(t, tc.expected, got)
+	}
+}

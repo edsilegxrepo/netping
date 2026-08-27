@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.6.3 - 2026-08-28
+
+- **WAF-Resilient Probing & Detection Engine (`--waf`)**:
+  - Added dedicated `--waf` preset mode designed for origins protected by Web Application Firewalls (Cloudflare, Imperva/Incapsula, Akamai, AWS CloudFront / AWS WAF, Fastly, F5 BIG-IP / ASM, Sucuri, Azure Front Door).
+  - Emulates modern browser headers (`User-Agent: Chrome/128`, `Sec-Ch-Ua`, `Sec-Fetch-*`, `Accept: text/html,...`, `Accept-Language: en-US,en;q=0.9`, `Upgrade-Insecure-Requests: 1`), defaults HTTP verb to `GET` (bypassing WAF `HEAD` blackholing), and adjusts default timeout to 5.0s to absorb anti-bot JavaScript challenge evaluation delays.
+  - Deep diagnostics (`--diags`) actively inspects response headers, cookies, TLS certificates, and HTML markers to identify and report detected WAF / CDN vendors.
+- **Granular HTTP Method & User-Agent Controls**:
+  - Added `--method <verb>` (alias `--http-method`) allowing explicit selection of HTTP verbs (`GET`, `HEAD`, `POST`, `OPTIONS`, `PUT`, `DELETE`, etc.) for HTTP/HTTPS probes.
+  - Added `--user-agent <string>` (alias `--ua`) for injecting custom User-Agent headers.
+- **RFC-Compliant HTTP/2 `:authority` Port Handling**:
+  - Standardized URL formatting to omit default ports (`:80` for HTTP, `:443` for HTTPS), preventing strict HTTP/2 reverse proxies from dropping streams with explicit standard port suffixes.
+- **MongoDB Atlas & SRV Auto-Discovery (`mongodb+srv`)**:
+  - Added native `mongodb+srv://` URI schema and `--protocol mongodb+srv` (aliases: `mongo+srv`, `mongosrv`, `atlas`) support.
+  - Automatically executes `_mongodb._tcp.<cluster>` DNS SRV queries on Atlas and replica set parent hostnames, resolving all underlying shard member endpoints and probing each node with mandatory TLS (`MONGODBS`).
+- **Web Dashboard Latency Comparison (TTFB Waterfall)**:
+  - Added multi-phase latency breakdown visualization for single-target web monitoring, supporting **Curves**, **Grouped Bars**, and **Stacked 100%** contribution modes for DNS, TCP, TLS, and Server Wait stages.
+
 ## v0.6.2 - 2026-08-27
 
 - **Windows Remote Management (WinRM / WinRMS)**: Added native WS-Management SOAP prober (`--protocol winrm` / `winrms` on Ports 5985/5986) with deep inspection (`--diags`) of OS product versions, authentication schemes (`Negotiate, Kerberos, NTLM, CredSSP`), and TLS ciphers.

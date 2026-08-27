@@ -861,7 +861,7 @@
             <div class="dropdown-menu-header">Dashboard Viewport</div>
             <button class="dropdown-item" id="menuItemMaxChart" onclick="toggleViewMode('maxChart')">
               <span id="menuIconMaxChart">📈</span>
-              <span id="menuTextMaxChart">Maximize Waveform View</span>
+              <span id="menuTextMaxChart">Maximize Graph View</span>
             </button>
             <button class="dropdown-item" id="menuItemMaxStream" onclick="toggleViewMode('maxStream')">
               <span id="menuIconMaxStream">📋</span>
@@ -869,7 +869,19 @@
             </button>
 
             <div class="dropdown-menu-divider"></div>
-            <div class="dropdown-menu-header">Waveform Controls</div>
+            <div class="dropdown-menu-header">Waveform & Latency Breakdown</div>
+            <button class="dropdown-item" id="menuItemLatencyComp" onclick="toggleLatencyComparison()">
+              <span id="menuIconLatencyComp">🔬</span>
+              <span id="menuTextLatencyComp">Latency Comparison (TTFB)</span>
+            </button>
+            <div id="latencyCompSubmenu" style="display: none; padding: 0.35rem 0.65rem 0.55rem 0.65rem; background: rgba(0,0,0,0.3); border-radius: 6px; margin: 0.25rem 0.6rem 0.4rem 0.6rem; border: 1px solid rgba(255,255,255,0.08);">
+              <div style="font-size: 0.68rem; color: var(--text-muted); margin-bottom: 0.35rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Comparison Mode:</div>
+              <div style="display: flex; gap: 0.3rem;">
+                <button id="menuBtnLatModeCurves" class="btn" style="flex: 1; font-size: 0.7rem; padding: 0.2rem 0.35rem; background: rgba(56, 189, 248, 0.25); border-color: var(--accent-cyan); color: var(--accent-cyan);" onclick="setLatencyCompMode('curves'); closeActionMenu();">Curves</button>
+                <button id="menuBtnLatModeBars" class="btn" style="flex: 1; font-size: 0.7rem; padding: 0.2rem 0.35rem; background: rgba(255,255,255,0.05); border-color: var(--border-color); color: var(--text-secondary);" onclick="setLatencyCompMode('bars'); closeActionMenu();">Bars</button>
+                <button id="menuBtnLatModeStacked" class="btn" style="flex: 1; font-size: 0.7rem; padding: 0.2rem 0.35rem; background: rgba(255,255,255,0.05); border-color: var(--border-color); color: var(--text-secondary);" onclick="setLatencyCompMode('stacked'); closeActionMenu();">Stacked %</button>
+              </div>
+            </div>
             <button class="dropdown-item" id="menuItemChartType" onclick="toggleChartType()">
               <span id="menuIconChartType">📊</span>
               <span id="menuTextChartType">Switch to Discrete Bar Mode</span>
@@ -880,7 +892,7 @@
             </button>
             <button class="dropdown-item" id="menuItemExportPng" onclick="exportChartPNG()">
               <span>📸</span>
-              <span>Export Waveform as PNG</span>
+              <span>Export Graph as PNG</span>
             </button>
 
             <div class="dropdown-menu-divider"></div>
@@ -974,9 +986,15 @@
   <div class="chart-container">
     <div class="chart-header">
       <div class="chart-title">
-        <span>Real-Time Latency Waveform</span>
+        <span id="chartMainTitle">Real-Time Latency Waveform</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+        <button id="btnToggleLatencyComp" class="btn" style="font-size: 0.75rem; padding: 0.22rem 0.65rem; background: rgba(168, 85, 247, 0.12); border-color: rgba(168, 85, 247, 0.35); color: #c084fc;" onclick="toggleLatencyComparison()" title="Toggle Detailed DNS, TCP, TLS & Server Latency Breakdown">🔬 Latency Comparison</button>
+        <div id="latencyModeSelector" style="display: none; gap: 0.25rem; align-items: center; background: rgba(0,0,0,0.3); padding: 2px 4px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+          <button id="btnLatModeCurves" class="btn" style="font-size: 0.7rem; padding: 0.15rem 0.45rem; background: rgba(56, 189, 248, 0.25); border-color: var(--accent-cyan); color: var(--accent-cyan); font-weight:700;" onclick="setLatencyCompMode('curves')">Curves</button>
+          <button id="btnLatModeBars" class="btn" style="font-size: 0.7rem; padding: 0.15rem 0.45rem; background: transparent; border-color: transparent; color: var(--text-muted);" onclick="setLatencyCompMode('bars')">Bars</button>
+          <button id="btnLatModeStacked" class="btn" style="font-size: 0.7rem; padding: 0.15rem 0.45rem; background: transparent; border-color: transparent; color: var(--text-muted);" onclick="setLatencyCompMode('stacked')">Stacked %</button>
+        </div>
         <button id="btnResetZoom" class="btn" style="display: none; font-size: 0.75rem; padding: 0.2rem 0.65rem; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: var(--accent-cyan);" onclick="resetChartZoom()" title="Click or Double-Click to Reset Zoom">🔍 Reset Zoom</button>
         <div id="chartLegend" class="chart-legend">
           <span style="font-size: 0.75rem; color: var(--text-muted);">Window: Last 50 Probes</span>
@@ -1230,11 +1248,24 @@
         document.getElementById('fleetAggregateBar').style.display = 'flex';
         document.getElementById('singleKpiGrid').style.display = 'none';
         document.getElementById('fleetSummaryContainer').style.display = 'block';
+
+        if (isLatencyCompActive) {
+          isLatencyCompActive = false;
+          const selector = document.getElementById('latencyModeSelector');
+          if (selector) selector.style.display = 'none';
+          const mainTitle = document.getElementById('chartMainTitle');
+          if (mainTitle) mainTitle.innerText = 'Real-Time Latency Waveform';
+        }
+        const btnHeader = document.getElementById('btnToggleLatencyComp');
+        if (btnHeader) btnHeader.style.display = 'none';
+        const selector = document.getElementById('latencyModeSelector');
+        if (selector) selector.style.display = 'none';
       }
       if (isFleetMode) {
         document.getElementById('fleetTargetCountBadge').innerText = `Targets: ${targetsMap.size}`;
         updateFleetTable();
         updateFleetAggregateBar();
+        updateActionMenuStates();
       }
     }
 
@@ -1314,17 +1345,129 @@
     let zoomRange = null; // { startIdx, endIdx }
     let activeLayoutMode = 'standard'; // 'standard', 'maxChart', 'maxStream'
     let chartVisualizationMode = 'lines'; // 'lines', 'bars'
+    let isLatencyCompActive = false; // off by default
+    let latencyCompMode = 'curves'; // 'curves', 'bars', 'stacked'
     const tooltipEl = document.getElementById('chartTooltip');
     const btnResetZoom = document.getElementById('btnResetZoom');
+
+    const phaseColors = {
+      dns: '#A855F7',     // Purple
+      tcp: '#3B82F6',     // Blue
+      tls: '#10B981',     // Emerald
+      server: '#F59E0B',  // Amber
+      total: '#38BDF8'    // Cyan
+    };
+
+    function getPhaseBreakdown(item) {
+      if (!item || !item.success) {
+        return { dns: 0, tcp: 0, tls: 0, server: 0, total: 0 };
+      }
+      const dns = Math.max(0, item.dns_time || 0);
+      const tcp = Math.max(0, item.tcp_time || 0);
+      const tls = Math.max(0, item.tls_time || 0);
+      let server = 0;
+      if (item.ttfb && item.ttfb > (dns + tcp + tls)) {
+        server = item.ttfb - (dns + tcp + tls);
+      } else if (item.rtt > (dns + tcp + tls)) {
+        server = item.rtt - (dns + tcp + tls);
+      }
+      const total = item.rtt || (dns + tcp + tls + server);
+      return { dns, tcp, tls, server, total };
+    }
+
+    function formatTooltipDiags(diag) {
+      if (!diag) return '';
+      const parts = diag.split(' │ ');
+      const filtered = parts.filter(p => {
+        const s = p.trim();
+        return !s.startsWith('Server:') && !s.startsWith('Proto:') && !s.startsWith('TLS:') && !s.startsWith('CertValid:');
+      });
+      if (filtered.length === 0) return '';
+      return filtered.join(' │ ');
+    }
+
+    function toggleLatencyComparison() {
+      if (isFleetMode) return;
+      isLatencyCompActive = !isLatencyCompActive;
+      const badge = document.getElementById('latencyCompBadge');
+      const selector = document.getElementById('latencyModeSelector');
+      const btnHeader = document.getElementById('btnToggleLatencyComp');
+      const menuText = document.getElementById('menuTextLatencyComp');
+      const menuSub = document.getElementById('latencyCompSubmenu');
+      const mainTitle = document.getElementById('chartMainTitle');
+
+      if (isLatencyCompActive) {
+        if (selector) selector.style.display = 'flex';
+        if (btnHeader) {
+          btnHeader.style.background = 'rgba(168, 85, 247, 0.28)';
+          btnHeader.style.borderColor = '#c084fc';
+          btnHeader.style.color = '#FFFFFF';
+        }
+        if (menuText) menuText.innerText = 'Disable Latency Comparison';
+        if (menuSub) menuSub.style.display = 'block';
+        if (mainTitle) mainTitle.innerText = 'Real-Time Latency Breakdown (DNS / TCP / TLS / Server)';
+      } else {
+        if (selector) selector.style.display = 'none';
+        if (btnHeader) {
+          btnHeader.style.background = 'rgba(168, 85, 247, 0.12)';
+          btnHeader.style.borderColor = 'rgba(168, 85, 247, 0.35)';
+          btnHeader.style.color = '#c084fc';
+        }
+        if (menuText) menuText.innerText = 'Latency Comparison (TTFB)';
+        if (menuSub) menuSub.style.display = 'none';
+        if (mainTitle) mainTitle.innerText = 'Real-Time Latency Waveform';
+      }
+      setLatencyCompMode(latencyCompMode);
+      drawChart();
+    }
+
+    function setLatencyCompMode(mode) {
+      if (isFleetMode) return;
+      latencyCompMode = mode;
+      const modes = ['Curves', 'Bars', 'Stacked'];
+      modes.forEach(m => {
+        const isActive = mode.toLowerCase() === m.toLowerCase();
+        const b = document.getElementById('btnLatMode' + m);
+        const bMenu = document.getElementById('menuBtnLatMode' + m);
+        if (b) {
+          b.style.background = isActive ? 'rgba(56, 189, 248, 0.25)' : 'transparent';
+          b.style.borderColor = isActive ? 'var(--accent-cyan)' : 'transparent';
+          b.style.color = isActive ? 'var(--accent-cyan)' : 'var(--text-muted)';
+          b.style.fontWeight = isActive ? '700' : '500';
+        }
+        if (bMenu) {
+          bMenu.style.background = isActive ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255,255,255,0.05)';
+          bMenu.style.borderColor = isActive ? 'var(--accent-cyan)' : 'var(--border-color)';
+          bMenu.style.color = isActive ? 'var(--accent-cyan)' : 'var(--text-secondary)';
+          bMenu.style.fontWeight = isActive ? '700' : '500';
+        }
+      });
+      drawChart();
+    }
 
     function updateActionMenuStates() {
       const isChartHidden = activeLayoutMode === 'maxStream';
       const isStreamHidden = activeLayoutMode === 'maxChart';
       const isZoomed = zoomRange !== null;
 
+      const itemLatencyComp = document.getElementById('menuItemLatencyComp');
+      const menuTextLatencyComp = document.getElementById('menuTextLatencyComp');
+      const menuSub = document.getElementById('latencyCompSubmenu');
+      if (itemLatencyComp) {
+        itemLatencyComp.disabled = isChartHidden || isFleetMode;
+        if (isFleetMode) {
+          if (menuTextLatencyComp) menuTextLatencyComp.innerText = 'Latency Comparison';
+          if (menuSub) menuSub.style.display = 'none';
+        } else {
+          if (menuTextLatencyComp) {
+            menuTextLatencyComp.innerText = isLatencyCompActive ? 'Disable Latency Comparison' : 'Latency Comparison (TTFB)';
+          }
+        }
+      }
+
       const itemChartType = document.getElementById('menuItemChartType');
       if (itemChartType) {
-        itemChartType.disabled = isChartHidden;
+        itemChartType.disabled = isChartHidden || isLatencyCompActive;
       }
 
       const itemResetZoom = document.getElementById('menuItemResetZoom');
@@ -1381,12 +1524,12 @@
         if (menuTextStream) menuTextStream.innerText = 'Maximize Event Stream';
         if (menuIconStream) menuIconStream.innerText = '📋';
       } else if (activeLayoutMode === 'maxStream') {
-        if (menuTextChart) menuTextChart.innerText = 'Maximize Waveform View';
+        if (menuTextChart) menuTextChart.innerText = 'Maximize Graph View';
         if (menuIconChart) menuIconChart.innerText = '📈';
         if (menuTextStream) menuTextStream.innerText = 'Restore Standard Layout';
         if (menuIconStream) menuIconStream.innerText = '🔲';
       } else {
-        if (menuTextChart) menuTextChart.innerText = 'Maximize Waveform View';
+        if (menuTextChart) menuTextChart.innerText = 'Maximize Graph View';
         if (menuIconChart) menuIconChart.innerText = '📈';
         if (menuTextStream) menuTextStream.innerText = 'Maximize Event Stream';
         if (menuIconStream) menuIconStream.innerText = '📋';
@@ -1469,8 +1612,14 @@
         ctx.fillStyle = '#9CA3AF';
         ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
         ctx.textAlign = 'right';
-        const labelVal = (globalMaxRTT - (globalMaxRTT / 4) * i).toFixed(0);
-        ctx.fillText(`${labelVal}ms`, padLeft - 8, y + 4);
+
+        if (isLatencyCompActive && latencyCompMode === 'stacked') {
+          const pctVal = 100 - i * 25;
+          ctx.fillText(`${pctVal}%`, padLeft - 8, y + 4);
+        } else {
+          const labelVal = (globalMaxRTT - (globalMaxRTT / 4) * i).toFixed(0);
+          ctx.fillText(`${labelVal}ms`, padLeft - 8, y + 4);
+        }
       }
 
       // Collect available timestamps across series for X-axis time scale
@@ -1509,8 +1658,16 @@
         }
       }
 
-      // Update Legend
-      if (targetsMap.size > 1) {
+      // Update Dynamic Legend
+      if (isLatencyCompActive) {
+        chartLegend.innerHTML = `
+          <div class="legend-item"><span class="color-dot" style="background:${phaseColors.dns};"></span><span>DNS</span></div>
+          <div class="legend-item"><span class="color-dot" style="background:${phaseColors.tcp};"></span><span>TCP</span></div>
+          <div class="legend-item"><span class="color-dot" style="background:${phaseColors.tls};"></span><span>TLS</span></div>
+          <div class="legend-item"><span class="color-dot" style="background:${phaseColors.server};"></span><span>Server</span></div>
+          ${latencyCompMode === 'curves' ? `<div class="legend-item"><span class="color-dot" style="background:${phaseColors.total};"></span><span>Total</span></div>` : ''}
+        `;
+      } else if (targetsMap.size > 1) {
         chartLegend.innerHTML = '';
         for (const [name, t] of targetsMap) {
           const item = document.createElement('div');
@@ -1522,15 +1679,190 @@
           `;
           chartLegend.appendChild(item);
         }
+      } else {
+        chartLegend.innerHTML = `<span style="font-size: 0.75rem; color: var(--text-muted);">Window: Last 50 Probes</span>`;
       }
 
-      // Draw Series: Bar Mode or Continuous Line Waveform
       const step = chartW / (viewPoints - 1);
       const pointsToHighlight = [];
       const targetEntries = Array.from(targetsMap.entries());
       const numTargets = Math.max(1, targetEntries.length);
 
-      if (chartVisualizationMode === 'bars') {
+      if (isLatencyCompActive) {
+        // =========================================================================
+        // LATENCY COMPARISON MODES (Curves, Bars, Stacked 100%)
+        // =========================================================================
+        const primaryTarget = targetEntries[0] ? targetEntries[0][1] : null;
+        if (primaryTarget && primaryTarget.history.length > 0) {
+          const offset = maxDataPoints - primaryTarget.history.length;
+
+          if (latencyCompMode === 'stacked') {
+            // STACKED 100% CONTRIBUTION MODE
+            const slotWidth = Math.max(2, step * 0.82);
+
+            for (let i = 0; i < primaryTarget.history.length; i++) {
+              const globalIdx = offset + i;
+              if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+              const item = primaryTarget.history[i];
+              const p = getPhaseBreakdown(item);
+              const colCenterX = padLeft + (globalIdx - viewStart) * step;
+              const barX = colCenterX - (slotWidth / 2);
+
+              if (!item.success || p.total <= 0) {
+                ctx.fillStyle = '#EF4444';
+                ctx.fillRect(barX, 10, slotWidth, chartH);
+              } else {
+                let curY = 10 + chartH;
+
+                // 1. DNS segment
+                const hDNS = (p.dns / p.total) * chartH;
+                if (hDNS > 0) {
+                  curY -= hDNS;
+                  ctx.fillStyle = phaseColors.dns;
+                  ctx.fillRect(barX, curY, slotWidth, hDNS);
+                }
+
+                // 2. TCP segment
+                const hTCP = (p.tcp / p.total) * chartH;
+                if (hTCP > 0) {
+                  curY -= hTCP;
+                  ctx.fillStyle = phaseColors.tcp;
+                  ctx.fillRect(barX, curY, slotWidth, hTCP);
+                }
+
+                // 3. TLS segment
+                const hTLS = (p.tls / p.total) * chartH;
+                if (hTLS > 0) {
+                  curY -= hTLS;
+                  ctx.fillStyle = phaseColors.tls;
+                  ctx.fillRect(barX, curY, slotWidth, hTLS);
+                }
+
+                // 4. Server Wait segment (fills the rest)
+                const hServer = curY - 10;
+                if (hServer > 0) {
+                  ctx.fillStyle = phaseColors.server;
+                  ctx.fillRect(barX, 10, slotWidth, hServer);
+                }
+              }
+
+              if (hoverState && hoverState.colIdx === globalIdx) {
+                pointsToHighlight.push({
+                  x: colCenterX,
+                  y: 10 + chartH / 2,
+                  color: phaseColors.total,
+                  item,
+                  targetName: primaryTarget.target,
+                  breakdown: p
+                });
+              }
+            }
+          } else if (latencyCompMode === 'bars') {
+            // GROUPED BARS MODE (DNS, TCP, TLS, Server side-by-side)
+            const slotWidth = step * 0.84;
+            const subBarWidth = Math.max(1.5, (slotWidth / 4) - 1);
+
+            for (let i = 0; i < primaryTarget.history.length; i++) {
+              const globalIdx = offset + i;
+              if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+              const item = primaryTarget.history[i];
+              const p = getPhaseBreakdown(item);
+              const colCenterX = padLeft + (globalIdx - viewStart) * step;
+              const startX = colCenterX - (slotWidth / 2);
+
+              const phases = [
+                { val: p.dns, color: phaseColors.dns },
+                { val: p.tcp, color: phaseColors.tcp },
+                { val: p.tls, color: phaseColors.tls },
+                { val: p.server, color: phaseColors.server }
+              ];
+
+              phases.forEach((ph, pIdx) => {
+                const barX = startX + pIdx * (subBarWidth + 1);
+                const barH = item.success ? Math.max(1, (ph.val / globalMaxRTT) * chartH) : chartH * 0.15;
+                const barY = 10 + chartH - barH;
+                ctx.fillStyle = item.success ? ph.color : '#EF4444';
+                ctx.fillRect(barX, barY, subBarWidth, barH);
+              });
+
+              if (hoverState && hoverState.colIdx === globalIdx) {
+                pointsToHighlight.push({
+                  x: colCenterX,
+                  y: 10 + chartH - (p.total / globalMaxRTT) * chartH,
+                  color: phaseColors.total,
+                  item,
+                  targetName: primaryTarget.target,
+                  breakdown: p
+                });
+              }
+            }
+          } else {
+            // CURVES MODE (Overlay Line Waveforms for all 5 metrics)
+            const metrics = [
+              { key: 'dns', color: phaseColors.dns, width: 2, label: 'DNS' },
+              { key: 'tcp', color: phaseColors.tcp, width: 2, label: 'TCP' },
+              { key: 'tls', color: phaseColors.tls, width: 2, label: 'TLS' },
+              { key: 'server', color: phaseColors.server, width: 2, label: 'Server' },
+              { key: 'total', color: phaseColors.total, width: 2.6, label: 'Total RTT' }
+            ];
+
+            metrics.forEach(m => {
+              ctx.beginPath();
+              let first = true;
+              for (let i = 0; i < primaryTarget.history.length; i++) {
+                const globalIdx = offset + i;
+                if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+                const item = primaryTarget.history[i];
+                const p = getPhaseBreakdown(item);
+                const x = padLeft + (globalIdx - viewStart) * step;
+                const val = item.success ? p[m.key] : 0;
+                const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+
+                if (first) {
+                  ctx.moveTo(x, y);
+                  first = false;
+                } else {
+                  ctx.lineTo(x, y);
+                }
+              }
+              ctx.strokeStyle = m.color;
+              ctx.lineWidth = m.width;
+              ctx.stroke();
+            });
+
+            // Draw individual dots on the Total line
+            for (let i = 0; i < primaryTarget.history.length; i++) {
+              const globalIdx = offset + i;
+              if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+              const item = primaryTarget.history[i];
+              const p = getPhaseBreakdown(item);
+              const x = padLeft + (globalIdx - viewStart) * step;
+              const y = 10 + chartH - (p.total / globalMaxRTT) * chartH;
+
+              ctx.beginPath();
+              ctx.arc(x, y, item.success ? 3.5 : 4.5, 0, Math.PI * 2);
+              ctx.fillStyle = item.success ? phaseColors.total : '#EF4444';
+              ctx.fill();
+
+              if (hoverState && hoverState.colIdx === globalIdx) {
+                pointsToHighlight.push({
+                  x,
+                  y,
+                  color: phaseColors.total,
+                  item,
+                  targetName: primaryTarget.target,
+                  breakdown: p
+                });
+              }
+            }
+          }
+        }
+      } else if (chartVisualizationMode === 'bars') {
+        // Standard Bar Mode
         const slotWidth = step * 0.82;
         const subBarWidth = Math.max(2, (slotWidth / numTargets) - 1);
 
@@ -1558,7 +1890,7 @@
           }
         });
       } else {
-        // Continuous Line Waveform Mode
+        // Standard Continuous Line Waveform Mode
         for (const [_, t] of targetsMap) {
           if (t.history.length === 0) continue;
           const offset = maxDataPoints - t.history.length;
@@ -1658,29 +1990,49 @@
         // Render Tooltip Card
         if (pointsToHighlight.length > 0) {
           const firstPt = pointsToHighlight[0];
-          let tooltipHTML = `<div style="font-weight:700; color:var(--accent-cyan); border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px; margin-bottom:4px; display:flex; justify-content:space-between; gap:8px;"><span>Seq #${firstPt.item.sequence}</span><span>${firstPt.item.timestamp}</span></div>`;
-          for (const pt of pointsToHighlight) {
-            const rttStr = pt.item.success ? `${pt.item.rtt.toFixed(2)} ms` : '<span style="color:var(--accent-rose)">FAILED</span>';
-            const diagStr = pt.item.diagnostics ? ` <span style="opacity:0.65">(${pt.item.diagnostics})</span>` : '';
+          let tooltipHTML = `<div style="font-weight:700; color:var(--accent-cyan); border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px; margin-bottom:5px; display:flex; justify-content:space-between; gap:8px;"><span>Seq #${firstPt.item.sequence}</span><span>${firstPt.item.timestamp}</span></div>`;
+
+          if (isLatencyCompActive && firstPt.breakdown) {
+            const p = firstPt.breakdown;
+            const dnsPct = p.total > 0 ? (p.dns / p.total) * 100 : 0;
+            const tcpPct = p.total > 0 ? (p.tcp / p.total) * 100 : 0;
+            const tlsPct = p.total > 0 ? (p.tls / p.total) * 100 : 0;
+            const srvPct = p.total > 0 ? (p.server / p.total) * 100 : 0;
+
             tooltipHTML += `
-              <div style="display:flex; align-items:center; gap:6px; margin-top:3px;">
-                <span class="color-dot" style="background-color:${pt.color};"></span>
-                <span style="font-weight:600;">${pt.targetName}:</span>
-                <span style="color:${pt.item.success ? 'var(--text-main)' : 'var(--accent-rose)'}; font-weight:700;">${rttStr}</span>
-                ${diagStr}
-              </div>
+              <table style="width:100%; font-size:0.75rem; border-collapse:collapse; line-height:1.4;">
+                <tr><td style="color:${phaseColors.dns}; padding:2px 4px;">🟣 DNS Lookup</td><td style="text-align:right; font-weight:600; font-family:monospace;">${p.dns.toFixed(2)} ms</td><td style="text-align:right; opacity:0.75; padding-left:8px; font-family:monospace;">${dnsPct.toFixed(1)}%</td></tr>
+                <tr><td style="color:${phaseColors.tcp}; padding:2px 4px;">🔵 TCP Connect</td><td style="text-align:right; font-weight:600; font-family:monospace;">${p.tcp.toFixed(2)} ms</td><td style="text-align:right; opacity:0.75; padding-left:8px; font-family:monospace;">${tcpPct.toFixed(1)}%</td></tr>
+                <tr><td style="color:${phaseColors.tls}; padding:2px 4px;">🟢 TLS Handshake</td><td style="text-align:right; font-weight:600; font-family:monospace;">${p.tls.toFixed(2)} ms</td><td style="text-align:right; opacity:0.75; padding-left:8px; font-family:monospace;">${tlsPct.toFixed(1)}%</td></tr>
+                <tr><td style="color:${phaseColors.server}; padding:2px 4px;">🟡 Server Wait</td><td style="text-align:right; font-weight:600; font-family:monospace;">${p.server.toFixed(2)} ms</td><td style="text-align:right; opacity:0.75; padding-left:8px; font-family:monospace;">${srvPct.toFixed(1)}%</td></tr>
+                <tr style="border-top:1px solid rgba(255,255,255,0.18); font-weight:700;"><td style="color:${phaseColors.total}; padding:3px 4px;">🔷 Total Latency</td><td style="text-align:right; color:${phaseColors.total}; font-family:monospace;">${p.total.toFixed(2)} ms</td><td style="text-align:right; color:${phaseColors.total}; padding-left:8px; font-family:monospace;">100%</td></tr>
+              </table>
             `;
+          } else {
+            for (const pt of pointsToHighlight) {
+              const rttStr = pt.item.success ? `${pt.item.rtt.toFixed(2)} ms` : '<span style="color:var(--accent-rose)">FAILED</span>';
+              const cleanDiag = formatTooltipDiags(pt.item.diagnostics);
+              const diagStr = cleanDiag ? ` <span style="opacity:0.75; font-size:0.75rem; color:var(--text-secondary);">(${cleanDiag})</span>` : '';
+              tooltipHTML += `
+                <div style="display:flex; align-items:center; gap:6px; margin-top:3px;">
+                  <span class="color-dot" style="background-color:${pt.color};"></span>
+                  <span style="font-weight:600;">${pt.targetName}:</span>
+                  <span style="color:${pt.item.success ? 'var(--text-main)' : 'var(--accent-rose)'}; font-weight:700;">${rttStr}</span>
+                  ${diagStr}
+                </div>
+              `;
+            }
           }
           tooltipEl.innerHTML = tooltipHTML;
           tooltipEl.style.display = 'block';
 
           let tooltipLeft = hoverState.x + 15;
           let tooltipTop = hoverState.y - 20;
-          if (tooltipLeft + 210 > w) {
-            tooltipLeft = hoverState.x - 220;
+          if (tooltipLeft + 250 > w) {
+            tooltipLeft = hoverState.x - 260;
           }
           if (tooltipTop < 10) tooltipTop = 10;
-          if (tooltipTop + 100 > h) tooltipTop = h - 100;
+          if (tooltipTop + 140 > h) tooltipTop = h - 140;
           tooltipEl.style.left = `${tooltipLeft}px`;
           tooltipEl.style.top = `${tooltipTop}px`;
         } else {
@@ -2001,6 +2353,7 @@
       }
       globalMaxRTT *= 1.25;
 
+      // Draw Y-Axis Grid lines & labels
       targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
       targetCtx.lineWidth = 1;
       for (let i = 0; i <= 4; i++) {
@@ -2013,10 +2366,17 @@
         targetCtx.fillStyle = '#9CA3AF';
         targetCtx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
         targetCtx.textAlign = 'right';
-        const labelVal = (globalMaxRTT - (globalMaxRTT / 4) * i).toFixed(0);
-        targetCtx.fillText(`${labelVal}ms`, padLeft - 8, y + 4);
+
+        if (isLatencyCompActive && latencyCompMode === 'stacked') {
+          const pctVal = 100 - i * 25;
+          targetCtx.fillText(`${pctVal}%`, padLeft - 8, y + 4);
+        } else {
+          const labelVal = (globalMaxRTT - (globalMaxRTT / 4) * i).toFixed(0);
+          targetCtx.fillText(`${labelVal}ms`, padLeft - 8, y + 4);
+        }
       }
 
+      // X-Axis Time Ticks
       const numTicks = 5;
       for (let stepIdx = 0; stepIdx < numTicks; stepIdx++) {
         const targetFraction = stepIdx / (numTicks - 1);
@@ -2053,7 +2413,132 @@
       const targetEntries = Array.from(targetsMap.entries());
       const numTargets = Math.max(1, targetEntries.length);
 
-      if (chartVisualizationMode === 'bars') {
+      if (isLatencyCompActive) {
+        const primaryTarget = targetEntries[0] ? targetEntries[0][1] : null;
+        if (primaryTarget && primaryTarget.history.length > 0) {
+          const offset = maxDataPoints - primaryTarget.history.length;
+
+          if (latencyCompMode === 'stacked') {
+            const slotWidth = Math.max(2, step * 0.82);
+            for (let i = 0; i < primaryTarget.history.length; i++) {
+              const globalIdx = offset + i;
+              if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+              const item = primaryTarget.history[i];
+              const p = getPhaseBreakdown(item);
+              const colCenterX = padLeft + (globalIdx - viewStart) * step;
+              const barX = colCenterX - (slotWidth / 2);
+
+              if (!item.success || p.total <= 0) {
+                targetCtx.fillStyle = '#EF4444';
+                targetCtx.fillRect(barX, 10, slotWidth, chartH);
+              } else {
+                let curY = 10 + chartH;
+                const hDNS = (p.dns / p.total) * chartH;
+                if (hDNS > 0) {
+                  curY -= hDNS;
+                  targetCtx.fillStyle = phaseColors.dns;
+                  targetCtx.fillRect(barX, curY, slotWidth, hDNS);
+                }
+                const hTCP = (p.tcp / p.total) * chartH;
+                if (hTCP > 0) {
+                  curY -= hTCP;
+                  targetCtx.fillStyle = phaseColors.tcp;
+                  targetCtx.fillRect(barX, curY, slotWidth, hTCP);
+                }
+                const hTLS = (p.tls / p.total) * chartH;
+                if (hTLS > 0) {
+                  curY -= hTLS;
+                  targetCtx.fillStyle = phaseColors.tls;
+                  targetCtx.fillRect(barX, curY, slotWidth, hTLS);
+                }
+                const hServer = curY - 10;
+                if (hServer > 0) {
+                  targetCtx.fillStyle = phaseColors.server;
+                  targetCtx.fillRect(barX, 10, slotWidth, hServer);
+                }
+              }
+            }
+          } else if (latencyCompMode === 'bars') {
+            const slotWidth = step * 0.84;
+            const subBarWidth = Math.max(1.5, (slotWidth / 4) - 1);
+
+            for (let i = 0; i < primaryTarget.history.length; i++) {
+              const globalIdx = offset + i;
+              if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+              const item = primaryTarget.history[i];
+              const p = getPhaseBreakdown(item);
+              const colCenterX = padLeft + (globalIdx - viewStart) * step;
+              const startX = colCenterX - (slotWidth / 2);
+
+              const phases = [
+                { val: p.dns, color: phaseColors.dns },
+                { val: p.tcp, color: phaseColors.tcp },
+                { val: p.tls, color: phaseColors.tls },
+                { val: p.server, color: phaseColors.server }
+              ];
+
+              phases.forEach((ph, pIdx) => {
+                const barX = startX + pIdx * (subBarWidth + 1);
+                const barH = item.success ? Math.max(1, (ph.val / globalMaxRTT) * chartH) : chartH * 0.15;
+                const barY = 10 + chartH - barH;
+                targetCtx.fillStyle = item.success ? ph.color : '#EF4444';
+                targetCtx.fillRect(barX, barY, subBarWidth, barH);
+              });
+            }
+          } else {
+            // Curves Mode
+            const metrics = [
+              { key: 'dns', color: phaseColors.dns, width: 2 },
+              { key: 'tcp', color: phaseColors.tcp, width: 2 },
+              { key: 'tls', color: phaseColors.tls, width: 2 },
+              { key: 'server', color: phaseColors.server, width: 2 },
+              { key: 'total', color: phaseColors.total, width: 2.6 }
+            ];
+
+            metrics.forEach(m => {
+              targetCtx.beginPath();
+              let first = true;
+              for (let i = 0; i < primaryTarget.history.length; i++) {
+                const globalIdx = offset + i;
+                if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+                const item = primaryTarget.history[i];
+                const p = getPhaseBreakdown(item);
+                const x = padLeft + (globalIdx - viewStart) * step;
+                const val = item.success ? p[m.key] : 0;
+                const y = 10 + chartH - (val / globalMaxRTT) * chartH;
+
+                if (first) {
+                  targetCtx.moveTo(x, y);
+                  first = false;
+                } else {
+                  targetCtx.lineTo(x, y);
+                }
+              }
+              targetCtx.strokeStyle = m.color;
+              targetCtx.lineWidth = m.width;
+              targetCtx.stroke();
+            });
+
+            for (let i = 0; i < primaryTarget.history.length; i++) {
+              const globalIdx = offset + i;
+              if (globalIdx < viewStart || globalIdx > viewEnd) continue;
+
+              const item = primaryTarget.history[i];
+              const p = getPhaseBreakdown(item);
+              const x = padLeft + (globalIdx - viewStart) * step;
+              const y = 10 + chartH - (p.total / globalMaxRTT) * chartH;
+
+              targetCtx.beginPath();
+              targetCtx.arc(x, y, item.success ? 3.5 : 4.5, 0, Math.PI * 2);
+              targetCtx.fillStyle = item.success ? phaseColors.total : '#EF4444';
+              targetCtx.fill();
+            }
+          }
+        }
+      } else if (chartVisualizationMode === 'bars') {
         const slotWidth = step * 0.82;
         const subBarWidth = Math.max(2, (slotWidth / numTargets) - 1);
 
@@ -2404,21 +2889,48 @@
         octx.textAlign = 'left';
         octx.fillStyle = '#F3F4F6';
         octx.font = '700 13px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-        octx.fillText('Real-Time Latency Waveform', 32, chartCardY + 25);
+        if (isLatencyCompActive) {
+          octx.fillText('Real-Time Latency Breakdown (DNS / TCP / TLS / Server)', 32, chartCardY + 25);
+        } else {
+          octx.fillText(chartVisualizationMode === 'bars' ? 'Real-Time Latency (Discrete Bars)' : 'Real-Time Latency Waveform', 32, chartCardY + 25);
+        }
 
         // Legend items
-        let legendX = 260;
-        for (const [name, t] of targetsMap) {
-          if (legendX + 160 < exportW - 180) {
-            octx.beginPath();
-            octx.arc(legendX, chartCardY + 21, 4, 0, Math.PI * 2);
-            octx.fillStyle = t.color;
-            octx.fill();
+        let legendX = isLatencyCompActive ? 490 : 260;
+        if (isLatencyCompActive) {
+          const legItems = [
+            { label: 'DNS', color: phaseColors.dns },
+            { label: 'TCP', color: phaseColors.tcp },
+            { label: 'TLS', color: phaseColors.tls },
+            { label: 'Server', color: phaseColors.server }
+          ];
+          if (latencyCompMode === 'curves') legItems.push({ label: 'Total', color: phaseColors.total });
+          legItems.forEach(item => {
+            if (legendX + 70 < exportW - 180) {
+              octx.beginPath();
+              octx.arc(legendX, chartCardY + 21, 4, 0, Math.PI * 2);
+              octx.fillStyle = item.color;
+              octx.fill();
 
-            octx.fillStyle = '#9CA3AF';
-            octx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-            octx.fillText(name, legendX + 10, chartCardY + 25);
-            legendX += (name.length * 7.5 + 40);
+              octx.fillStyle = '#9CA3AF';
+              octx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+              octx.fillText(item.label, legendX + 10, chartCardY + 25);
+              legendX += (item.label.length * 7.5 + 40);
+            }
+          });
+        } else {
+          for (const [name, t] of targetsMap) {
+            if (legendX + 160 < exportW - 180) {
+              octx.beginPath();
+              octx.arc(legendX, chartCardY + 21, 4, 0, Math.PI * 2);
+              octx.fillStyle = t.color;
+              octx.fill();
+
+              octx.fillStyle = '#9CA3AF';
+              octx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+              octx.fillText(name, legendX + 10, chartCardY + 25);
+              legendX += (name.length * 7.5 + 40);
+            }
           }
         }
 
@@ -2427,7 +2939,7 @@
         octx.textAlign = 'right';
         octx.fillStyle = '#6B7280';
         octx.font = '500 10.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-        octx.fillText(`Window: Last ${activePoints} Probes`, exportW - 32, chartCardY + 25);
+        octx.fillText(zoomRange ? `Window: Zoomed (${activePoints} Probes)` : `Window: Last ${activePoints} Probes`, exportW - 32, chartCardY + 25);
 
         // 5. Render Chart into offscreen canvas
         const chartInnerW = exportW - 48;

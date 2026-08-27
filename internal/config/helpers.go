@@ -120,6 +120,43 @@ func splitAndTrimComma(s string) []string {
 	return res
 }
 
+// ResolveMongoSRV performs a DNS SRV query on _mongodb._tcp.<clusterHost> to discover all MongoDB replica set / shard nodes.
+func ResolveMongoSRV(clusterHost, serviceName, originalURI string) ([]TargetDef, error) {
+	cleanHost := strings.TrimSpace(clusterHost)
+	if cleanHost == "" {
+		return nil, fmt.Errorf("empty mongodb cluster hostname")
+	}
+
+	_, addrs, err := net.LookupSRV("mongodb", "tcp", cleanHost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve MongoDB SRV records for %q: %w", cleanHost, err)
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("no MongoDB SRV records found for %q", cleanHost)
+	}
+
+	var targets []TargetDef
+	for _, addr := range addrs {
+		nodeHost := strings.TrimSuffix(addr.Target, ".")
+		port := addr.Port
+		if port == 0 {
+			port = 27017
+		}
+		uri := originalURI
+		if uri == "" {
+			uri = fmt.Sprintf("mongodb+srv://%s", cleanHost)
+		}
+		targets = append(targets, TargetDef{
+			Host:        nodeHost,
+			Port:        port,
+			Protocol:    consts.MONGODBS, // MongoDB Atlas / SRV clusters require TLS
+			ServiceName: serviceName,
+			URI:         uri,
+		})
+	}
+	return targets, nil
+}
+
 // ResolveTargetPool parses --host, --port, --uri, and --protocol inputs into a slice of TargetDefs.
 func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) ([]TargetDef, error) {
 	var targets []TargetDef
@@ -151,6 +188,14 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 				}
 			} else {
 				h, p = ParseHostPort(targetPart, 0)
+			}
+
+			if proto == consts.MONGODBSRV || strings.HasPrefix(strings.ToLower(raw), "mongodb+srv://") || strings.HasPrefix(strings.ToLower(raw), "mongo+srv://") || (strings.HasSuffix(strings.ToLower(h), ".mongodb.net") && (proto == consts.MONGODB || proto == consts.MONGODBS)) {
+				srvTargets, err := ResolveMongoSRV(h, serviceName, raw)
+				if err == nil && len(srvTargets) > 0 {
+					targets = append(targets, srvTargets...)
+					continue
+				}
 			}
 
 			if p == 0 {
@@ -224,6 +269,13 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 		// Multi-protocol / default protocol auto-port
 		for _, host := range hosts {
 			for _, proto := range protocols {
+				if proto == consts.MONGODBSRV || (strings.HasSuffix(strings.ToLower(host), ".mongodb.net") && (proto == consts.MONGODB || proto == consts.MONGODBS || proto == consts.TCP)) {
+					srvTargets, err := ResolveMongoSRV(host, serviceName, "")
+					if err == nil && len(srvTargets) > 0 {
+						targets = append(targets, srvTargets...)
+						continue
+					}
+				}
 				_, defPortStr, _ := ResolveProtocolAndPort(string(proto), "", "")
 				defPort, _ := strconv.Atoi(defPortStr)
 				if defPort == 0 {
@@ -296,7 +348,6 @@ TARGET CONFIGURATION:
   --uri <uris>               Target URI(s) in host:port or scheme://host:port format.
   --protocol <proto>         Probe protocol (tcp, http, https, grpc, dns, redis, postgresql, kerberos, oidc, saml, oauth2, sso, ...).
   --service <name>           Service name / SID for Oracle database connections.
-  --oracle-service <name>    Alias for --service.
   --dns-host <domains>       Domain(s) to resolve in DNS query mode (comma-separated).
 
 PROBE EXECUTION & TIMING:
@@ -322,6 +373,11 @@ SLA & ERROR HANDLING:
 PROTOCOL & PAYLOAD OPTIONS:
   --send <data>              Send specific payload string upon connection.
   --expect <data>            Expect specific response string in banner.
+  --method <verb>            HTTP method for HTTP/HTTPS probes (GET, HEAD, POST, ...).
+  --http-method <verb>       Alias for --method.
+  --user-agent <string>      Custom User-Agent header for HTTP/HTTPS probes.
+  --ua <string>              Alias for --user-agent.
+  --waf                      WAF-resilient mode: browser headers, GET method, 5s timeout, WAF detection.
   --starttls                 Upgrade connection via STARTTLS (SMTP, IMAP, POP3).
   --fast-close               Use SO_LINGER=0 to avoid TIME_WAIT socket accumulation.
   --traceroute               Perform hop-by-hop Layer-4 route discovery.
@@ -329,10 +385,18 @@ PROTOCOL & PAYLOAD OPTIONS:
 DASHBOARD & WEB MONITORING:
   --dashboard                Open interactive live terminal TUI dashboard.
   --web                      Start embedded real-time web dashboard (default 127.0.0.1:3000).
-  --web-addr <addr>          Custom listen address for web dashboard (e.g. :3000).
+  --listen <addr>            Listen address for web dashboard & REST API (default: 127.0.0.1:3000, e.g. :3000).
+  --url-prefix <path>        URL subpath prefix when running behind a reverse proxy (e.g. /probe).
   --metrics-addr <addr>      Enable Prometheus metrics exporter on given address (e.g. :9100).
   --history-limit <n>        Maximum in-memory historical probe events retained (default: 1000000, max: 5000000).
   --sparkline                Render live terminal latency sparklines.
+
+DYNAMIC TRIGGERING & REST API:
+  --trigger-mode             Start in trigger-only mode without initial targets.
+  --trigger-concurrency <n>  Maximum concurrent dynamic probe workers (default: 100).
+  --generate-api-key <path>  Generate a 256-bit API key, compute Argon2id hash, and save to keystore file.
+  --api-key-store <path>     Path to API key keystore file for Trigger mode authentication.
+  --api-key-hash <hash>      Inline Argon2id hash string for Trigger mode authentication.
 
 OUTPUT & REPORTING:
   --output-format <format>   Export format: json, pretty_json, csv, tsv, sqlite, txt.
@@ -343,6 +407,7 @@ OUTPUT & REPORTING:
   --timestamp                Show timestamp for each probe in output.
   --diags, --diagnostics     Show detailed protocol negotiation diagnostics.
   --no-color                 Do not colorize terminal output.
+  --legacy-console           Use CP437/ASCII fallback glyphs and square borders for legacy terminals (PuTTY, cmd.exe).
 
 GENERAL:
   --help                     Show this help message and exit.

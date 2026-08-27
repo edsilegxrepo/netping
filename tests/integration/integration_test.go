@@ -595,7 +595,7 @@ func TestLive_CLI_FlagCombinations_E2E(t *testing.T) {
 			"--host", "1.1.1.1",
 			"--port", "443",
 			"--web",
-			"--web-addr", ":8080",
+			"--listen", ":8080",
 			"--metrics-addr", ":9090",
 			"--dashboard",
 			"--traceroute",
@@ -1459,12 +1459,17 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 	broadcaster := web.NewBroadcaster()
 	for i := 1; i <= 5; i++ {
 		broadcaster.Broadcast(web.ProbeEvent{
-			Sequence: uint(i),
-			Success:  true,
-			RTT:      float64(i) * 3.5,
-			Target:   "api-e2e.example.com:443",
-			Protocol: "HTTPS",
-			IP:       "1.1.1.1",
+			Sequence:   uint(i),
+			Success:    true,
+			RTT:        float64(i) * 3.5,
+			DNSTime:    1.0,
+			TCPTime:    1.5,
+			TLSTime:    2.5,
+			TTFB:       2.5,
+			HTTPStatus: 200,
+			Target:     "api-e2e.example.com:443",
+			Protocol:   "HTTPS",
+			IP:         "1.1.1.1",
 		})
 	}
 
@@ -1597,12 +1602,17 @@ func TestLive_Web_REST_API_Full_E2E(t *testing.T) {
 		defer func() { _ = respJSON.Body.Close() }()
 		assert.Equal(t, http.StatusOK, respJSON.StatusCode)
 		assert.Equal(t, "application/json", respJSON.Header.Get("Content-Type"))
+		bodyJSON, _ := io.ReadAll(respJSON.Body)
+		assert.Contains(t, string(bodyJSON), `"ttfbMs":2.5`)
 
 		respCSV, err := client.Get(baseURL + "/api/v1/export?format=csv")
 		require.NoError(t, err)
 		defer func() { _ = respCSV.Body.Close() }()
 		assert.Equal(t, http.StatusOK, respCSV.StatusCode)
 		assert.Equal(t, "text/csv", respCSV.Header.Get("Content-Type"))
+		bodyCSV, _ := io.ReadAll(respCSV.Body)
+		assert.Contains(t, string(bodyCSV), "TTFB_ms")
+		assert.Contains(t, string(bodyCSV), "2.50")
 	})
 
 	// 9. POST /api/v1/export (host file save)
@@ -2029,7 +2039,7 @@ func TestLive_HashiCorpVault_E2E(t *testing.T) {
 func TestLive_Entra_CLI_Diags_E2E(t *testing.T) {
 	binPath := filepath.Join("..", "..", "bin", "netping")
 	if runtime.GOOS == "windows" {
-		binPath = filepath.Join("..", "..", "netping.exe")
+		binPath = filepath.Join("..", "..", "bin", "netping.exe")
 	}
 
 	cmd := exec.Command(binPath, "--protocol", "entra", "--count", "1", "--diags")
@@ -2046,7 +2056,7 @@ func TestLive_Entra_CLI_Diags_E2E(t *testing.T) {
 func TestLive_KMS_CLI_Diags_E2E(t *testing.T) {
 	binPath := filepath.Join("..", "..", "bin", "netping")
 	if runtime.GOOS == "windows" {
-		binPath = filepath.Join("..", "..", "netping.exe")
+		binPath = filepath.Join("..", "..", "bin", "netping.exe")
 	}
 
 	cmd := exec.Command(binPath, "--host", "kms.us-east-1.amazonaws.com", "--protocol", "kms", "--count", "1", "--diags")
@@ -2058,4 +2068,60 @@ func TestLive_KMS_CLI_Diags_E2E(t *testing.T) {
 	assert.Contains(t, out, "[DIAG]")
 	assert.Contains(t, out, "Vault: AWS Key Management Service")
 	assert.Contains(t, out, "AmznReqID:")
+}
+
+func TestLive_WAF_CLI_Diags_E2E(t *testing.T) {
+	binPath := filepath.Join("..", "..", "bin", "netping")
+	if runtime.GOOS == "windows" {
+		binPath = filepath.Join("..", "..", "bin", "netping.exe")
+	}
+
+	cmd := exec.Command(binPath, "--host", "www.google.com", "--protocol", "https", "--waf", "--count", "1", "--diags")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+
+	out := string(output)
+	assert.Contains(t, out, "Reply from www.google.com")
+	assert.Contains(t, out, "[DIAG]")
+	assert.Contains(t, out, "Status: 200 OK")
+	assert.Contains(t, out, "Proto: HTTP/2.0")
+}
+
+func TestLive_HTTP_Method_UA_CLI_E2E(t *testing.T) {
+	binPath := filepath.Join("..", "..", "bin", "netping")
+	if runtime.GOOS == "windows" {
+		binPath = filepath.Join("..", "..", "bin", "netping.exe")
+	}
+
+	cmd := exec.Command(binPath, "--host", "www.google.com", "--protocol", "https", "--method", "GET", "--user-agent", "CustomE2E/1.0", "--count", "1", "--diags")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+
+	out := string(output)
+	assert.Contains(t, out, "Reply from www.google.com")
+	assert.Contains(t, out, "Status: 200 OK")
+}
+
+func TestLive_MongoDB_SRV_Atlas_E2E(t *testing.T) {
+	// Test programmatic SRV lookup for Atlas cluster
+	targets, err := config.ResolveMongoSRV("gfusw-qecm300-gdwxy.gcp.mongodb.net", "", "")
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(targets), 3)
+	for _, target := range targets {
+		assert.Contains(t, target.Host, "mongodb.net")
+		assert.Equal(t, uint16(27017), target.Port)
+		assert.Equal(t, consts.MONGODBS, target.Protocol)
+	}
+
+	// Test CLI execution with mongodb+srv URI
+	binPath := filepath.Join("..", "..", "bin", "netping")
+	if runtime.GOOS == "windows" {
+		binPath = filepath.Join("..", "..", "bin", "netping.exe")
+	}
+
+	cmd := exec.Command(binPath, "--uri", "mongodb+srv://gfusw-qecm300-gdwxy.gcp.mongodb.net", "--count", "1")
+	output, _ := cmd.CombinedOutput()
+	out := string(output)
+	assert.Contains(t, out, "shard")
+	assert.Contains(t, out, "MONGODBS")
 }

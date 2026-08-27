@@ -499,14 +499,18 @@ func parseConfigFromParsed(fs *flag.FlagSet, opts flagOptions) (*Config, error) 
 	}
 
 	var targetPool []TargetDef
-	if *opts.host != "" || *opts.port != "" || *opts.uri != "" {
+	if !isTriggerMode {
 		var err error
 		targetPool, err = ResolveTargetPool(*opts.host, *opts.port, *opts.uri, *opts.protocol, serviceName)
 		if err != nil {
 			return nil, err
 		}
-	} else if !isTriggerMode {
-		return nil, fmt.Errorf("target host, port, or URI must be specified using --host, --port, or --uri")
+	} else if *opts.host != "" || *opts.port != "" || *opts.uri != "" {
+		var err error
+		targetPool, err = ResolveTargetPool(*opts.host, *opts.port, *opts.uri, *opts.protocol, serviceName)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	intervalBetweenProbesDuration := utils.SecondsToDuration(*opts.intervalBetweenProbes)

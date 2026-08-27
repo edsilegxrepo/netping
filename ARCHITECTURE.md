@@ -49,19 +49,19 @@ flowchart TD
     end
 
     %% TIER 3: PROTOCOL CLUSTERS (2x2 Stacked Grid)
-    subgraph Tier3 ["Tier 3: Protocol Drivers & Deep Diagnostics (55 Protocols)"]
+    subgraph Tier3 ["Tier 3: Protocol Drivers & Deep Diagnostics (58 Protocols)"]
         direction TB
         
-        subgraph T3_Row1 ["Transport & Web Protocols"]
+        subgraph T3_Row1 ["Transport, Web & Management Protocols"]
             direction LR
             P_Net["<b>Network & Transport (L3–L4)</b><br/>• TCP, UDP, ICMP Ping<br/>• Raw TLS Handshake<br/>• Layer-4 Traceroute Engine"]
-            P_Web["<b>Web, DNS & APIs (L7)</b><br/>• HTTP / HTTPS (HEAD, POST, GET)<br/>• WebSocket / WSS Handshake<br/>• gRPC / GRPCS Health & ALPN<br/>• DNS, DoH & DoT Wire Queries"]
+            P_Web["<b>Web, Management & APIs (L7)</b><br/>• HTTP / HTTPS (HEAD, POST, GET)<br/>• WinRM & WinRMS (WS-Management SOAP Identify)<br/>• WebSocket / WSS Handshake<br/>• gRPC / GRPCS Health & ALPN<br/>• DNS, DoH & DoT Wire Queries"]
         end
 
-        subgraph T3_Row2 ["Databases, Queues & Identity"]
+        subgraph T3_Row2 ["Databases, Identity & KMS Vaults"]
             direction LR
             P_Data["<b>Databases & Message Queues</b><br/>• Postgres, MySQL, MSSQL, Oracle, SAP HANA, Mongo<br/>• Redis & Memcached Wire Handshakes<br/>• Kafka (ApiVersions) & RabbitMQ / AMQP"]
-            P_Auth["<b>Identity, SSO, Directory & Storage</b><br/>• SSO: OIDC Discovery, SAML 2.0 XML & OAuth 2.0 PKCE<br/>• Kerberos v5: KDC TCP/UDP AS-REQ Handshakes<br/>• LDAP / LDAPS Anonymous Bind & Root DSE<br/>• Cloud Storage (S3, Azure Blob, GCS) & Mail"]
+            P_Auth["<b>Identity, KMS Vaults, Directory & Storage</b><br/>• Microsoft Entra ID (OIDC & Active JWKS Cert Audits)<br/>• KMS & Vaults (HashiCorp Vault, Azure KV, CyberArk, AWS/GCP KMS)<br/>• SSO (OIDC Discovery, SAML 2.0 XML, OAuth 2.0 PKCE)<br/>• Kerberos v5: KDC TCP/UDP AS-REQ Handshakes<br/>• LDAP / LDAPS Anonymous Bind & Root DSE<br/>• Cloud Storage (S3, Azure Blob, GCS) & Mail"]
         end
 
         PingerContract --> T3_Row1
@@ -378,6 +378,7 @@ flowchart TD
 
 For deep protocol wire mechanics, deployment blueprints, and specialized subsystems, refer to the companion specifications:
 
+- **[Key Management Services (KMS) & Secrets Vaults](docs/KMS.md)** (`docs/KMS.md`): Architectural specifications and diagnostic breakdown for HashiCorp Vault, Azure Key Vault, CyberArk EPV/Conjur, AWS KMS, and GCP Cloud KMS.
 - **[Single Sign-On (SSO) & Identity Federation](docs/SSO.md)** (`docs/SSO.md`): Protocol specifications for OpenID Connect (OIDC 1.0) discovery + JWKS `x5c` cert expiry parsing, SAML 2.0 XML `EntityDescriptor` + X.509 verification, and OAuth 2.0 (RFC 8414) PKCE AS metadata audits.
 - **[Kerberos v5 Probing & KDC Diagnostics](docs/KERBEROS.md)** (`docs/KERBEROS.md`): Wire framing specifications for dual-transport TCP and UDP RFC 4120 `AS-REQ` DER generation, microsecond clock skew tracking, and diagnostic error codes.
 - **[Reverse Proxy & Subpath Mounting](docs/REVERSE_PROXY.md)** (`docs/REVERSE_PROXY.md`): Production deployment architectures for Nginx, Apache, Caddy, HAProxy, and Traefik with `--url-prefix` dynamic base-path resolution and SSE buffer controls.

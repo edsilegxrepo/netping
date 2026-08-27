@@ -1959,3 +1959,103 @@ func TestLive_SSO_CLI_Diags_E2E(t *testing.T) {
 	assert.Contains(t, out, "Issuer: https://accounts.google.com")
 	assert.Contains(t, out, "JWKS:")
 }
+
+func TestLive_Entra_E2E(t *testing.T) {
+	p := probers.BuildPinger(probers.FactoryOptions{
+		Protocol: consts.ENTRA,
+		Hostname: "login.microsoftonline.com",
+		Port:     443,
+		Timeout:  5 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	require.NoError(t, res.Err)
+	assert.Equal(t, 200, res.HTTPStatus)
+	assert.True(t, res.RTT > 0)
+	assert.Contains(t, res.Diagnostics, "CloudEnv: Microsoft Entra ID (Azure Commercial)")
+	assert.Contains(t, res.Diagnostics, "TokenPath:")
+	assert.Contains(t, res.Diagnostics, "JWKS:")
+}
+
+func TestLive_AWSKMS_E2E(t *testing.T) {
+	p := probers.BuildPinger(probers.FactoryOptions{
+		Protocol: consts.KMS,
+		Hostname: "kms.us-east-1.amazonaws.com",
+		Port:     443,
+		Timeout:  5 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	require.NoError(t, res.Err)
+	assert.Contains(t, []int{400, 404}, res.HTTPStatus)
+	assert.True(t, res.RTT > 0)
+	assert.Contains(t, res.Diagnostics, "Vault: AWS Key Management Service (AWS KMS)")
+	assert.Contains(t, res.Diagnostics, "AmznReqID:")
+}
+
+func TestLive_GCPKMS_E2E(t *testing.T) {
+	p := probers.BuildPinger(probers.FactoryOptions{
+		Protocol: consts.KMS,
+		Hostname: "cloudkms.googleapis.com",
+		Port:     443,
+		Timeout:  5 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	require.NoError(t, res.Err)
+	assert.Equal(t, 404, res.HTTPStatus) // 404 Not Found on root path probe
+	assert.True(t, res.RTT > 0)
+	assert.Contains(t, res.Diagnostics, "Vault: Google Cloud Key Management Service (GCP KMS)")
+}
+
+func TestLive_HashiCorpVault_E2E(t *testing.T) {
+	p := probers.BuildPinger(probers.FactoryOptions{
+		Protocol: consts.VAULT,
+		Hostname: "127.0.0.1",
+		Port:     8200,
+		Timeout:  3 * time.Second,
+	})
+
+	res := p.Ping(context.Background())
+	if res.Err != nil {
+		t.Skip("HashiCorp Vault container not running on 127.0.0.1:8200; skipping live test")
+	}
+	assert.Equal(t, 200, res.HTTPStatus)
+	assert.True(t, res.RTT > 0)
+	assert.Contains(t, res.Diagnostics, "Vault: HashiCorp Vault")
+	assert.Contains(t, res.Diagnostics, "Role: Active Primary Leader")
+}
+
+func TestLive_Entra_CLI_Diags_E2E(t *testing.T) {
+	binPath := filepath.Join("..", "..", "bin", "netping")
+	if runtime.GOOS == "windows" {
+		binPath = filepath.Join("..", "..", "netping.exe")
+	}
+
+	cmd := exec.Command(binPath, "--protocol", "entra", "--count", "1", "--diags")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+
+	out := string(output)
+	assert.Contains(t, out, "Reply from login.microsoftonline.com")
+	assert.Contains(t, out, "[DIAG]")
+	assert.Contains(t, out, "CloudEnv: Microsoft Entra ID")
+	assert.Contains(t, out, "JWKS:")
+}
+
+func TestLive_KMS_CLI_Diags_E2E(t *testing.T) {
+	binPath := filepath.Join("..", "..", "bin", "netping")
+	if runtime.GOOS == "windows" {
+		binPath = filepath.Join("..", "..", "netping.exe")
+	}
+
+	cmd := exec.Command(binPath, "--host", "kms.us-east-1.amazonaws.com", "--protocol", "kms", "--count", "1", "--diags")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+
+	out := string(output)
+	assert.Contains(t, out, "Reply from kms.us-east-1.amazonaws.com")
+	assert.Contains(t, out, "[DIAG]")
+	assert.Contains(t, out, "Vault: AWS Key Management Service")
+	assert.Contains(t, out, "AmznReqID:")
+}

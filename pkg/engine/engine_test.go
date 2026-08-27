@@ -417,3 +417,99 @@ func TestDynamicEngine_SSO_All3Protocols_Execution(t *testing.T) {
 	assert.Contains(t, respOAuth.Diagnostics, "Issuer: https://as.example.com")
 	assert.Contains(t, respOAuth.Diagnostics, "PKCE: [S256]")
 }
+
+func TestDynamicEngine_WinRM_Entra_KMS_Trigger(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/wsman":
+			w.Header().Set("Content-Type", "application/soap+xml;charset=UTF-8")
+			w.Header().Set("Server", "Microsoft-HTTPAPI/2.0")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:wsmid="http://schemas.dmtf.org/wbem/wsman/identity/1/wsmanidentity.xsd">
+  <s:Header/>
+  <s:Body>
+    <wsmid:IdentifyResponse>
+      <wsmid:ProductVendor>Microsoft Corporation</wsmid:ProductVendor>
+      <wsmid:ProductVersion>OS: 10.0.22631 SP: 0.0 Stack: 3.0</wsmid:ProductVersion>
+    </wsmid:IdentifyResponse>
+  </s:Body>
+</s:Envelope>`))
+
+		case strings.Contains(r.URL.Path, "openid-configuration"):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"issuer": "https://login.microsoftonline.com/common/v2.0",
+				"token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+				"id_token_signing_alg_values_supported": ["RS256"]
+			}`))
+
+		case r.URL.Path == "/v1/sys/health":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"initialized": true,
+				"sealed": false,
+				"version": "1.16.2",
+				"cluster_name": "test-vault-cluster"
+			}`))
+
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer mockServer.Close()
+
+	u, err := url.Parse(mockServer.URL)
+	require.NoError(t, err)
+	pVal, _ := strconv.Atoi(u.Port())
+	port := uint16(pVal)
+
+	broadcaster := web.NewBroadcaster()
+	registry := NewDynamicTargetRegistry()
+	eng := NewDynamicEngine(broadcaster, registry, 10)
+
+	// 1. WinRM Trigger
+	respWinRM, err := eng.Execute(context.Background(), TriggerRequest{
+		Host:      u.Hostname(),
+		Port:      port,
+		URI:       mockServer.URL + "/wsman",
+		Protocol:  "winrm",
+		Timeout:   "2s",
+		ShowDiags: true,
+	})
+	require.NoError(t, err)
+	assert.True(t, respWinRM.Success)
+	assert.Equal(t, "WINRM", respWinRM.Protocol)
+	assert.Contains(t, respWinRM.Diagnostics, "Vendor: Microsoft Corporation")
+
+	// 2. Entra Trigger
+	respEntra, err := eng.Execute(context.Background(), TriggerRequest{
+		Host:      u.Hostname(),
+		Port:      port,
+		URI:       mockServer.URL + "/common/v2.0/.well-known/openid-configuration",
+		Protocol:  "entra",
+		Timeout:   "2s",
+		ShowDiags: true,
+	})
+	require.NoError(t, err)
+	assert.True(t, respEntra.Success)
+	assert.Equal(t, "ENTRA", respEntra.Protocol)
+	assert.Contains(t, respEntra.Diagnostics, "CloudEnv: Microsoft Entra ID (Azure Commercial)")
+
+	// 3. KMS / Vault Trigger
+	respKMS, err := eng.Execute(context.Background(), TriggerRequest{
+		Host:      u.Hostname(),
+		Port:      port,
+		URI:       mockServer.URL + "/v1/sys/health",
+		Protocol:  "kms",
+		Timeout:   "2s",
+		ShowDiags: true,
+	})
+	require.NoError(t, err)
+	assert.True(t, respKMS.Success)
+	assert.Equal(t, "KMS", respKMS.Protocol)
+	assert.Contains(t, respKMS.Diagnostics, "Vault: HashiCorp Vault")
+	assert.Contains(t, respKMS.Diagnostics, "Version: v1.16.2")
+}

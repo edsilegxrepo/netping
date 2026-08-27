@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.2 - 2026-08-27
+
+- **Windows Remote Management (WinRM / WinRMS)**: Added native WS-Management SOAP prober (`--protocol winrm` / `winrms` on Ports 5985/5986) with deep inspection (`--diags`) of OS product versions, authentication schemes (`Negotiate, Kerberos, NTLM, CredSSP`), and TLS ciphers.
+- **Microsoft Entra ID (Azure Active Directory)**: Added native Entra ID tenant discovery and health prober (`--protocol entra` on Port 443) with cloud environment detection, token endpoints, and active JWKS X.509 signing key expiration audits.
+- **KMS & Secrets Vaults**: Added unified multi-vault probing engine (`--protocol kms` / `vault`) supporting HashiCorp Vault (health & seal alerts), Azure Key Vault (tenant ID extraction), CyberArk EPV/Conjur, AWS KMS, and GCP Cloud KMS. See [docs/KMS.md](docs/KMS.md).
+
 ## v0.6.1 - 2026-08-25
 
 - **Single Sign-On (SSO) & Federation Probing Engine**:

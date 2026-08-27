@@ -92,6 +92,8 @@ func ResolveProtocolAndPort(protocolStr, port, target string) (consts.Protocol, 
 			target = "blob.core.windows.net"
 		case consts.GCS:
 			target = "storage.googleapis.com"
+		case consts.ENTRA:
+			target = "login.microsoftonline.com"
 		}
 	}
 
@@ -182,7 +184,16 @@ func ResolveTargetPool(hostStr, portStr, uriStr, protoStr, serviceName string) (
 	protoStr = strings.TrimSpace(protoStr)
 
 	if hostStr == "" && portStr == "" {
-		return nil, fmt.Errorf("target host, port, or URI must be specified using --host, --port, or --uri")
+		if protoStr != "" {
+			_, _, defTarget := ResolveProtocolAndPort(protoStr, "", "")
+			if defTarget != "" {
+				hostStr = defTarget
+			} else {
+				return nil, fmt.Errorf("target host, port, or URI must be specified using --host, --port, or --uri")
+			}
+		} else {
+			return nil, fmt.Errorf("target host, port, or URI must be specified using --host, --port, or --uri")
+		}
 	}
 
 	hosts := splitAndTrimComma(hostStr)

@@ -401,6 +401,12 @@ func resolveTriggerTarget(req TriggerRequest) (string, uint16, consts.Protocol, 
 	if rawTarget == "" {
 		rawTarget = req.URI
 	}
+	if rawTarget == "" && req.Protocol != "" {
+		_, _, defTarget := resolveProtocolAndDefaultPort(req.Protocol)
+		if defTarget != "" {
+			rawTarget = defTarget
+		}
+	}
 	if rawTarget == "" {
 		return "", 0, consts.TCP, "", fmt.Errorf("target, host, or uri must be specified")
 	}
@@ -450,7 +456,20 @@ func resolveTriggerTarget(req TriggerRequest) (string, uint16, consts.Protocol, 
 
 func resolveProtocolAndDefaultPort(protocolStr string) (consts.Protocol, string, string) {
 	proto, port, _ := consts.NormalizeProtocol(protocolStr)
-	return proto, strconv.Itoa(int(port)), ""
+	defTarget := ""
+	switch proto {
+	case consts.O365:
+		defTarget = "outlook.office365.com"
+	case consts.S3:
+		defTarget = "s3.amazonaws.com"
+	case consts.AZUREBLOB:
+		defTarget = "blob.core.windows.net"
+	case consts.GCS:
+		defTarget = "storage.googleapis.com"
+	case consts.ENTRA:
+		defTarget = "login.microsoftonline.com"
+	}
+	return proto, strconv.Itoa(int(port)), defTarget
 }
 
 func buildPinger(host string, ip netip.Addr, port uint16, proto consts.Protocol, svc string, timeout time.Duration, req TriggerRequest) probers.Pinger {

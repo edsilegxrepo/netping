@@ -38,6 +38,11 @@ func TestGetDefaultPort(t *testing.T) {
 	assert.Equal(t, uint16(443), GetDefaultPort(SAML))
 	assert.Equal(t, uint16(443), GetDefaultPort(OAUTH2))
 	assert.Equal(t, uint16(443), GetDefaultPort(SSO))
+	assert.Equal(t, uint16(5985), GetDefaultPort(WINRM))
+	assert.Equal(t, uint16(5986), GetDefaultPort(WINRMS))
+	assert.Equal(t, uint16(443), GetDefaultPort(ENTRA))
+	assert.Equal(t, uint16(443), GetDefaultPort(KMS))
+	assert.Equal(t, uint16(8200), GetDefaultPort(VAULT))
 	assert.Equal(t, uint16(443), GetDefaultPort(Protocol("UNKNOWN")))
 }
 
@@ -102,6 +107,56 @@ func TestNormalizeProtocol(t *testing.T) {
 	p, port, ok = NormalizeProtocol("sso")
 	assert.True(t, ok)
 	assert.Equal(t, SSO, p)
+	assert.Equal(t, uint16(443), port)
+
+	p, port, ok = NormalizeProtocol("winrm")
+	assert.True(t, ok)
+	assert.Equal(t, WINRM, p)
+	assert.Equal(t, uint16(5985), port)
+
+	p, port, ok = NormalizeProtocol("wsman")
+	assert.True(t, ok)
+	assert.Equal(t, WINRM, p)
+	assert.Equal(t, uint16(5985), port)
+
+	p, port, ok = NormalizeProtocol("winrms")
+	assert.True(t, ok)
+	assert.Equal(t, WINRMS, p)
+	assert.Equal(t, uint16(5986), port)
+
+	p, port, ok = NormalizeProtocol("entra")
+	assert.True(t, ok)
+	assert.Equal(t, ENTRA, p)
+	assert.Equal(t, uint16(443), port)
+
+	p, port, ok = NormalizeProtocol("azuread")
+	assert.True(t, ok)
+	assert.Equal(t, ENTRA, p)
+	assert.Equal(t, uint16(443), port)
+
+	p, port, ok = NormalizeProtocol("kms")
+	assert.True(t, ok)
+	assert.Equal(t, KMS, p)
+	assert.Equal(t, uint16(443), port)
+
+	p, port, ok = NormalizeProtocol("vault")
+	assert.True(t, ok)
+	assert.Equal(t, VAULT, p)
+	assert.Equal(t, uint16(8200), port)
+
+	p, port, ok = NormalizeProtocol("awskms")
+	assert.True(t, ok)
+	assert.Equal(t, KMS, p)
+	assert.Equal(t, uint16(443), port)
+
+	p, port, ok = NormalizeProtocol("azurekeyvault")
+	assert.True(t, ok)
+	assert.Equal(t, KMS, p)
+	assert.Equal(t, uint16(443), port)
+
+	p, port, ok = NormalizeProtocol("cyberark")
+	assert.True(t, ok)
+	assert.Equal(t, KMS, p)
 	assert.Equal(t, uint16(443), port)
 
 	// Unknown fallback

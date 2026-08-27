@@ -532,6 +532,57 @@ func BuildPinger(opts FactoryOptions) Pinger {
 			UseIPv4:   opts.UseIPv4,
 			UseIPv6:   opts.UseIPv6,
 		})
+	case consts.WINRM:
+		return NewWinRMing(WinRMOptions{
+			Hostname:  opts.Hostname,
+			IP:        opts.IP,
+			Port:      opts.Port,
+			UseTLS:    false,
+			URI:       opts.URI,
+			Timeout:   timeout,
+			TLSConfig: opts.TLSConfig,
+			Dialer:    dialer,
+			UseIPv4:   opts.UseIPv4,
+			UseIPv6:   opts.UseIPv6,
+		})
+	case consts.WINRMS:
+		return NewWinRMing(WinRMOptions{
+			Hostname:  opts.Hostname,
+			IP:        opts.IP,
+			Port:      opts.Port,
+			UseTLS:    true,
+			URI:       opts.URI,
+			Timeout:   timeout,
+			TLSConfig: opts.TLSConfig,
+			Dialer:    dialer,
+			UseIPv4:   opts.UseIPv4,
+			UseIPv6:   opts.UseIPv6,
+		})
+	case consts.ENTRA:
+		return NewEntraing(EntraOptions{
+			Hostname:  opts.Hostname,
+			IP:        opts.IP,
+			Port:      opts.Port,
+			URI:       opts.URI,
+			Timeout:   timeout,
+			TLSConfig: opts.TLSConfig,
+			Dialer:    dialer,
+			UseIPv4:   opts.UseIPv4,
+			UseIPv6:   opts.UseIPv6,
+		})
+	case consts.KMS, consts.VAULT:
+		return NewKMSing(KMSOptions{
+			Type:      KMSTypeAuto,
+			Hostname:  opts.Hostname,
+			IP:        opts.IP,
+			Port:      opts.Port,
+			URI:       opts.URI,
+			Timeout:   timeout,
+			TLSConfig: opts.TLSConfig,
+			Dialer:    dialer,
+			UseIPv4:   opts.UseIPv4,
+			UseIPv6:   opts.UseIPv6,
+		})
 	default:
 		return NewTcping(TCPOptions{
 			Hostname:   opts.Hostname,

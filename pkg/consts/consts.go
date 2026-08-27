@@ -71,6 +71,11 @@ const (
 	SAML        Protocol = "SAML"
 	OAUTH2      Protocol = "OAUTH2"
 	SSO         Protocol = "SSO"
+	WINRM       Protocol = "WINRM"
+	WINRMS      Protocol = "WINRMS"
+	ENTRA       Protocol = "ENTRA"
+	KMS         Protocol = "KMS"
+	VAULT       Protocol = "VAULT"
 )
 
 // Diagnostic Exit Codes

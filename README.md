@@ -10,9 +10,8 @@ For complete architectural specifications, concurrency mechanics, and dependency
 
 Traditional ping utilities are typically restricted to Layer 3 ICMP or simple Layer 4 TCP handshakes. Modern distributed systems, cloud infrastructures, and microservice meshes require granular application-layer latency analysis, TLS certificate verification, database responsiveness checks, and real-time observability.
 
-### Core Objectives
-- **Layer 3 to Layer 7 Unified Probing**: Measure handshake, TTFB, and protocol responsiveness across 55 network and application protocols (HTTP/S, gRPC/S, WebSocket/S, DNS/DoH/DoT, Redis/S, DBs, Mail, Queues, Storage, Directory, SMB, Rsync, FTP/S, SSH, O365, Kerberos TCP/UDP, OIDC, SAML 2.0, OAuth 2.0, SSO).
-- **Deep Protocol Diagnostics (`--diags`)**: Extract TLS cipher suites, certificate expiration, HTTP headers, database banners, message queue metadata, and DNS RCODEs.
+- **Layer 3 to Layer 7 Unified Probing**: Measure handshake, TTFB, and protocol responsiveness across 58 network and application protocols (HTTP/S, gRPC/S, WebSocket/S, DNS/DoH/DoT, Redis/S, DBs, Mail, Queues, Storage, Directory, SMB, Rsync, FTP/S, SSH, O365, Kerberos TCP/UDP, OIDC, SAML 2.0, OAuth 2.0, SSO, WinRM/S, Microsoft Entra ID, HashiCorp Vault / Cloud KMS).
+- **Deep Protocol Diagnostics (`--diags`)**: Extract TLS cipher suites, certificate expiration, HTTP headers, database banners, message queue metadata, Kerberos skew, JWKS key rotation, and KMS seal/vault states.
 - **Real-Time Visual Telemetry**:
   - **120-Column Interactive TUI Dashboard (`--dashboard`)** with a 106-point latency waveform chart.
   - **Zero-Dependency Web Dashboard (`--web`)** with Server-Sent Events (SSE) and Canvas 2D timeline graphs.
@@ -79,8 +78,8 @@ netping --host <host1,host2> --port <port1,port2> [options]
 | `--host` | `string` | `""` | Comma-separated target hostnames or IP addresses. |
 | `--port` | `string` | `""` | Comma-separated target port numbers. |
 | `--uri` | `string` | `""` | Comma-separated target URIs (e.g. `https://host:443,postgres://db:5432`). |
-| `--protocol` | `string` | `tcp` | Target protocol: `tcp`, `http`, `https`, `tls`, `udp`, `icmp`, `ws`, `wss`, `grpc`, `grpcs`, `dns`, `dot`, `doh`, `redis`, `rediss`, `memcached`, `smtp`, `smtps`, `imap`, `imaps`, `pop3`, `pop3s`, `ldap`, `ldaps`, `postgres`, `mysql`, `mssql`, `oracle`, `mongodb`, `cassandra`, `saphana`, `s3`, `blob`, `gcs`, `kafka`, `kafkas`, `rabbitmq`, `amqps`, `smb`, `rsync`, `ftp`, `ftps`, `ssh`, `o365`, `kerberos`, `kerberos-udp`, `krb5`. |
-| `--service`, `--oracle-service` | `string` | `""` | Database service/SID name (Oracle) or domain realm. |
+| `--protocol` | `string` | `tcp` | Target protocol: `tcp`, `http`, `https`, `tls`, `udp`, `icmp`, `ws`, `wss`, `grpc`, `grpcs`, `dns`, `dot`, `doh`, `redis`, `rediss`, `memcached`, `smtp`, `smtps`, `imap`, `imaps`, `pop3`, `pop3s`, `ldap`, `ldaps`, `postgres`, `mysql`, `mssql`, `oracle`, `mongodb`, `cassandra`, `saphana`, `s3`, `blob`, `gcs`, `kafka`, `kafkas`, `rabbitmq`, `amqps`, `smb`, `rsync`, `ftp`, `ftps`, `ssh`, `o365`, `kerberos`, `kerberos-udp`, `krb5`, `oidc`, `saml`, `oauth2`, `sso`, `winrm`, `winrms`, `entra`, `kms`, `vault`. See [`docs/SSO.md`](docs/SSO.md), [`docs/KERBEROS.md`](docs/KERBEROS.md), and [`docs/KMS.md`](docs/KMS.md). |
+| `--service`, `--oracle-service` | `string` | `""` | Database service/SID name (Oracle) or domain realm (Kerberos/LDAP). |
 | `--send` | `string` | `""` | Payload to transmit on connection (raw string for TCP/UDP; automatically switches HTTP/S prober to `POST` with request body). |
 | `--expect` | `string` | `""` | Expected response substring for validation (checks raw socket replies; automatically switches HTTP/S prober to `GET` to validate response body). |
 | `--starttls` | `bool` | `false` | Explicitly initiate protocol-level STARTTLS negotiation (SMTP/IMAP/POP3/LDAP). |
@@ -211,11 +210,69 @@ netping --host accounts.google.com --protocol oidc --diags --count 1
 
 # 2. SAML 2.0 IdP Metadata & X.509 Signing Certificate Inspection
 netping --host login.microsoftonline.com --uri /common/FederationMetadata/2007-06/FederationMetadata.xml --protocol saml --diags --count 1
+
+# 3. OAuth 2.0 Authorization Server Metadata (RFC 8414) with PKCE Verification
+netping --host login.microsoftonline.com --protocol oauth2 --diags --count 1
 ```
 ```text
 Probing accounts.google.com on port 443
 ● Reply from accounts.google.com on port 443: TCP_conn=1 time=45.120 ms
   └─ [DIAG] Protocol: OIDC (OpenID Connect 1.0) │ Issuer: https://accounts.google.com │ TokenEndpoint: https://oauth2.googleapis.com/token │ AuthEndpoint: https://accounts.google.com/o/oauth2/v2/auth │ SigningAlgs: [RS256] │ Scopes: [openid, profile, email] │ JWKS: 3 active keys (nearest cert expires in 118 days)
+```
+
+#### Windows Remote Management Probing (WinRM & WinRMS)
+```bash
+# 1. Standard WinRM HTTP Probing (Port 5985)
+netping --host win-server.corp.local --protocol winrm --diags --count 1
+
+# 2. Secure WinRM HTTPS/TLS Probing (Port 5986)
+netping --host win-server.corp.local --protocol winrms --diags --count 1
+```
+```text
+Probing win-server.corp.local on port 5986
+● Reply from win-server.corp.local on port 5986: TCP_conn=1 time=8.450 ms
+  └─ [DIAG] Vendor: Microsoft Corporation │ ProductVersion: OS: 10.0.22631 SP: 0.0 Stack: 3.0 │ AuthSchemes: Negotiate, Kerberos, NTLM, CredSSP │ TLSVersion: TLS 1.3 │ CipherSuite: TLS_AES_256_GCM_SHA384 │ CertExpiry: 2026-11-15 (80d remaining)
+```
+
+#### Microsoft Entra ID (Azure Active Directory) Probing
+```bash
+# Probes login.microsoftonline.com by default on Port 443 with live JWKS certificate audit
+netping --protocol entra --diags --count 1
+
+# Probing a specific sovereign cloud or tenant GUID
+netping --host login.microsoftonline.us --uri /common/v2.0/.well-known/openid-configuration --protocol entra --diags
+```
+```text
+Probing login.microsoftonline.com on port 443
+● Reply from login.microsoftonline.com on port 443: TCP_conn=1 time=132.974 ms
+  └─ [DIAG] CloudEnv: Microsoft Entra ID (Azure Commercial) │ TokenPath: /common/oauth2/v2.0/token │ JWKS: 8 keys (Nearest KeyExpiry: 2031-06-17, 1754d remaining) │ SigningAlgs: [RS256] │ Scopes: [openid, profile, email, offline_access] │ TLSVersion: TLS 1.3 │ CipherSuite: TLS_AES_256_GCM_SHA384 │ CertExpiry: 2026-11-22 (86d remaining)
+```
+
+#### KMS & Secrets Vaults Probing (HashiCorp, Azure Key Vault, AWS, GCP, CyberArk)
+```bash
+# 1. HashiCorp Vault Health & Seal Status Check (Port 8200)
+netping --host vault.corp.internal --protocol vault --diags --count 1
+
+# 2. Azure Key Vault Challenge & Tenant ID Extraction (Port 443)
+netping --host mykeyvault.vault.azure.net --protocol kms --diags --count 1
+
+# 3. AWS Key Management Service (AWS KMS) Reachability & Tracing
+netping --host kms.us-east-1.amazonaws.com --protocol kms --diags --count 1
+
+# 4. Google Cloud Key Management Service (GCP KMS)
+netping --host cloudkms.googleapis.com --protocol kms --diags --count 1
+
+# 5. CyberArk Enterprise Password Vault & Conjur
+netping --host cyberark.corp.internal --protocol cyberark --diags --count 1
+```
+```text
+Probing vault.corp.internal on port 8200
+● Reply from vault.corp.internal on port 8200: TCP_conn=1 time=3.210 ms
+  └─ [DIAG] Vault: HashiCorp Vault │ Version: v1.16.2 │ Cluster: vault-prod-east │ Sealed: false (Unsealed) │ Role: Active Primary Leader
+
+Probing kms.us-east-1.amazonaws.com on port 443
+● Reply from kms.us-east-1.amazonaws.com on port 443: TCP_conn=1 time=164.544 ms
+  └─ [DIAG] Vault: AWS Key Management Service (AWS KMS) │ AmznReqID: ad46a1e5-f47f-4515-b67f-d2909b58e5fb │ TLSVersion: TLS 1.3 │ CipherSuite: TLS_AES_256_GCM_SHA384 │ CertExpiry: 2026-12-06 (101d remaining)
 ```
 
 #### HTTP/HTTPS Probing with Payload Dispatching (`--send` / `--expect`)

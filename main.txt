@@ -1,2 +1,0 @@
-./cmd
-github.com/edsilegx/netping/internal/config.version

@@ -113,12 +113,14 @@ func main() {
 		filePath := filepath.Clean(os.Args[2])
 		dir := filepath.Dir(filePath)
 		if dir != "" && dir != "." {
+			// #nosec G301,G703 -- directory created for internal async save file
 			_ = os.MkdirAll(dir, 0o750)
 		}
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			os.Exit(consts.ExitStorageError)
 		}
+		// #nosec G306,G703 -- writes internal async save file with restricted permissions
 		if err := os.WriteFile(filePath, data, 0o600); err != nil {
 			os.Exit(consts.ExitStorageError)
 		}
